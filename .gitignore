@@ -24,8 +24,8 @@ node_modules/
 .vscode/
 *.swp
 
-# Models / weights (large binary files)
-models/
+# Models / weights (large binary files) — only repo-root ./models/, not Python pkg src/opentalking/models/
+/models/
 *.pth
 *.pt
 *.onnx
@@ -39,6 +39,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Local runtime DB (voice catalog / clones); regenerate at runtime
+data/
 
 # Runtime output & debug artifacts
 output/

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -113,7 +114,28 @@ async def handle_worker_task(
         return
     if cmd == "speak":
         text = str(task.get("text", ""))
-        runner.create_speak_task(text)
+        raw_voice = task.get("voice")
+        tts_voice = str(raw_voice).strip() if raw_voice else None
+        tp = task.get("tts_provider")
+        tts_provider = str(tp).strip().lower() if tp else None
+        tm = task.get("tts_model")
+        tts_model = str(tm).strip() if tm else None
+        enqueue_unix = task.get("enqueue_unix")
+        if isinstance(enqueue_unix, (int, float)):
+            log.info(
+                "speak task dequeue from API enqueue: %.0f ms session=%s",
+                (time.time() - float(enqueue_unix)) * 1000.0,
+                sid,
+            )
+        runner.create_speak_task(
+            text,
+            tts_voice=tts_voice or None,
+            tts_provider=tts_provider or None,
+            tts_model=tts_model or None,
+            enqueue_unix=float(enqueue_unix)
+            if isinstance(enqueue_unix, (int, float))
+            else None,
+        )
     elif cmd == "interrupt":
         await runner.interrupt()
     elif cmd == "close":

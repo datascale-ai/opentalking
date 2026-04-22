@@ -19,7 +19,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.core.config import get_settings
-from apps.api.routes import avatars, events, health, models, sessions
+from apps.api.routes import avatars, events, health, models, sessions, voices
+from opentalking.voices.store import init_voice_store
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.worker.session_runner import SessionRunner
 from opentalking.worker.task_consumer import consume_task_queue
@@ -29,6 +30,7 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def unified_lifespan(app: FastAPI):
+    init_voice_store()
     settings = get_settings()
     app.state.settings = settings
     mem = InMemoryRedis()
@@ -78,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(avatars.router)
     app.include_router(sessions.router)
     app.include_router(events.router)
+    app.include_router(voices.router)
     return app
 
 

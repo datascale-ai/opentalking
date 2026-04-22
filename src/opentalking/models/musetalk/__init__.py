@@ -1,0 +1,1 @@
+"""MuseTalk model adapter package."""

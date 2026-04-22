@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from typing import Any
 
@@ -42,8 +43,31 @@ async def update_session_state(r: redis.Redis, sid: str, state: str) -> None:
     await set_session_state(r, sid, state)
 
 
-async def speak(r: redis.Redis, sid: str, text: str) -> None:
-    await _push_task(r, {"cmd": "speak", "session_id": sid, "text": text})
+async def speak(
+    r: redis.Redis,
+    sid: str,
+    text: str,
+    *,
+    voice: str | None = None,
+    tts_provider: str | None = None,
+    tts_model: str | None = None,
+) -> None:
+    # 新用户输入前先打断，避免上一条仍在推理/播报时排队等到结束才生效
+    await interrupt(r, sid)
+    task: dict[str, Any] = {
+        "cmd": "speak",
+        "session_id": sid,
+        "text": text,
+        # Worker 用于测量「API 入队 speak → 首帧进 WebRTC」墙钟（与 Worker 同机时钟）
+        "enqueue_unix": time.time(),
+    }
+    if voice:
+        task["voice"] = voice
+    if tts_provider:
+        task["tts_provider"] = tts_provider.strip().lower()
+    if tts_model:
+        task["tts_model"] = tts_model.strip()
+    await _push_task(r, task)
 
 
 async def interrupt(r: redis.Redis, sid: str) -> None:

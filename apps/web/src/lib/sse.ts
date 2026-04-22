@@ -12,6 +12,7 @@ export function connectSse(url: string, onEvent: SseHandler): () => void {
   };
   const names = [
     "speech.started",
+    "speech.media_started",
     "subtitle.chunk",
     "speech.ended",
     "session.state_changed",

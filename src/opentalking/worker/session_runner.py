@@ -11,10 +11,12 @@ import numpy as np
 from opentalking.core.session_store import set_session_state
 from opentalking.models.registry import get_adapter
 from opentalking.rtc.aiortc_adapter import WebRTCSession
-from opentalking.tts.edge.adapter import EdgeTTSAdapter
+from opentalking.tts.factory import create_tts_adapter
 from opentalking.worker.bus import publish_event
 from opentalking.worker.pipeline.render_pipeline import render_audio_chunk
 from opentalking.worker.text_sanitize import strip_emoji
+
+log = logging.getLogger(__name__)
 
 
 class SessionRunner:
@@ -84,17 +86,40 @@ class SessionRunner:
         ans = await self.webrtc.handle_offer(sdp, type_)
         return {"sdp": ans.sdp, "type": ans.type}
 
-    def create_speak_task(self, text: str) -> asyncio.Task[None]:
-        task = asyncio.create_task(self._run_speak_task(text))
+    def create_speak_task(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        *,
+        tts_provider: str | None = None,
+        tts_model: str | None = None,
+        enqueue_unix: float | None = None,
+    ) -> asyncio.Task[None]:
+        task = asyncio.create_task(
+            self._run_speak_task(text, tts_voice, tts_provider, tts_model, enqueue_unix)
+        )
         self.speech_tasks.add(task)
         task.add_done_callback(self.speech_tasks.discard)
         return task
 
-    async def _run_speak_task(self, text: str) -> None:
+    async def _run_speak_task(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        tts_provider: str | None = None,
+        tts_model: str | None = None,
+        enqueue_unix: float | None = None,
+    ) -> None:
         log = logging.getLogger(__name__)
         log.info("speak start: %s (session=%s)", text[:30], self.session_id)
         try:
-            await self.speak(text)
+            await self.speak(
+                text,
+                tts_voice=tts_voice,
+                tts_provider=tts_provider,
+                tts_model=tts_model,
+                enqueue_unix=enqueue_unix,
+            )
             log.info("speak done: session=%s", self.session_id)
         except asyncio.CancelledError:
             log.info("speak cancelled: session=%s", self.session_id)
@@ -123,7 +148,15 @@ class SessionRunner:
             {"session_id": self.session_id},
         )
 
-    async def speak(self, text: str) -> None:
+    async def speak(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        *,
+        tts_provider: str | None = None,
+        tts_model: str | None = None,
+        enqueue_unix: float | None = None,
+    ) -> None:
         async with self._speak_lock:
             speech_text = strip_emoji(text).strip()
             if not speech_text or self._closed:
@@ -146,13 +179,18 @@ class SessionRunner:
                 {"session_id": self.session_id, "text": speech_text, "is_final": True},
             )
             log = logging.getLogger(__name__)
-            tts = EdgeTTSAdapter(
+            tts = create_tts_adapter(
                 sample_rate=int(self.avatar_state.manifest.sample_rate),
                 chunk_ms=400.0,
+                default_voice=tts_voice,
+                tts_provider=tts_provider,
+                tts_model=tts_model,
             )
             try:
+                pipeline_t0 = _time.perf_counter()
                 tts_started_at = _time.perf_counter()
                 chunk_idx = 0
+                media_started_sent = False
                 async for chunk in tts.synthesize_stream(speech_text):
                     if chunk_idx == 0:
                         log.info(
@@ -169,7 +207,23 @@ class SessionRunner:
                         frame_index_start=self._frame_idx,
                         video_sink=self._video_sink,
                     )
+                    if not media_started_sent:
+                        media_started_sent = True
+                        await publish_event(
+                            self.redis,
+                            self.session_id,
+                            "speech.media_started",
+                            {"session_id": self.session_id},
+                        )
                     await self._audio_sink(chunk.data)
+                log.info(
+                    "Speak timing (render path): session=%s wall_ms=%.0f "
+                    "tts_chunks=%d text_chars=%d",
+                    self.session_id,
+                    (_time.perf_counter() - pipeline_t0) * 1000,
+                    chunk_idx,
+                    len(speech_text),
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -185,6 +239,11 @@ class SessionRunner:
                 )
                 raise
             finally:
+                if hasattr(tts, "aclose"):
+                    try:
+                        await tts.aclose()
+                    except Exception:
+                        log.exception("TTS adapter aclose failed")
                 self._speaking = False
             await self._publish_speech_ended()
             if not self._closed:
