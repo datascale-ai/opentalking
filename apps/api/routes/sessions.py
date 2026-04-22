@@ -43,14 +43,21 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
             status_code=400,
             detail=(
                 "FlashTalk is disabled in this deployment. "
-                "Use demo-avatar/wav2lip for the quickstart path, or switch "
+                "Use demo-wav2lip/wav2lip for the quickstart path, or switch "
                 "OPENTALKING_FLASHTALK_MODE to remote/local."
             ),
         )
+    tts_provider = (body.tts_provider or "").strip().lower() or None
+    tts_voice = (body.tts_voice or "").strip() or None
+    if tts_provider not in {None, "edge", "elevenlabs", "auto"}:
+        raise HTTPException(status_code=400, detail=f"unsupported tts provider: {body.tts_provider}")
+
     sid = await session_service.create_session(
         r,
         avatar_id=body.avatar_id,
         model=body.model,
+        tts_provider=tts_provider,
+        tts_voice=tts_voice,
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").

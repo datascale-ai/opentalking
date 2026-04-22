@@ -25,6 +25,7 @@ llm:
   model: qwen-turbo
   system_prompt: You are a friendly digital human assistant.
 tts:
+  provider: edge
   voice: zh-CN-XiaoxiaoNeural
   sample_rate: 16000
   streaming_decode: true

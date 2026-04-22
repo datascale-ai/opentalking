@@ -1,0 +1,14 @@
+{
+  "id": "flashtalk-avator",
+  "name": "Avator FlashTalk",
+  "model_type": "flashtalk",
+  "fps": 25,
+  "sample_rate": 16000,
+  "width": 416,
+  "height": 704,
+  "version": "1.0",
+  "metadata": {
+    "description": "FlashTalk avatar using avator.mp4-derived reference frame and idle cache.",
+    "reset_session_each_turn": true
+  }
+}

@@ -181,4 +181,3 @@ def _chunk_rms(chunk_audio: np.ndarray) -> float:
 def _reset_audio_embedding_shape_cache() -> None:
     global _AUDIO_EMBEDDING_SHAPE_CACHED
     _AUDIO_EMBEDDING_SHAPE_CACHED = None
-

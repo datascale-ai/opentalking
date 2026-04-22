@@ -18,6 +18,8 @@ async def create_session(
     *,
     avatar_id: str,
     model: str,
+    tts_provider: str | None = None,
+    tts_voice: str | None = None,
 ) -> str:
     sid = f"sess_{uuid.uuid4().hex[:12]}"
     data = {
@@ -26,10 +28,24 @@ async def create_session(
         "model": model,
         "state": "created",
     }
+    if tts_provider:
+        data["tts_provider"] = tts_provider
+    if tts_voice:
+        data["tts_voice"] = tts_voice
     await r.hset(session_key(sid), mapping=data)
+    init_task: dict[str, Any] = {
+        "cmd": "init",
+        "session_id": sid,
+        "avatar_id": avatar_id,
+        "model": model,
+    }
+    if tts_provider:
+        init_task["tts_provider"] = tts_provider
+    if tts_voice:
+        init_task["tts_voice"] = tts_voice
     await _push_task(
         r,
-        {"cmd": "init", "session_id": sid, "avatar_id": avatar_id, "model": model},
+        init_task,
     )
     return sid
 

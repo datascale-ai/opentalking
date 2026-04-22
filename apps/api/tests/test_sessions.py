@@ -98,7 +98,7 @@ def test_create_session_rejects_avatar_model_mismatch() -> None:
     with TestClient(unified_main.create_app()) as client:
         response = client.post(
             "/sessions",
-            json={"avatar_id": "demo-avatar", "model": "musetalk"},
+            json={"avatar_id": "demo-wav2lip", "model": "musetalk"},
         )
 
     assert response.status_code == 400
@@ -108,7 +108,7 @@ def test_create_session_rejects_avatar_model_mismatch() -> None:
 def test_delete_session_closes_runner_and_marks_closed(unified_client: TestClient) -> None:
     create_response = unified_client.post(
         "/sessions",
-        json={"avatar_id": "demo-avatar", "model": "wav2lip"},
+        json={"avatar_id": "demo-wav2lip", "model": "wav2lip"},
     )
     session_id = create_response.json()["session_id"]
 
@@ -123,7 +123,7 @@ def test_delete_session_closes_runner_and_marks_closed(unified_client: TestClien
 def test_interrupt_cancels_active_speech_and_restores_ready(unified_client: TestClient) -> None:
     create_response = unified_client.post(
         "/sessions",
-        json={"avatar_id": "demo-avatar", "model": "wav2lip"},
+        json={"avatar_id": "demo-wav2lip", "model": "wav2lip"},
     )
     session_id = create_response.json()["session_id"]
     runner = unified_client.created_runners[session_id]  # type: ignore[attr-defined]
@@ -143,7 +143,7 @@ def test_interrupt_cancels_active_speech_and_restores_ready(unified_client: Test
 def test_close_cancels_running_and_queued_speech_tasks(unified_client: TestClient) -> None:
     create_response = unified_client.post(
         "/sessions",
-        json={"avatar_id": "demo-avatar", "model": "wav2lip"},
+        json={"avatar_id": "demo-wav2lip", "model": "wav2lip"},
     )
     session_id = create_response.json()["session_id"]
     runner = unified_client.created_runners[session_id]  # type: ignore[attr-defined]

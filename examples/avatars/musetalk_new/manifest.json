@@ -1,0 +1,20 @@
+{
+  "id": "musetalk_new",
+  "name": "Avator MuseTalk",
+  "model_type": "musetalk",
+  "fps": 30,
+  "sample_rate": 16000,
+  "width": 720,
+  "height": 1248,
+  "version": "1.0",
+  "metadata": {
+    "description": "Avatar rebuilt from avator.mp4 with full 30fps extraction and MuseTalk prepared assets.",
+    "idle_mode": "loop",
+    "freeze_speaking_to_preview": true,
+    "source_video": "avator.mp4",
+    "prepared_compose_mode": "strict_mask",
+    "source_fps": 30,
+    "source_frame_count": 150,
+    "prepared_assets": true
+  }
+}

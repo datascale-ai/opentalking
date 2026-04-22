@@ -40,9 +40,15 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "system_prompt": "llm_system_prompt",
         },
         "tts": {
+            "provider": "tts_provider",
             "voice": "tts_voice",
             "sample_rate": "tts_sample_rate",
             "streaming_decode": "tts_streaming_decode",
+            "elevenlabs_api_key": "tts_elevenlabs_api_key",
+            "elevenlabs_base_url": "tts_elevenlabs_base_url",
+            "elevenlabs_model_id": "tts_elevenlabs_model_id",
+            "elevenlabs_voice_id": "tts_elevenlabs_voice_id",
+            "elevenlabs_output_format": "tts_elevenlabs_output_format",
         },
         "model": {"torch_device": "torch_device", "default_model": "default_model"},
     }
@@ -106,6 +112,11 @@ def _load_legacy_env_source() -> dict[str, Any]:
         "DASHSCOPE_API_KEY": "llm_api_key",
         "DASHSCOPE_MODEL": "llm_model",
         "LLM_SYSTEM_PROMPT": "llm_system_prompt",
+        "ELEVENLABS_API_KEY": "tts_elevenlabs_api_key",
+        "ELEVENLABS_BASE_URL": "tts_elevenlabs_base_url",
+        "ELEVENLABS_MODEL_ID": "tts_elevenlabs_model_id",
+        "ELEVENLABS_VOICE_ID": "tts_elevenlabs_voice_id",
+        "ELEVENLABS_OUTPUT_FORMAT": "tts_elevenlabs_output_format",
     }
     return {target: os.environ[name] for name, target in mapping.items() if name in os.environ}
 
@@ -170,9 +181,15 @@ class Settings(BaseSettings):
     llm_model: str = "qwen-turbo"
     llm_system_prompt: str = "You are a friendly digital human assistant."
 
+    tts_provider: str = "edge"
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
     tts_sample_rate: int = 16000
     tts_streaming_decode: bool = True
+    tts_elevenlabs_api_key: str = ""
+    tts_elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    tts_elevenlabs_model_id: str = "eleven_flash_v2_5"
+    tts_elevenlabs_voice_id: str = ""
+    tts_elevenlabs_output_format: str = "mp3_22050_32"
     ffmpeg_bin: str = "ffmpeg"
 
     torch_device: str = "cpu"
@@ -212,6 +229,13 @@ class Settings(BaseSettings):
         if mode in {"remote", "local", "off"}:
             return mode
         return "remote"
+
+    @property
+    def normalized_tts_provider(self) -> str:
+        provider = self.tts_provider.strip().lower()
+        if provider in {"auto", "edge", "elevenlabs"}:
+            return provider
+        return "auto"
 
 
 @lru_cache(maxsize=1)
