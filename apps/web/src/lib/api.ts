@@ -29,9 +29,19 @@ export async function apiDelete<T>(path: string, init?: RequestInit): Promise<T>
 export type AvatarSummary = {
   id: string;
   name: string | null;
+  manifest_id?: string | null;
   model_type: string;
   width: number;
   height: number;
+};
+
+export type TTSVoiceOption = {
+  id: string;
+  label: string;
+  provider: string;
+  voice?: string | null;
+  reference_audio?: string | null;
+  description?: string | null;
 };
 
 export type CreateSessionResponse = { session_id: string; status: string };

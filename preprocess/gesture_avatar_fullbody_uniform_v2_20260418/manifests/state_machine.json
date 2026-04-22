@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "idle_cycle": [
+    "idle",
+    "hands_down",
+    "subtle_hands"
+  ],
+  "states": {
+    "idle": {
+      "image": "aligned/idle.png",
+      "fallbacks": [
+        "aligned/hands_down.png",
+        "aligned/subtle_hands.png"
+      ],
+      "trigger": {
+        "default": true
+      }
+    },
+    "hands_down": {
+      "image": "aligned/hands_down.png",
+      "role": "idle_variant"
+    },
+    "subtle_hands": {
+      "image": "aligned/subtle_hands.png",
+      "role": "idle_variant"
+    },
+    "explain": {
+      "image": "aligned/explain.png",
+      "trigger": {
+        "keywords": [
+          "首先",
+          "其次",
+          "例如",
+          "比如",
+          "说明",
+          "介绍",
+          "重点",
+          "注意",
+          "关键"
+        ],
+        "min_energy": 0.28
+      }
+    },
+    "confidence": {
+      "image": "aligned/confidence.png",
+      "trigger": {
+        "keywords": [
+          "最后",
+          "总之",
+          "因此",
+          "所以",
+          "当然",
+          "没问题",
+          "可以看到"
+        ],
+        "min_energy": 0.32
+      }
+    }
+  },
+  "notes": [
+    "Removed emphasis state and remapped emphasis-like keywords to explain.",
+    "Rebuilt with the new idle frame as the reference."
+  ]
+}

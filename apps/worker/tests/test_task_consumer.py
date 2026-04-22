@@ -54,7 +54,7 @@ async def test_handle_worker_task_tracks_runner_lifecycle(monkeypatch: pytest.Mo
     runners: dict[str, StubRunner] = {}
 
     await handle_worker_task(
-        {"cmd": "init", "session_id": sid, "avatar_id": "demo-avatar", "model": "wav2lip"},
+        {"cmd": "init", "session_id": sid, "avatar_id": "demo-wav2lip", "model": "wav2lip"},
         redis,
         Path("."),
         "cpu",

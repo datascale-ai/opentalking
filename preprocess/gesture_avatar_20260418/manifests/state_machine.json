@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "idle_cycle": [
+    "idle",
+    "hands_down",
+    "subtle_hands"
+  ],
+  "states": {
+    "idle": {
+      "image": "aligned/idle.png",
+      "fallbacks": [
+        "aligned/hands_down.png",
+        "aligned/subtle_hands.png"
+      ],
+      "trigger": {
+        "default": true
+      }
+    },
+    "explain": {
+      "image": "aligned/explain.png",
+      "trigger": {
+        "keywords": [
+          "怎么",
+          "为什么",
+          "解释",
+          "说明",
+          "介绍",
+          "演示"
+        ],
+        "pause_window_ms": 250,
+        "min_energy": 0.28
+      }
+    },
+    "emphasis": {
+      "image": "aligned/emphasis.png",
+      "trigger": {
+        "keywords": [
+          "重点",
+          "注意",
+          "就是",
+          "必须",
+          "关键",
+          "你看"
+        ],
+        "min_energy": 0.4,
+        "burst": true
+      }
+    },
+    "confidence": {
+      "image": "aligned/confidence.png",
+      "trigger": {
+        "keywords": [
+          "可以",
+          "当然",
+          "没问题",
+          "确定",
+          "放心"
+        ],
+        "min_energy": 0.32
+      }
+    },
+    "hands_down": {
+      "image": "aligned/hands_down.png",
+      "role": "idle_variant"
+    },
+    "subtle_hands": {
+      "image": "aligned/subtle_hands.png",
+      "role": "idle_variant"
+    }
+  },
+  "notes": [
+    "Use idle, hands_down, and subtle_hands as the silent loop.",
+    "Switch to explain, emphasis, or confidence only on chunk boundaries."
+  ]
+}

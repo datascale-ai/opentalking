@@ -35,6 +35,16 @@ def _create_runner(
         flashtalk_mode = settings.normalized_flashtalk_mode
         flashtalk_client = None
         flashtalk_ws_url: str | None = None
+        default_tts_voice = (
+            settings.tts_elevenlabs_voice_id
+            if settings.normalized_tts_provider == "elevenlabs"
+            else settings.tts_voice
+        )
+        default_tts_reference_audio = (
+            settings.tts_clone_reference_audio
+            if settings.normalized_tts_provider == "xtts"
+            else ""
+        )
 
         if flashtalk_mode == "remote":
             flashtalk_ws_url = settings.flashtalk_ws_url
@@ -67,6 +77,11 @@ def _create_runner(
             redis=r,
             flashtalk_ws_url=flashtalk_ws_url,
             flashtalk_client=flashtalk_client,
+            tts_provider=str(task.get("tts_provider", "") or settings.normalized_tts_provider),
+            tts_voice=str(task.get("tts_voice", "") or default_tts_voice),
+            tts_reference_audio=str(
+                task.get("tts_reference_audio", "") or default_tts_reference_audio
+            ),
             llm_base_url=settings.llm_base_url,
             llm_api_key=settings.llm_api_key,
             llm_model=settings.llm_model,

@@ -18,6 +18,27 @@ from apps.api.services.worker_service import forward_webrtc_offer
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
+_VOICE_ROOT_FALLBACK = Path("./voice")
+
+
+def _voice_root(settings) -> Path:
+    reference = Path(settings.tts_clone_reference_audio).expanduser()
+    if reference.parent != Path("."):
+        return reference.parent.resolve()
+    return _VOICE_ROOT_FALLBACK.resolve()
+
+
+def _resolve_reference_audio(settings, value: str) -> Path:
+    voice_root = _voice_root(settings)
+    candidate = (voice_root / value).resolve()
+    try:
+        candidate.relative_to(voice_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="reference audio must stay under the voice directory") from exc
+    if not candidate.is_file():
+        raise HTTPException(status_code=400, detail=f"reference audio not found: {value}")
+    return candidate
+
 
 @router.post("", response_model=CreateSessionResponse)
 async def create_session(body: CreateSessionRequest, request: Request) -> CreateSessionResponse:
@@ -43,14 +64,29 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
             status_code=400,
             detail=(
                 "FlashTalk is disabled in this deployment. "
-                "Use demo-avatar/wav2lip for the quickstart path, or switch "
+                "Use demo-wav2lip/wav2lip for the quickstart path, or switch "
                 "OPENTALKING_FLASHTALK_MODE to remote/local."
             ),
         )
+    tts_provider = (body.tts_provider or "").strip().lower() or None
+    tts_voice = (body.tts_voice or "").strip() or None
+    tts_reference_audio: str | None = None
+    if tts_provider not in {None, "edge", "elevenlabs", "xtts", "cosyvoice", "auto"}:
+        raise HTTPException(status_code=400, detail=f"unsupported tts provider: {body.tts_provider}")
+    if tts_provider in {"xtts", "cosyvoice"}:
+        if not body.tts_reference_audio:
+            raise HTTPException(status_code=400, detail="reference audio is required for the selected TTS provider")
+        tts_reference_audio = str(_resolve_reference_audio(settings, body.tts_reference_audio))
+    elif body.tts_reference_audio:
+        tts_reference_audio = str(_resolve_reference_audio(settings, body.tts_reference_audio))
+
     sid = await session_service.create_session(
         r,
         avatar_id=body.avatar_id,
         model=body.model,
+        tts_provider=tts_provider,
+        tts_voice=tts_voice,
+        tts_reference_audio=tts_reference_audio,
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").

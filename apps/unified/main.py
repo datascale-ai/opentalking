@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.core.config import get_settings
-from apps.api.routes import avatars, events, health, models, sessions
+from apps.api.routes import avatars, events, health, models, sessions, tts_options
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.worker.session_runner import SessionRunner
 from opentalking.worker.task_consumer import consume_task_queue
@@ -76,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(models.router)
     app.include_router(avatars.router)
+    app.include_router(tts_options.router)
     app.include_router(sessions.router)
     app.include_router(events.router)
     return app

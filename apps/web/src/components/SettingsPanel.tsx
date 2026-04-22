@@ -1,26 +1,57 @@
 import { useEffect, useRef } from "react";
-import type { AvatarSummary } from "../lib/api";
+import type { AvatarSummary, TTSVoiceOption } from "../lib/api";
 
 interface SettingsPanelProps {
   open: boolean;
   onClose: () => void;
   avatars: AvatarSummary[];
-  models: string[];
   avatarId: string;
-  model: string;
   onAvatarChange: (id: string) => void;
-  onModelChange: (m: string) => void;
+  voiceOptions: TTSVoiceOption[];
+  voiceOptionId: string;
+  onVoiceOptionChange: (id: string) => void;
+}
+
+function avatarTitle(avatar: AvatarSummary): string {
+  if (avatar.id === "flashtalk-demo-idle-all") {
+    return `${avatar.name ?? "FlashTalk Demo"} Idle`;
+  }
+  return avatar.name ?? avatar.id;
+}
+
+function avatarSubtitle(avatar: AvatarSummary): string {
+  if (avatar.id === "flashtalk-demo-idle-all") {
+    return "uses idle.png for the full online session";
+  }
+  if (avatar.manifest_id && avatar.manifest_id !== avatar.id) {
+    return `${avatar.id} · manifest ${avatar.manifest_id}`;
+  }
+  return avatar.id;
+}
+
+function voiceTitle(option: TTSVoiceOption): string {
+  return option.label;
+}
+
+function voiceSubtitle(option: TTSVoiceOption): string {
+  if (option.description) {
+    return option.description;
+  }
+  if (option.reference_audio) {
+    return option.reference_audio;
+  }
+  return option.voice ?? option.provider;
 }
 
 export function SettingsPanel({
   open,
   onClose,
   avatars,
-  models,
   avatarId,
-  model,
   onAvatarChange,
-  onModelChange,
+  voiceOptions,
+  voiceOptionId,
+  onVoiceOptionChange,
 }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -79,7 +110,7 @@ export function SettingsPanel({
         {/* Avatar selection */}
         <div className="mb-6">
           <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">
-            Avatar
+            Demo
           </label>
           <div className="flex flex-col gap-2">
             {avatars.map((a) => (
@@ -92,35 +123,45 @@ export function SettingsPanel({
                     ? "bg-cyan-500/20 text-white ring-1 ring-cyan-500/40"
                     : "text-slate-300 hover:bg-white/10"
                 }`}
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs text-slate-400">
+                    {a.id.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm">{avatarTitle(a)}</div>
+                    <div className="text-xs text-slate-500">{avatarSubtitle(a)}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">
+            声线
+          </label>
+          <div className="flex flex-col gap-2">
+            {voiceOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => onVoiceOptionChange(option.id)}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                  option.id === voiceOptionId
+                    ? "bg-emerald-500/20 text-white ring-1 ring-emerald-500/40"
+                    : "text-slate-300 hover:bg-white/10"
+                }`}
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs text-slate-400">
-                  {a.id.charAt(0).toUpperCase()}
+                  {option.provider.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{a.name ?? a.id}</div>
-                  <div className="text-xs text-slate-500">{a.model_type}</div>
+                  <div className="truncate text-sm">{voiceTitle(option)}</div>
+                  <div className="text-xs text-slate-500">{voiceSubtitle(option)}</div>
                 </div>
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Model selection */}
-        <div>
-          <label className="mb-2 block text-xs font-medium uppercase tracking-wider text-slate-400">
-            模型
-          </label>
-          <select
-            value={model}
-            onChange={(e) => onModelChange(e.target.value)}
-            className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors focus:bg-white/15"
-          >
-            {models.map((m) => (
-              <option key={m} value={m} className="bg-slate-900">
-                {m}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
     </div>

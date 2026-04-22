@@ -1,0 +1,94 @@
+{
+  "panels": [
+    {
+      "label": "hands_down",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 20_10_29.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/hands_down.png",
+      "aligned_image": "aligned/hands_down.png",
+      "annotated_image": "annotated/hands_down.png",
+      "landmarks": "landmarks/hands_down.json",
+      "alignment": {
+        "scale": 0.5273970638184459,
+        "tx": 115.52732564429476,
+        "ty": -33.05118921171072
+      }
+    },
+    {
+      "label": "subtle_hands",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 20_10_29.png",
+      "row": 0,
+      "col": 1,
+      "raw_image": "raw_split/subtle_hands.png",
+      "aligned_image": "aligned/subtle_hands.png",
+      "annotated_image": "annotated/subtle_hands.png",
+      "landmarks": "landmarks/subtle_hands.json",
+      "alignment": {
+        "scale": 0.528212949790222,
+        "tx": 119.88753604925307,
+        "ty": -34.93589979950775
+      }
+    },
+    {
+      "label": "confidence",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 20_16_52.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/confidence.png",
+      "aligned_image": "aligned/confidence.png",
+      "annotated_image": "annotated/confidence.png",
+      "landmarks": "landmarks/confidence.json",
+      "alignment": {
+        "scale": 0.8753495579823293,
+        "tx": 15.902026229537029,
+        "ty": -23.32356166389411
+      }
+    },
+    {
+      "label": "explain",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 20_16_52.png",
+      "row": 0,
+      "col": 1,
+      "raw_image": "raw_split/explain.png",
+      "aligned_image": "aligned/explain.png",
+      "annotated_image": "annotated/explain.png",
+      "landmarks": "landmarks/explain.json",
+      "alignment": {
+        "scale": 0.8800791257900911,
+        "tx": 30.77418280802425,
+        "ty": -26.975556856345975
+      }
+    },
+    {
+      "label": "emphasis",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 20_16_52.png",
+      "row": 1,
+      "col": 0,
+      "raw_image": "raw_split/emphasis.png",
+      "aligned_image": "aligned/emphasis.png",
+      "annotated_image": "annotated/emphasis.png",
+      "landmarks": "landmarks/emphasis.json",
+      "alignment": {
+        "scale": 0.9890182082521155,
+        "tx": -19.379781292646044,
+        "ty": 7.355298589680217
+      }
+    },
+    {
+      "label": "idle",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 20_16_52.png",
+      "row": 1,
+      "col": 1,
+      "raw_image": "raw_split/idle.png",
+      "aligned_image": "aligned/idle.png",
+      "annotated_image": "annotated/idle.png",
+      "landmarks": "landmarks/idle.json",
+      "alignment": {
+        "scale": 1.0,
+        "tx": 0.0,
+        "ty": 0.0
+      }
+    }
+  ]
+}

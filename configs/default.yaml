@@ -25,9 +25,25 @@ llm:
   model: qwen-turbo
   system_prompt: You are a friendly digital human assistant.
 tts:
+  provider: xtts
   voice: zh-CN-XiaoxiaoNeural
+  language: zh-cn
   sample_rate: 16000
   streaming_decode: true
+  clone_reference_audio: ./voice/my_voice_24k.wav
+  clone_model_name: ./models/XTTS-v2
+  clone_device: auto
+  clone_cache_dir: ./temp/tts_cache
+  cosyvoice_model_dir: ./models/cosyvoice2
+  cosyvoice_repo_dir: ./third_party/CosyVoice
+  cosyvoice_mode: zero_shot
+  cosyvoice_prompt_source: asr
+  cosyvoice_prompt_prefix: ""
+  cosyvoice_prompt_text: 大家好，这是一段用于声音建模和声音复刻测试的语音，现在我会用比较自然的语速来朗读，同时尽量保持发音清晰，节奏稳定。
+  cosyvoice_prompt_max_seconds: 14.0
+  cosyvoice_speed: 1.0
+  asr_model_path: ./models/Whisper-large-v3/large-v3.pt
+  asr_language: zh
 model:
   torch_device: cpu
   default_model: wav2lip

@@ -37,7 +37,7 @@ OpenTalking 是一个统一的实时数字人框架，将 **FlashTalk 14B 说话
 - **FlashTalk 14B 推理引擎** — 基于扩散模型的说话人头部视频生成，8 卡 GPU/NPU 实时推理（~1s/chunk, 33帧@25fps）
 - **多模型适配** — 内置 `flashtalk`、`musetalk`、`wav2lip` 三种模型适配器，可扩展
 - **LLM 对话集成** — 兼容任何 OpenAI 格式 API（OpenAI、DashScope、Ollama、vLLM、DeepSeek 等）
-- **流式 TTS** — Edge TTS 流式语音合成（MP3 → PCM 实时转码）
+- **流式 / 复刻 TTS** — 默认 Edge TTS，支持基于参考音频的 XTTS 本地声线复刻
 - **WebRTC 实时传输** — 基于 aiortc 的视频/音频推送，浏览器直接播放
 - **SSE 事件流** — 字幕、语音状态等事件实时推送
 - **多部署模式** — CLI 工具 / 单进程 / 分布式 / Docker Compose 一键启动
@@ -54,8 +54,8 @@ apps/api (FastAPI) ─── Redis 任务队列 ───  opentalking.worker (�
   │                                              │
   │                                  ┌───────────┼───────────┐
   │                                  ▼           ▼           ▼
-  │                           opentalking.llm  opentalking.tts  opentalking.models
-  │                           (OpenAI 兼容)    (Edge TTS)      (模型适配器)
+  │                           opentalking.llm  opentalking.tts   opentalking.models
+  │                           (OpenAI 兼容)    (Edge / XTTS)    (模型适配器)
   │                                                                │
   │                                                    ┌───────────┴───────────┐
   │                                                    ▼                       ▼
@@ -158,7 +158,7 @@ vim .env
 
 开源默认配置现在走 `demo` 路径：
 
-- 默认隐藏 `flashtalk`，优先使用 `demo-avatar` + `wav2lip`
+- 默认隐藏 `flashtalk`，优先使用 `demo-wav2lip` + `wav2lip`
 - 不依赖 FlashTalk 远端服务，也不要求先下载 37GB 权重
 - 适合社区用户先把 API、WebRTC、TTS、前端链路完整跑通
 
@@ -180,16 +180,25 @@ OPENTALKING_LLM_API_KEY=sk-your-key-here
 OPENTALKING_LLM_MODEL=qwen-turbo
 ```
 
+如需启用本地 XTTS 声线复刻，可在确认 Coqui XTTS 的 CPML 许可后执行：
+
+```bash
+export COQUI_TOS_AGREED=1
+pip install -e ".[voiceclone]"
+```
+
+默认配置会在检测到 `./voice/my_voice.m4a` 时优先使用 XTTS；如果参考音频不存在，或 XTTS 运行时不可用，则自动回退到 Edge TTS。
+
 ### 4. 启动服务
 
 **单进程 Demo 模式**（默认，最适合开源体验和开发联调）：
 
 ```bash
 bash scripts/start_unified.sh
-# 或直接运行：opentalking-unified --port 8000
+# 或直接运行：opentalking-unified --port 8010
 ```
 
-默认会优先使用 `demo-avatar` / `wav2lip` 这条轻量路径，不依赖 FlashTalk 服务。
+默认会优先使用 `demo-wav2lip` / `wav2lip` 这条轻量路径，不依赖 FlashTalk 服务。
 
 **FlashTalk 本地模式**（单机自部署）：
 

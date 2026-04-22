@@ -1,0 +1,18 @@
+{
+  "id": "wav2lip_new",
+  "name": "Avator Wav2Lip",
+  "model_type": "wav2lip",
+  "fps": 30,
+  "sample_rate": 16000,
+  "width": 720,
+  "height": 1248,
+  "version": "1.0",
+  "metadata": {
+    "description": "Avatar rebuilt from avator.mp4 with full 30fps extraction.",
+    "idle_mode": "loop",
+    "freeze_speaking_to_preview": true,
+    "source_video": "avator.mp4",
+    "source_fps": 30,
+    "source_frame_count": 150
+  }
+}

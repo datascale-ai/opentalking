@@ -40,9 +40,31 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "system_prompt": "llm_system_prompt",
         },
         "tts": {
+            "provider": "tts_provider",
             "voice": "tts_voice",
+            "language": "tts_language",
             "sample_rate": "tts_sample_rate",
             "streaming_decode": "tts_streaming_decode",
+            "xtts_python_bin": "tts_xtts_python_bin",
+            "elevenlabs_api_key": "tts_elevenlabs_api_key",
+            "elevenlabs_base_url": "tts_elevenlabs_base_url",
+            "elevenlabs_model_id": "tts_elevenlabs_model_id",
+            "elevenlabs_voice_id": "tts_elevenlabs_voice_id",
+            "elevenlabs_output_format": "tts_elevenlabs_output_format",
+            "clone_reference_audio": "tts_clone_reference_audio",
+            "clone_model_name": "tts_clone_model_name",
+            "clone_device": "tts_clone_device",
+            "clone_cache_dir": "tts_clone_cache_dir",
+            "cosyvoice_model_dir": "tts_cosyvoice_model_dir",
+            "cosyvoice_repo_dir": "tts_cosyvoice_repo_dir",
+            "cosyvoice_mode": "tts_cosyvoice_mode",
+            "cosyvoice_prompt_source": "tts_cosyvoice_prompt_source",
+            "cosyvoice_prompt_prefix": "tts_cosyvoice_prompt_prefix",
+            "cosyvoice_prompt_text": "tts_cosyvoice_prompt_text",
+            "cosyvoice_prompt_max_seconds": "tts_cosyvoice_prompt_max_seconds",
+            "cosyvoice_speed": "tts_cosyvoice_speed",
+            "asr_model_path": "tts_asr_model_path",
+            "asr_language": "tts_asr_language",
         },
         "model": {"torch_device": "torch_device", "default_model": "default_model"},
     }
@@ -106,6 +128,12 @@ def _load_legacy_env_source() -> dict[str, Any]:
         "DASHSCOPE_API_KEY": "llm_api_key",
         "DASHSCOPE_MODEL": "llm_model",
         "LLM_SYSTEM_PROMPT": "llm_system_prompt",
+        "XTTS_PYTHON_BIN": "tts_xtts_python_bin",
+        "ELEVENLABS_API_KEY": "tts_elevenlabs_api_key",
+        "ELEVENLABS_BASE_URL": "tts_elevenlabs_base_url",
+        "ELEVENLABS_MODEL_ID": "tts_elevenlabs_model_id",
+        "ELEVENLABS_VOICE_ID": "tts_elevenlabs_voice_id",
+        "ELEVENLABS_OUTPUT_FORMAT": "tts_elevenlabs_output_format",
     }
     return {target: os.environ[name] for name, target in mapping.items() if name in os.environ}
 
@@ -170,9 +198,34 @@ class Settings(BaseSettings):
     llm_model: str = "qwen-turbo"
     llm_system_prompt: str = "You are a friendly digital human assistant."
 
+    tts_provider: str = "xtts"
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_language: str = "zh-cn"
     tts_sample_rate: int = 16000
     tts_streaming_decode: bool = True
+    tts_xtts_python_bin: str = ""
+    tts_elevenlabs_api_key: str = ""
+    tts_elevenlabs_base_url: str = "https://api.elevenlabs.io"
+    tts_elevenlabs_model_id: str = "eleven_flash_v2_5"
+    tts_elevenlabs_voice_id: str = ""
+    tts_elevenlabs_output_format: str = "mp3_22050_32"
+    tts_clone_reference_audio: str = "./voice/my_voice_24k.wav"
+    tts_clone_model_name: str = "./models/XTTS-v2"
+    tts_clone_device: str = "auto"
+    tts_clone_cache_dir: str = "./temp/tts_cache"
+    tts_cosyvoice_model_dir: str = "./models/cosyvoice2"
+    tts_cosyvoice_repo_dir: str = "./third_party/CosyVoice"
+    tts_cosyvoice_mode: str = "zero_shot"
+    tts_cosyvoice_prompt_source: str = "asr"
+    tts_cosyvoice_prompt_prefix: str = ""
+    tts_cosyvoice_prompt_text: str = (
+        "大家好，这是一段用于声音建模和声音复刻测试的语音，"
+        "现在我会用比较自然的语速来朗读，同时尽量保持发音清晰，节奏稳定。"
+    )
+    tts_cosyvoice_prompt_max_seconds: float = 14.0
+    tts_cosyvoice_speed: float = 1.0
+    tts_asr_model_path: str = "./models/Whisper-large-v3/large-v3.pt"
+    tts_asr_language: str = "zh"
     ffmpeg_bin: str = "ffmpeg"
 
     torch_device: str = "cpu"
@@ -212,6 +265,13 @@ class Settings(BaseSettings):
         if mode in {"remote", "local", "off"}:
             return mode
         return "remote"
+
+    @property
+    def normalized_tts_provider(self) -> str:
+        provider = self.tts_provider.strip().lower()
+        if provider in {"auto", "edge", "elevenlabs", "xtts", "cosyvoice"}:
+            return provider
+        return "auto"
 
 
 @lru_cache(maxsize=1)

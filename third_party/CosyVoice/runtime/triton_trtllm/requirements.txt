@@ -1,0 +1,15 @@
+hyperpyyaml
+s3tokenizer
+onnxruntime-gpu
+omegaconf
+conformer
+hydra-core
+lightning
+gdown
+wget
+librosa
+pyworld
+openai-whisper
+tritonclient
+modelscope
+x_transformers

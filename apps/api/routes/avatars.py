@@ -28,8 +28,9 @@ async def list_avatars(request: Request) -> list[AvatarSummary]:
         m = b.manifest
         out.append(
             AvatarSummary(
-                id=m.id,
+                id=d.name,
                 name=m.name,
+                manifest_id=m.id,
                 model_type=m.model_type,
                 width=m.width,
                 height=m.height,
@@ -47,8 +48,9 @@ async def get_avatar(avatar_id: str, request: Request) -> AvatarSummary:
     b = load_avatar_bundle(path, strict=False)
     m = b.manifest
     return AvatarSummary(
-        id=m.id,
+        id=path.name,
         name=m.name,
+        manifest_id=m.id,
         model_type=m.model_type,
         width=m.width,
         height=m.height,

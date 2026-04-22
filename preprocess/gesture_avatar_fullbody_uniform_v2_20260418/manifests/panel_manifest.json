@@ -1,0 +1,79 @@
+{
+  "panels": [
+    {
+      "label": "hands_down",
+      "source_path": "/data1/xuxin/opentalking/preprocess/gesture_avatar_fullbody_uniform_20260418/raw_split/hands_down.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/hands_down.png",
+      "aligned_image": "aligned/hands_down.png",
+      "annotated_image": "annotated/hands_down.png",
+      "landmarks": "landmarks/hands_down.json",
+      "alignment": {
+        "scale": 0.9465225465974506,
+        "tx": 258.3203279332045,
+        "ty": 30.165924345687472
+      }
+    },
+    {
+      "label": "subtle_hands",
+      "source_path": "/data1/xuxin/opentalking/preprocess/gesture_avatar_fullbody_uniform_20260418/raw_split/subtle_hands.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/subtle_hands.png",
+      "aligned_image": "aligned/subtle_hands.png",
+      "annotated_image": "annotated/subtle_hands.png",
+      "landmarks": "landmarks/subtle_hands.json",
+      "alignment": {
+        "scale": 0.9479868218479561,
+        "tx": 266.1456226481986,
+        "ty": 26.78342340371239
+      }
+    },
+    {
+      "label": "confidence",
+      "source_path": "/data1/xuxin/opentalking/preprocess/gesture_avatar_fullbody_uniform_20260418/raw_split/confidence.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/confidence.png",
+      "aligned_image": "aligned/confidence.png",
+      "annotated_image": "annotated/confidence.png",
+      "landmarks": "landmarks/confidence.json",
+      "alignment": {
+        "scale": 1.5709948909947051,
+        "tx": 79.52222954247952,
+        "ty": 47.62415350655465
+      }
+    },
+    {
+      "label": "explain",
+      "source_path": "/data1/xuxin/opentalking/preprocess/gesture_avatar_fullbody_uniform_20260418/raw_split/explain.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/explain.png",
+      "aligned_image": "aligned/explain.png",
+      "annotated_image": "annotated/explain.png",
+      "landmarks": "landmarks/explain.json",
+      "alignment": {
+        "scale": 1.5794830735668575,
+        "tx": 106.213374571136,
+        "ty": 41.069896710557146
+      }
+    },
+    {
+      "label": "idle",
+      "source_path": "/data1/xuxin/opentalking/temp/ChatGPT Image 2026\u5e744\u670818\u65e5 21_59_03.png",
+      "row": 0,
+      "col": 0,
+      "raw_image": "raw_split/idle.png",
+      "aligned_image": "aligned/idle.png",
+      "annotated_image": "annotated/idle.png",
+      "landmarks": "landmarks/idle.json",
+      "alignment": {
+        "scale": 1.0,
+        "tx": 0.0,
+        "ty": 0.0
+      }
+    }
+  ]
+}

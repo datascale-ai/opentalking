@@ -1,0 +1,146 @@
+{
+  "version": 2,
+  "default_transition": "crossfade_position_compensated",
+  "transitions": [
+    {
+      "from": "idle",
+      "to": "hands_down",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "idle",
+      "to": "subtle_hands",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "idle",
+      "to": "explain",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 8,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "idle",
+      "to": "confidence",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 8,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "hands_down",
+      "to": "idle",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "hands_down",
+      "to": "subtle_hands",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "subtle_hands",
+      "to": "idle",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "subtle_hands",
+      "to": "hands_down",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "explain",
+      "to": "idle",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    },
+    {
+      "from": "confidence",
+      "to": "idle",
+      "method": "crossfade_position_compensated",
+      "duration_frames": 6,
+      "position_compensation": {
+        "use_eye_and_shoulder_alignment": true,
+        "fallback": "crossfade_only"
+      },
+      "optional_refinement": {
+        "method": "dense_optical_flow",
+        "enabled": false
+      }
+    }
+  ]
+}

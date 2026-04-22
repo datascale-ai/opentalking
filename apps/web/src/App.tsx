@@ -13,31 +13,46 @@ import {
   buildApiUrl,
   type AvatarSummary,
   type CreateSessionResponse,
+  type TTSVoiceOption,
 } from "./lib/api";
 import { connectSse } from "./lib/sse";
 import { startPlayback } from "./lib/webrtc";
 import type { ConnectionStatus, Message } from "./types";
 
 const MESSAGE_STORAGE_KEY = "opentalking-chat-history";
+const TTS_VOICE_STORAGE_KEY = "opentalking-tts-voice";
+const DEMO_AVATAR_ORDER = [
+  "musetalk_new",
+  "musetalk_new_static",
+  "wav2lip_new",
+  "wav2lip_new_static",
+  "flashtalk-avator",
+  "demo-musetalk-gesture-fullbody-v2",
+  "demo-musetalk-xtts-myvoice",
+  "demo-musetalk",
+  "demo-wav2lip",
+  "flashtalk-demo",
+  "flashtalk-demo-idle-all",
+] as const;
 
 let msgCounter = 0;
 function makeId() {
   return `msg-${++msgCounter}-${Date.now()}`;
 }
 
-function pickInitialAvatar(
-  avatars: AvatarSummary[],
-  registeredModels: string[],
-): AvatarSummary | null {
-  if (!avatars.length) return null;
-  const available = new Set(registeredModels);
-  // Prefer flashtalk, then musetalk, then any available
-  return (
-    avatars.find((a) => a.model_type === "flashtalk" && available.has("flashtalk")) ??
-    avatars.find((a) => a.model_type === "musetalk" && available.has("musetalk")) ??
-    avatars.find((a) => available.has(a.model_type)) ??
-    avatars[0]
-  );
+function getDemoAvatars(avatars: AvatarSummary[]): AvatarSummary[] {
+  const order = new Map<string, number>(DEMO_AVATAR_ORDER.map((id, index) => [id, index]));
+  return avatars
+    .filter((avatar) => order.has(avatar.id))
+    .sort((left, right) => (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0));
+}
+
+function mergeSubtitleChunk(current: string, incoming: string): string {
+  if (!current) return incoming;
+  if (!incoming) return current;
+  if (incoming.startsWith(current) || current === incoming) return incoming;
+  if (current.endsWith(incoming)) return current;
+  return `${current}${incoming}`;
 }
 
 export default function App() {
@@ -48,9 +63,9 @@ export default function App() {
 
   // Data
   const [avatars, setAvatars] = useState<AvatarSummary[]>([]);
-  const [models, setModels] = useState<string[]>([]);
-  const [avatarId, setAvatarId] = useState("demo-avatar");
-  const [model, setModel] = useState("wav2lip");
+  const [avatarId, setAvatarId] = useState("musetalk_new");
+  const [voiceOptions, setVoiceOptions] = useState<TTSVoiceOption[]>([]);
+  const [voiceOptionId, setVoiceOptionId] = useState("edge:zh-CN-XiaoxiaoNeural");
 
   // Connection
   const [connection, setConnection] = useState<ConnectionStatus>("idle");
@@ -67,6 +82,17 @@ export default function App() {
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  useEffect(() => {
+    try {
+      const savedVoiceId = window.localStorage.getItem(TTS_VOICE_STORAGE_KEY);
+      if (savedVoiceId) {
+        setVoiceOptionId(savedVoiceId);
+      }
+    } catch (error) {
+      console.warn("Failed to restore voice option", error);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -88,6 +114,14 @@ export default function App() {
       console.warn("Failed to persist chat history", error);
     }
   }, [messages]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TTS_VOICE_STORAGE_KEY, voiceOptionId);
+    } catch (error) {
+      console.warn("Failed to persist voice option", error);
+    }
+  }, [voiceOptionId]);
 
   const closePeerConnection = useCallback(() => {
     if (pcRef.current) {
@@ -118,34 +152,29 @@ export default function App() {
     [closePeerConnection],
   );
 
-  // ---------- Init: fetch avatars & models ----------
+  // ---------- Init: fetch demo avatars ----------
   useEffect(() => {
     void (async () => {
       try {
-        const [av, mo] = await Promise.all([
+        const [av, voices] = await Promise.all([
           apiGet<AvatarSummary[]>("/avatars"),
-          apiGet<{ models: string[] }>("/models"),
+          apiGet<TTSVoiceOption[]>("/tts/voices"),
         ]);
-        setAvatars(av);
-        setModels(mo.models);
-        const initialAvatar = pickInitialAvatar(av, mo.models);
+        const demoAvatars = getDemoAvatars(av);
+        setAvatars(demoAvatars);
+        setVoiceOptions(voices);
+        const initialAvatar = demoAvatars[0] ?? null;
         if (initialAvatar) {
           setAvatarId(initialAvatar.id);
-          setModel(initialAvatar.model_type);
+        }
+        if (voices.length > 0 && !voices.some((voice) => voice.id === voiceOptionId)) {
+          setVoiceOptionId(voices[0].id);
         }
       } catch {
         setConnection("error");
       }
     })();
-  }, []);
-
-  // Keep model aligned with selected avatar
-  useEffect(() => {
-    const a = avatars.find((x) => x.id === avatarId);
-    if (a) {
-      setModel(a.model_type);
-    }
-  }, [avatarId, avatars]);
+  }, [voiceOptionId]);
 
   // ---------- SSE ----------
   useEffect(() => {
@@ -159,8 +188,9 @@ export default function App() {
       if (ev === "subtitle.chunk" && data && typeof data === "object") {
         const t = (data as { text?: string }).text;
         if (t) {
-          subtitleAccRef.current = t;
-          setCurrentSubtitle(t);
+          const merged = mergeSubtitleChunk(subtitleAccRef.current, t);
+          subtitleAccRef.current = merged;
+          setCurrentSubtitle(merged);
         }
       }
       if (ev === "speech.ended") {
@@ -192,9 +222,17 @@ export default function App() {
     setConnection("connecting");
     let createdSessionId: string | null = null;
     try {
+      const currentAvatar = avatars.find((item) => item.id === avatarId) ?? null;
+      const currentVoice = voiceOptions.find((item) => item.id === voiceOptionId) ?? null;
+      if (!currentAvatar) {
+        throw new Error("No avatar selected");
+      }
       const created = await apiPost<CreateSessionResponse>("/sessions", {
         avatar_id: avatarId,
-        model,
+        model: currentAvatar.model_type,
+        tts_provider: currentVoice?.provider,
+        tts_voice: currentVoice?.voice,
+        tts_reference_audio: currentVoice?.reference_audio,
       });
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
@@ -214,7 +252,7 @@ export default function App() {
       console.warn("Failed to start session", error);
       setConnection("error");
     }
-  }, [avatarId, closePeerConnection, model, releaseSession, resetLiveState]);
+  }, [avatarId, avatars, closePeerConnection, releaseSession, resetLiveState, voiceOptionId, voiceOptions]);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -250,17 +288,20 @@ export default function App() {
     [releaseSession, resetLiveState],
   );
 
-  const handleModelChange = useCallback((newModel: string) => {
-    setModel(newModel);
-    void (async () => {
-      const sid = sessionIdRef.current;
-      if (sid) {
-        await releaseSession(sid);
-      }
-      resetLiveState();
-      setConnection("idle");
-    })();
-  }, [releaseSession, resetLiveState]);
+  const handleVoiceOptionChange = useCallback(
+    (newId: string) => {
+      setVoiceOptionId(newId);
+      void (async () => {
+        const sid = sessionIdRef.current;
+        if (sid) {
+          await releaseSession(sid);
+        }
+        resetLiveState(true);
+        setConnection("idle");
+      })();
+    },
+    [releaseSession, resetLiveState],
+  );
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -324,8 +365,11 @@ export default function App() {
 
       {/* Layer 4: Start overlay */}
       <StartOverlay
+        avatars={avatars}
         avatar={currentAvatar}
+        avatarId={avatarId}
         loading={connection === "connecting"}
+        onAvatarChange={handleAvatarChange}
         onStart={() => void handleStart()}
         visible={showStart}
       />
@@ -335,11 +379,11 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         avatars={avatars}
-        models={models.length ? models : ["wav2lip", "musetalk"]}
         avatarId={avatarId}
-        model={model}
         onAvatarChange={handleAvatarChange}
-        onModelChange={handleModelChange}
+        voiceOptions={voiceOptions}
+        voiceOptionId={voiceOptionId}
+        onVoiceOptionChange={handleVoiceOptionChange}
       />
     </>
   );
