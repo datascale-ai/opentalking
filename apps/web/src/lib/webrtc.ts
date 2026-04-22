@@ -6,6 +6,7 @@ export async function startPlayback(sessionId: string, videoEl: HTMLVideoElement
   });
   const mediaStream = new MediaStream();
   videoEl.srcObject = mediaStream;
+  let disconnectCleanupTimer: number | null = null;
 
   pc.ontrack = (ev) => {
     const track = ev.track;
@@ -18,25 +19,70 @@ export async function startPlayback(sessionId: string, videoEl: HTMLVideoElement
   };
 
   const cleanup = () => {
+    if (disconnectCleanupTimer !== null) {
+      window.clearTimeout(disconnectCleanupTimer);
+      disconnectCleanupTimer = null;
+    }
     videoEl.pause();
     videoEl.srcObject = null;
+  };
+  const scheduleDisconnectedCleanup = () => {
+    if (disconnectCleanupTimer !== null) {
+      return;
+    }
+    disconnectCleanupTimer = window.setTimeout(() => {
+      disconnectCleanupTimer = null;
+      if (
+        pc.connectionState === "disconnected"
+        || pc.iceConnectionState === "disconnected"
+      ) {
+        cleanup();
+      }
+    }, 8000);
+  };
+  const cancelDisconnectedCleanup = () => {
+    if (disconnectCleanupTimer !== null) {
+      window.clearTimeout(disconnectCleanupTimer);
+      disconnectCleanupTimer = null;
+    }
   };
   pc.addEventListener("connectionstatechange", () => {
     if (
       pc.connectionState === "closed"
       || pc.connectionState === "failed"
-      || pc.connectionState === "disconnected"
     ) {
       cleanup();
+      return;
+    }
+    if (
+      pc.connectionState === "connected"
+      || pc.connectionState === "connecting"
+    ) {
+      cancelDisconnectedCleanup();
+      return;
+    }
+    if (pc.connectionState === "disconnected") {
+      scheduleDisconnectedCleanup();
     }
   });
   pc.addEventListener("iceconnectionstatechange", () => {
     if (
       pc.iceConnectionState === "closed"
       || pc.iceConnectionState === "failed"
-      || pc.iceConnectionState === "disconnected"
     ) {
       cleanup();
+      return;
+    }
+    if (
+      pc.iceConnectionState === "connected"
+      || pc.iceConnectionState === "completed"
+      || pc.iceConnectionState === "checking"
+    ) {
+      cancelDisconnectedCleanup();
+      return;
+    }
+    if (pc.iceConnectionState === "disconnected") {
+      scheduleDisconnectedCleanup();
     }
   });
 

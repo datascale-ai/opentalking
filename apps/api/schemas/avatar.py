@@ -8,6 +8,7 @@ from pydantic import BaseModel
 class AvatarSummary(BaseModel):
     id: str
     name: Optional[str] = None
+    manifest_id: Optional[str] = None
     model_type: str
     width: int
     height: int

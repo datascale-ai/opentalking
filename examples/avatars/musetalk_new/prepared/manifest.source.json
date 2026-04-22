@@ -1,0 +1,24 @@
+{
+  "source_video": "/data1/xuxin/opentalking/avator.mp4",
+  "source_fps": 30.0,
+  "frame_count": 150,
+  "crop_box": [
+    256,
+    356,
+    445,
+    543
+  ],
+  "infer_box": [
+    265,
+    384,
+    434,
+    552
+  ],
+  "mask_box": [
+    162,
+    270,
+    540,
+    648
+  ],
+  "stabilized_non_face_region": false
+}
