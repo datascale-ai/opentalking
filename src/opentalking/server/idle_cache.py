@@ -17,13 +17,23 @@ from opentalking.server.broadcast import CMD_GENERATE, broadcast_audio_embedding
 
 
 def _load_reference_frame(image_path: str) -> np.ndarray:
+    def _bias(name, default=0.5):
+        try:
+            return max(0.0, min(1.0, float(os.environ.get(name, default))))
+        except (TypeError, ValueError):
+            return default
+
     with Image.open(image_path).convert("RGB") as img:
         scale = max(runtime.WIDTH / img.width, runtime.HEIGHT / img.height)
         resized_w = max(1, int(np.ceil(img.width * scale)))
         resized_h = max(1, int(np.ceil(img.height * scale)))
         resized = img.resize((resized_w, resized_h), resample=Image.BILINEAR)
-        left = max(0, (resized_w - runtime.WIDTH) // 2)
-        top = max(0, (resized_h - runtime.HEIGHT) // 2)
+        v_bias = _bias("FLASHTALK_COND_CROP_VERTICAL_BIAS")
+        h_bias = _bias("FLASHTALK_COND_CROP_HORIZONTAL_BIAS")
+        margin_h = max(resized_h - runtime.HEIGHT, 0)
+        margin_w = max(resized_w - runtime.WIDTH, 0)
+        top  = max(0, min(int(round(margin_h * v_bias)), margin_h))
+        left = max(0, min(int(round(margin_w * h_bias)), margin_w))
         cropped = resized.crop((left, top, left + runtime.WIDTH, top + runtime.HEIGHT))
         return np.asarray(cropped, dtype=np.uint8)
 

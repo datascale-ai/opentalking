@@ -20,6 +20,8 @@ class SubtitleChunkEvent:
 @dataclass
 class SpeechEndedEvent:
     session_id: str
+    """Full assistant reply for this speech turn (FlashTalk / multi-sentence)."""
+    text: str | None = None
 
 
 @dataclass
@@ -27,6 +29,13 @@ class SessionStateChangedEvent:
     session_id: str
     old_state: str
     new_state: str
+
+
+@dataclass
+class SessionQueuedEvent:
+    session_id: str
+    position: int   # 0 = slot acquired, >0 = waiting position, -1 = rejected/timeout
+    message: str    # "waiting" | "slot_acquired" | "queue_full" | "timeout"
 
 
 @dataclass

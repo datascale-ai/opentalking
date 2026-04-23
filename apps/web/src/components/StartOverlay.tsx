@@ -1,14 +1,19 @@
+import type { QueueInfo } from "../types";
 import type { AvatarSummary } from "../lib/api";
 
 interface StartOverlayProps {
   avatar: AvatarSummary | null;
   loading: boolean;
+  queued?: boolean;
+  queueInfo?: QueueInfo | null;
   onStart: () => void;
   visible: boolean;
 }
 
-export function StartOverlay({ avatar, loading, onStart, visible }: StartOverlayProps) {
+export function StartOverlay({ avatar, loading, queued, queueInfo, onStart, visible }: StartOverlayProps) {
   if (!visible) return null;
+
+  const isRejected = queueInfo && queueInfo.position === -1;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
@@ -32,11 +37,31 @@ export function StartOverlay({ avatar, loading, onStart, visible }: StartOverlay
           )}
         </div>
 
+        {/* Queue status */}
+        {queued && queueInfo && queueInfo.position > 0 && (
+          <div className="w-full rounded-xl bg-amber-500/15 px-4 py-3 text-center">
+            <p className="text-sm font-medium text-amber-300">排队等候中</p>
+            <p className="mt-1 text-xs text-amber-200/70">
+              前面还有 <span className="font-semibold text-amber-200">{queueInfo.position}</span> 人，请稍候…
+            </p>
+          </div>
+        )}
+
+        {/* Rejected notice */}
+        {isRejected && (
+          <div className="w-full rounded-xl bg-red-500/15 px-4 py-3 text-center">
+            <p className="text-sm font-medium text-red-300">
+              {queueInfo?.message === "queue_full" ? "当前排队已满" : "等待超时"}
+            </p>
+            <p className="mt-1 text-xs text-red-200/70">请稍后重试</p>
+          </div>
+        )}
+
         {/* Start button */}
         <button
           type="button"
           onClick={onStart}
-          disabled={loading}
+          disabled={loading || queued}
           className="flex w-full items-center justify-center gap-2 rounded-full bg-cyan-500 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-cyan-600 disabled:opacity-60"
         >
           {loading ? (
@@ -46,6 +71,14 @@ export function StartOverlay({ avatar, loading, onStart, visible }: StartOverlay
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
               连接中...
+            </>
+          ) : queued ? (
+            <>
+              <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              排队中...
             </>
           ) : (
             "开始对话"

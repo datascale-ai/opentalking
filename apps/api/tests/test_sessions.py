@@ -33,13 +33,18 @@ class FakeRunner:
         await self.ready_event.wait()
         return {"sdp": sdp, "type": type_}
 
-    def create_speak_task(self, text: str) -> asyncio.Task[None]:
-        task = asyncio.create_task(self._run_speak_task(text))
+    def create_speak_task(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        **kwargs: object,
+    ) -> asyncio.Task[None]:
+        task = asyncio.create_task(self._run_speak_task(text, tts_voice))
         self.speech_tasks.add(task)
         task.add_done_callback(self.speech_tasks.discard)
         return task
 
-    async def _run_speak_task(self, text: str) -> None:
+    async def _run_speak_task(self, text: str, tts_voice: str | None = None) -> None:
         try:
             async with self._speak_lock:
                 if self._closed:

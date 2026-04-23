@@ -264,10 +264,17 @@ class WebRTCSession:
         self.mode = normalized_mode
         self.pc.addTrack(self.video)
         self.pc.addTrack(self.audio)
+        self.draining = False  # True while clearing queues for speech start
 
     def reset_clocks(self) -> None:
-        self.video.reset_clock()
-        self.audio.reset_clock()
+        """Reset pacing wall-clock so next frame/audio is sent immediately.
+        Does NOT reset PTS counters — keeps the RTP stream continuous."""
+        now = time.monotonic()
+        self.video._next_send = now
+        self.video._pacing = True
+        self.audio._next_send = now
+        self.audio._pacing = True
+        self.draining = False
 
     def clear_media_queues(self) -> None:
         while True:

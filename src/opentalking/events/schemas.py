@@ -5,6 +5,7 @@ from typing import Any
 
 from opentalking.core.types.events import (
     ErrorEvent,
+    SessionQueuedEvent,
     SessionStateChangedEvent,
     SpeechEndedEvent,
     SpeechStartedEvent,
@@ -17,6 +18,7 @@ EVENT_TYPE_MAP: dict[type, str] = {
     SubtitleChunkEvent: "subtitle.chunk",
     SpeechEndedEvent: "speech.ended",
     SessionStateChangedEvent: "session.state_changed",
+    SessionQueuedEvent: "session.queued",
     ErrorEvent: "error",
 }
 

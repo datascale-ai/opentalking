@@ -1,28 +1,29 @@
 """
 FlashTalkSessionRunner – drives the full conversation pipeline:
 
-    user text → LLM (百炼) → TTS → FlashTalk backend → WebRTC
+    user text → LLM → TTS (Edge 或 OPENTALKING_TTS_PROVIDER) → FlashTalk backend → WebRTC
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import re
+import time
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-from opentalking.avatars.loader import load_avatar_bundle
 from opentalking.core.config import get_settings
+from opentalking.models.flashtalk.idle_generator import IdleVideoGenerator
 from opentalking.core.session_store import set_session_state
 from opentalking.llm.openai_compatible import OpenAICompatibleLLMClient
 from opentalking.llm.sentence_splitter import SentenceSplitter
 from opentalking.llm.conversation import ConversationHistory
 from opentalking.models.flashtalk.ws_client import FlashTalkWSClient
 from opentalking.rtc.aiortc_adapter import WebRTCSession
-from opentalking.tts.edge.adapter import EdgeTTSAdapter
-from opentalking.tts.elevenlabs.adapter import ElevenLabsTTSAdapter
+from opentalking.tts.factory import create_tts_adapter, tts_log_profile
 from opentalking.worker.bus import publish_event
 from opentalking.worker.text_sanitize import sanitize_tts_text, strip_emoji, strip_markdown
 
@@ -34,45 +35,94 @@ _IDLE_CACHE_LOCKS: dict[str, asyncio.Lock] = {}
 _TTS_OPENER_PCM_CACHE: dict[str, np.ndarray] = {}
 _TTS_OPENER_CACHE_LOCKS: dict[str, asyncio.Lock] = {}
 _TTS_OPENER_PRELOAD_TASK: asyncio.Task[None] | None = None
+_SENTINEL = object()  # unique marker for "not yet set"
 
+# Opener rules — improvement backlog (not implemented here):
+# - Taxonomy: only greeting/task/explain/confirm; no thanks/apology/small-talk,
+#   English, typos, or multi-intent utterances.
+# - Keywords: hard-coded substrings; no segmentation, negation, or weighting.
+# - Text: fixed short lines; not per-avatar / locale / brand / configurable via env.
+# - Selection: keyword first match + PCM length + recent-id rotation; no LLM-based
+#   intent, confidence, or A/B testing.
+# - Timing: opener is fully enqueued before LLM+TTS runs; if FlashTalk drains opener
+#   faster than the first LLM sentence is synthesized, the audio queue can go dry
+#   briefly (heard as pause/stutter) — see speak() pipeline ordering.
+# - Coherence with reply: mitigated by system nudge + lead trim, still model-dependent.
 _TTS_OPENER_RULES: tuple[tuple[str, tuple[str, ...], tuple[tuple[str, str], ...]], ...] = (
     (
         "greeting",
-        ("你好", "您好", "哈喽", "嗨", "在吗"),
+        ("你好", "您好", "哈喽", "嗨", "在吗", "早安", "晚安", "喂"),
         (
-            ("greeting_1", "你好，我在这边。"),
-            ("greeting_2", "你好，我听着呢。"),
+            ("greeting_1", "我在，请讲。"),
+            ("greeting_2", "听到啦，你说。"),
+            ("greeting_3", "随时在。"),
         ),
     ),
     (
         "task",
-        ("帮我", "处理", "看下", "看看", "怎么弄", "怎么办", "查一下", "帮忙"),
+        ("帮我", "处理", "看下", "看看", "怎么弄", "怎么办", "查一下", "帮忙", "执行", "设置", "找一下"),
         (
             ("task_1", "好的，我来看看。"),
-            ("task_2", "明白，我帮你处理。"),
+            ("task_2", "明白，马上处理。"),
+            ("task_3", "收到，这就去办。"),
         ),
     ),
     (
         "explain",
-        ("为什么", "怎么", "是什么", "原理", "区别", "原因"),
+        ("为什么", "怎么", "是什么", "原理", "区别", "原因", "介绍", "详细", "意思"),
         (
             ("explain_1", "这个我来解释。"),
             ("explain_2", "好，我给你说明。"),
+            ("explain_3", "马上为你解答。"),
         ),
     ),
     (
         "confirm",
-        ("能不能", "可以吗", "是否", "有没有", "行不行"),
+        ("能不能", "可以吗", "是否", "有没有", "行不行", "对不对", "对吗", "真的"),
         (
             ("confirm_1", "可以，我告诉你。"),
             ("confirm_2", "这个我来确认。"),
+            ("confirm_3", "稍等，我核实下。"),
+        ),
+    ),
+    (
+        "create",
+        ("写一个", "写一篇", "生成", "画", "起名", "设计", "草拟", "大纲"),
+        (
+            ("create_1", "好的，这就生成。"),
+            ("create_2", "收到，我来构思。"),
+        ),
+    ),
+    (
+        "calculate",
+        ("算一下", "多少", "统计", "计算", "汇总"),
+        (
+            ("calc_1", "我来算一下。"),
+            ("calc_2", "好，这就看数据。"),
+        ),
+    ),
+    (
+        "opinion",
+        ("觉得", "看法", "建议", "推荐", "评价", "哪个好"),
+        (
+            ("opinion_1", "我的看法是这样。"),
+            ("opinion_2", "好，给你几个建议。"),
+        ),
+    ),
+    (
+        "identity",
+        ("你叫什么名字", "你的名字", "你是谁", "怎么称呼", "你叫啥"),
+        (
+            ("identity_1", "嗯，很高兴认识你。"),
         ),
     ),
 )
+
 _TTS_OPENER_FALLBACKS: tuple[tuple[str, str], ...] = (
-    ("fallback_1", "明白，我帮你处理。"),
+    ("fallback_1", "明白，马上处理。"),
     ("fallback_2", "好的，我来看看。"),
-    ("fallback_3", "这个我来解释。"),
+    ("fallback_3", "马上为你解答。"),
+    ("fallback_4", "收到，请稍等。"),
 )
 
 
@@ -116,34 +166,11 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
-def _coerce_bool(value: Any, default: bool = False) -> bool:
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-    if isinstance(value, str):
-        return value.strip().lower() not in {"", "0", "false", "no", "off"}
-    return bool(value)
-
-
-async def _wait_for_queue_empty(
-    q: asyncio.Queue[Any],
-    *,
-    poll_interval_s: float,
-    timeout_s: float,
-    interrupted: asyncio.Event | None = None,
-) -> bool:
-    loop = asyncio.get_running_loop()
-    started = loop.time()
-    while q.qsize() > 0:
-        if interrupted is not None and interrupted.is_set():
-            return False
-        if (loop.time() - started) >= timeout_s:
-            return False
-        await asyncio.sleep(poll_interval_s)
-    return True
+def _idle_cache_dir() -> Path:
+    s = get_settings()
+    if s.flashtalk_idle_cache_dir:
+        return Path(s.flashtalk_idle_cache_dir)
+    return Path(s.models_dir) / ".idle_cache"
 
 
 def _fade_edges_i16(pcm: np.ndarray, sample_rate: int, fade_ms: float) -> np.ndarray:
@@ -440,6 +467,44 @@ def _build_tts_opener_candidates(user_text: str) -> list[tuple[str, str]]:
     return list(_TTS_OPENER_FALLBACKS)
 
 
+def _trim_trailing_silence_i16(
+    pcm: np.ndarray,
+    sample_rate: int,
+    *,
+    threshold: int = 300,
+    min_tail_ms: float = 60.0,
+) -> np.ndarray:
+    """Remove trailing near-silence from PCM, keeping at least *min_tail_ms* ms."""
+    if pcm.size == 0:
+        return pcm
+    min_keep = max(1, int(sample_rate * min_tail_ms / 1000.0))
+    abs_pcm = np.abs(pcm)
+    indices = np.nonzero(abs_pcm > threshold)[0]
+    if indices.size == 0:
+        return pcm[:min_keep]
+    last_loud = int(indices[-1])
+    end = max(last_loud + 1 + min_keep, min_keep)
+    return pcm[: min(end, pcm.size)]
+
+
+def _strip_redundant_greeting_lead(text: str) -> str:
+    """Remove one leading greeting clause (after TTS opener already greeted the user)."""
+    t = text.strip()
+    if not t:
+        return t
+    for pat in (
+        r"^你好啊[，,\s]*",
+        r"^你好[，,\s]*",
+        r"^您好[，,\s]*",
+        r"^哈喽[，,\s]*",
+        r"^嗨[，,\s]*",
+    ):
+        nt = re.sub(pat, "", t, count=1)
+        if nt != t:
+            return nt.strip()
+    return t
+
+
 def _merge_spoken_reply(prefix: str, body: str) -> str:
     prefix = prefix.strip()
     body = body.strip()
@@ -456,9 +521,9 @@ async def _synthesize_tts_opener_pcm(
     text: str,
     *,
     sample_rate: int,
-    voice: str = "zh-CN-XiaoxiaoNeural",
+    default_voice: str | None = None,
 ) -> tuple[np.ndarray, bool]:
-    cache_key = f"{sample_rate}:{voice}:{text}"
+    cache_key = f"v2:{sample_rate}:{default_voice or '_'}:{text}"
     cached = _TTS_OPENER_PCM_CACHE.get(cache_key)
     if cached is not None:
         return np.array(cached, copy=True), True
@@ -469,12 +534,18 @@ async def _synthesize_tts_opener_pcm(
         if cached is not None:
             return np.array(cached, copy=True), True
 
-        tts = EdgeTTSAdapter(default_voice=voice, sample_rate=sample_rate, chunk_ms=20.0)
+        tts = create_tts_adapter(
+            sample_rate=sample_rate, chunk_ms=400.0, default_voice=default_voice
+        )
         parts: list[np.ndarray] = []
-        async for chunk in tts.synthesize_stream(text, voice=voice):
-            pcm = np.asarray(chunk.data, dtype=np.int16)
-            if pcm.size:
-                parts.append(np.ascontiguousarray(pcm))
+        try:
+            async for chunk in tts.synthesize_stream(text):
+                pcm = np.asarray(chunk.data, dtype=np.int16)
+                if pcm.size:
+                    parts.append(np.ascontiguousarray(pcm))
+        finally:
+            if hasattr(tts, "aclose"):
+                await tts.aclose()
         if not parts:
             raise RuntimeError(f"Failed to synthesize TTS opener: {text}")
 
@@ -483,10 +554,10 @@ async def _synthesize_tts_opener_pcm(
         return np.array(pcm, copy=True), False
 
 
-async def _preload_tts_openers(sample_rate: int, voice: str) -> None:
+async def _preload_tts_openers(sample_rate: int) -> None:
     for _, opener_text in _iter_tts_opener_variants():
         try:
-            await _synthesize_tts_opener_pcm(opener_text, sample_rate=sample_rate, voice=voice)
+            await _synthesize_tts_opener_pcm(opener_text, sample_rate=sample_rate)
         except Exception:
             log.warning("Failed to preload TTS opener %r", opener_text, exc_info=True)
 
@@ -503,8 +574,6 @@ class FlashTalkRunner:
         redis: Any,
         flashtalk_ws_url: str | None = None,
         flashtalk_client: Any | None = None,
-        tts_provider: str = "edge",
-        tts_voice: str = "zh-CN-XiaoxiaoNeural",
         llm_base_url: str = "",
         llm_api_key: str = "",
         llm_model: str = "qwen-turbo",
@@ -519,9 +588,6 @@ class FlashTalkRunner:
         self.flashtalk = flashtalk_client or FlashTalkWSClient(
             self._flashtalk_ws_url
         )
-        self._tts_provider = (tts_provider or "edge").strip().lower()
-        self._tts_voice = tts_voice.strip() or "zh-CN-XiaoxiaoNeural"
-        self._tts_chunk_ms = max(20.0, _env_float("FLASHTALK_TTS_CHUNK_MS", 120.0))
         # Remote FlashTalk serves a single active session; a second background
         # init for idle-cache building can replace the live session underneath us.
         self._allow_background_idle_cache = flashtalk_client is not None
@@ -552,6 +618,7 @@ class FlashTalkRunner:
         self._closed = False
         self._idle_task: asyncio.Task[None] | None = None
         self._generate_lock = asyncio.Lock()
+        self._ref_image_path: Path | None = None
         self._idle_cache_key: str | None = None
         self._idle_frames: list[np.ndarray] = []
         self._idle_playback_indices: list[int] = []
@@ -562,61 +629,60 @@ class FlashTalkRunner:
         self._tts_opener_warm_task: asyncio.Task[None] | None = None
         self._media_clock_started = False
         self._speech_media_active = False
-        self._has_completed_speech = False
-        self._avatar_metadata: dict[str, Any] = {}
-        self._reference_image_path: Path | None = None
-        self._reset_session_each_turn = False
+        #: Background dynamic idle cache (closes main WS briefly); speak() must await this.
+        self._dynamic_idle_prepare_task: asyncio.Task[None] | None = None
 
     def avatar_path(self) -> Path:
         return (self.avatars_root / self.avatar_id).resolve()
 
-    def _tts_runtime_voice(self) -> str:
-        return self._tts_voice
+    def _resolve_idle_ref_image(self, avatar_dir: Path, fallback: Path) -> Path:
+        """Return the idle-specific reference image if declared in manifest or present on disk.
 
-    def _tts_supports_cached_openers(self) -> bool:
-        return self._tts_provider in {"edge", "elevenlabs"}
+        Priority:
+          1. manifest.json  "idle_reference" field  (relative to avatar_dir)
+          2. idle_reference.png / idle_reference.jpg  (convention)
+          3. fallback (the speech reference image)
+        """
+        # 1. manifest field
+        manifest = avatar_dir / "manifest.json"
+        if manifest.exists():
+            try:
+                import json
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                idle_ref = data.get("idle_reference", "")
+                if idle_ref:
+                    p = (avatar_dir / idle_ref).resolve()
+                    if p.exists():
+                        log.info("Using idle_reference from manifest: %s", p)
+                        return p
+                    log.warning("manifest idle_reference not found: %s", p)
+            except Exception:
+                log.exception("Failed to read manifest for idle_reference")
 
-    def _build_tts_adapter(self, *, sample_rate: int) -> Any:
-        settings = get_settings()
-        if self._tts_provider == "elevenlabs":
-            return ElevenLabsTTSAdapter(
-                api_key=settings.tts_elevenlabs_api_key,
-                default_voice=self._tts_voice or settings.tts_elevenlabs_voice_id,
-                base_url=settings.tts_elevenlabs_base_url,
-                model_id=settings.tts_elevenlabs_model_id,
-                output_format=settings.tts_elevenlabs_output_format,
-                sample_rate=sample_rate,
-                chunk_ms=self._tts_chunk_ms,
-            )
-        return EdgeTTSAdapter(
-            default_voice=self._tts_voice,
-            sample_rate=sample_rate,
-            chunk_ms=self._tts_chunk_ms,
-        )
+        # 2. convention filenames
+        for name in ("idle_reference.png", "idle_reference.jpg"):
+            p = avatar_dir / name
+            if p.exists():
+                log.info("Using idle_reference by convention: %s", p)
+                return p
 
-    async def _prewarm_tts(self, *, sample_rate: int) -> None:
-        return
+        # 3. fall back to speech reference
+        return fallback
 
     async def prepare(self) -> None:
         """Load avatar, connect to FlashTalk server, init session."""
         avatar_dir = self.avatar_path()
-        bundle = load_avatar_bundle(avatar_dir, strict=False)
-        self._avatar_metadata = dict(bundle.manifest.metadata or {})
-        self._reset_session_each_turn = _coerce_bool(
-            self._avatar_metadata.get("reset_session_each_turn"),
-            False,
-        )
 
-        # Read reference image
+        # Read reference image (used for speech generation)
         ref_image_path = avatar_dir / "reference.png"
         if not ref_image_path.exists():
-            # Try jpg
             ref_image_path = avatar_dir / "reference.jpg"
         if not ref_image_path.exists():
             raise FileNotFoundError(
                 f"No reference image in {avatar_dir} (expected reference.png or .jpg)"
             )
-        self._reference_image_path = ref_image_path.resolve()
+
+        self._ref_image_path = ref_image_path
 
         # Connect and init FlashTalk session
         await self.flashtalk.connect()
@@ -626,8 +692,19 @@ class FlashTalkRunner:
         self.webrtc = WebRTCSession(
             fps=float(self.flashtalk.fps),
             sample_rate=16000,
-            mode="legacy",
         )
+
+        # Auto-close session when WebRTC peer disconnects (releases the slot lock)
+        @self.webrtc.pc.on("connectionstatechange")
+        async def _on_connection_state_change() -> None:
+            state = self.webrtc.pc.connectionState if self.webrtc else None
+            if state in ("failed", "closed", "disconnected"):
+                log.info(
+                    "WebRTC connection %s for session %s, auto-closing",
+                    state, self.session_id,
+                )
+                if not self._closed:
+                    await self.close()
 
         # Load reference image as initial idle frame
         try:
@@ -642,15 +719,6 @@ class FlashTalkRunner:
             self._reference_frame = None
             self._last_frame = None
 
-        # Remote FlashTalk backends cannot safely rebuild idle cache in the
-        # background, but they can and should reuse an existing on-disk cache.
-        cache_path = self._idle_cache_path(avatar_dir)
-        cache_key = self._make_idle_cache_key(ref_image_path)
-        self._idle_cache_key = cache_key
-        disk_frames = self._load_idle_frames_from_disk(cache_path, cache_key)
-        if disk_frames:
-            self._set_idle_frames(disk_frames)
-
         # Start idle loop after init; it replays local cached frames when WebRTC is live.
         if self._idle_task is None:
             self._idle_task = asyncio.create_task(self._idle_loop())
@@ -658,23 +726,106 @@ class FlashTalkRunner:
         self.ready_event.set()
         log.info("FlashTalkRunner prepared: session=%s, avatar=%s", self.session_id, self.avatar_id)
 
-        # Only build idle cache in-process for local deployments. Remote
-        # FlashTalk backends keep a single active session, so a background init
-        # would evict the live user session.
-        if self._allow_background_idle_cache and not self._idle_frames:
+        # Build idle cache in background for all modes (local and remote).
+        # IdleVideoGenerator opens its own WS connection so it never evicts
+        # the live session.
+        if get_settings().flashtalk_idle_enable:
+            self._dynamic_idle_prepare_task = asyncio.create_task(
+                self._prepare_dynamic_idle_cache(ref_image_path)
+            )
+        elif self._allow_background_idle_cache:
             asyncio.create_task(self._prepare_idle_cache_background(ref_image_path))
 
         global _TTS_OPENER_PRELOAD_TASK
-        if _env_bool("FLASHTALK_TTS_OPENER_ENABLE", False) and _env_bool(
-            "FLASHTALK_TTS_OPENER_PRELOAD",
-            False,
-        ) and self._tts_supports_cached_openers():
+        s = get_settings()
+        if s.flashtalk_tts_opener_enable and s.flashtalk_tts_opener_preload:
             task = _TTS_OPENER_PRELOAD_TASK
             if task is None or task.done():
                 _TTS_OPENER_PRELOAD_TASK = asyncio.create_task(
-                    _preload_tts_openers(sample_rate=16000, voice=self._tts_runtime_voice())
+                    _preload_tts_openers(sample_rate=16000)
                 )
             self._tts_opener_warm_task = _TTS_OPENER_PRELOAD_TASK
+
+    async def _await_dynamic_idle_prepare_done(self) -> None:
+        """Avoid speak() while dynamic idle prep has closed the main FlashTalk socket."""
+        task = self._dynamic_idle_prepare_task
+        if task is None or task.done():
+            return
+        log.info(
+            "Waiting for dynamic idle cache build before speak (session=%s)",
+            self.session_id,
+        )
+        try:
+            await task
+        except Exception:
+            pass
+
+    async def _prepare_dynamic_idle_cache(self, ref_image_path: Path) -> None:
+        """Build idle clip via IdleVideoGenerator (background, non-blocking)."""
+        try:
+            # Check for pre-recorded idle video first.
+            idle_video = self._load_idle_video(ref_image_path.parent)
+            if idle_video:
+                self._set_idle_frames(idle_video)
+                log.info(
+                    "Loaded pre-recorded idle video: avatar=%s frames=%d",
+                    self.avatar_id, len(idle_video),
+                )
+                return
+
+            s = get_settings()
+            gen = IdleVideoGenerator(
+                ws_url=self._flashtalk_ws_url,
+                avatar_id=self.avatar_id,
+                ref_image_path=ref_image_path,
+                cache_dir=_idle_cache_dir(),
+                chunks=max(1, _env_int("FLASHTALK_IDLE_CACHE_CHUNKS", 4)),
+                level=max(10.0, _env_float("FLASHTALK_IDLE_CACHE_LEVEL", 80.0)),
+                crossfade=max(2, _env_int("FLASHTALK_IDLE_CACHE_CROSSFADE_FRAMES", 6)),
+                mouth_lock=max(0.0, min(1.0, s.flashtalk_idle_mouth_lock)),
+                mouth_temporal=max(0.0, min(1.0, _env_float("FLASHTALK_IDLE_MOUTH_TEMPORAL", 0.85))),
+                reference_frame=self._reference_frame,
+            )
+
+            # Try disk cache first — no need to touch the main WS connection.
+            w = self.flashtalk.width
+            h = self.flashtalk.height
+            fps = self.flashtalk.fps
+            cs = self.flashtalk.audio_chunk_samples
+            key = gen._cache_key(w, h, fps, cs)
+            cached = gen.load_from_disk(key)
+            if cached:
+                from opentalking.models.flashtalk.idle_generator import _prompt_fingerprint
+                fp = _prompt_fingerprint(gen._init_prompt)
+                log.info(
+                    "Idle cache hit (disk): avatar=%s frames=%d cache_key=%s prompt_fp=%s seed=%d prompt_len=%d",
+                    self.avatar_id, len(cached), key[:16], fp, gen._init_seed, len(gen._init_prompt),
+                )
+                self._set_idle_frames(cached)
+                log.info(
+                    "Dynamic idle cache ready: avatar=%s frames=%d",
+                    self.avatar_id, len(cached),
+                )
+                return
+
+            # Cache miss — must generate.  Close main session so the server
+            # (single-session architecture) doesn't deadlock on concurrent HCCL.
+            await self.flashtalk.close()
+            frames = await gen.get_or_build(
+                width=w, height=h, fps=fps, chunk_samples=cs,
+            )
+            # Re-init main session so speech generation can proceed.
+            await self._reset_flashtalk_session(ref_image_path)
+            if frames:
+                self._set_idle_frames(frames)
+                log.info(
+                    "Dynamic idle cache ready: avatar=%s frames=%d",
+                    self.avatar_id, len(frames),
+                )
+        except Exception:
+            log.exception(
+                "Dynamic idle cache build failed (non-fatal): avatar=%s", self.avatar_id
+            )
 
     async def _prepare_idle_cache_background(self, ref_image_path: Path) -> None:
         """Build idle cache without blocking session readiness."""
@@ -689,7 +840,7 @@ class FlashTalkRunner:
         interval = 1.0 / fps
         while not self._closed:
             if (
-                self._speaking
+                (self._speaking and self._speech_media_active)
                 or not self.webrtc
                 or not self._webrtc_started.is_set()
             ):
@@ -707,6 +858,8 @@ class FlashTalkRunner:
 
     async def _idle_tick(self) -> None:
         if not self.webrtc:
+            return
+        if self.webrtc.draining:   # block idle injection during queue drain
             return
         from opentalking.core.types.frames import VideoFrameData
         if self._idle_frames:
@@ -734,6 +887,60 @@ class FlashTalkRunner:
 
     def _idle_cache_path(self, avatar_dir: Path) -> Path:
         return avatar_dir / f".flashtalk_idle_cache_v{_IDLE_CACHE_VERSION}.npz"
+
+    def _load_idle_video(self, avatar_dir: Path) -> list[np.ndarray] | None:
+        """Load a pre-recorded idle video from the avatar directory.
+
+        Looks for idle.mp4 / idle.webm / idle.avi.  Resizes frames to match
+        the FlashTalk output resolution and converts RGB→BGR.
+        """
+        for ext in ("mp4", "webm", "avi", "mov"):
+            p = avatar_dir / f"idle.{ext}"
+            if p.exists():
+                break
+        else:
+            return None
+
+        import cv2
+        cap = cv2.VideoCapture(str(p))
+        if not cap.isOpened():
+            log.warning("Cannot open idle video: %s", p)
+            return None
+
+        target_w = self.flashtalk.width
+        target_h = self.flashtalk.height
+        frames: list[np.ndarray] = []
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            h, w = frame.shape[:2]
+            if (w, h) != (target_w, target_h):
+                import math
+                scale = max(target_h / h, target_w / w)
+                fw = math.ceil(scale * w)
+                fh = math.ceil(scale * h)
+                frame = cv2.resize(
+                    frame, (fw, fh),
+                    interpolation=cv2.INTER_AREA,
+                )
+                top = (fh - target_h) // 2
+                left = (fw - target_w) // 2
+                frame = frame[
+                    top:top + target_h,
+                    left:left + target_w,
+                ]
+            frames.append(np.ascontiguousarray(frame))
+        cap.release()
+
+        if not frames:
+            log.warning("Idle video has no frames: %s", p)
+            return None
+        log.info(
+            "Read idle video: %s frames=%d size=%dx%d",
+            p.name, len(frames), target_w, target_h,
+        )
+        return frames
 
     def _set_idle_frames(self, frames: list[np.ndarray]) -> None:
         self._idle_frames = frames
@@ -770,6 +977,8 @@ class FlashTalkRunner:
         try:
             with np.load(cache_path, allow_pickle=False) as data:
                 stored_key = str(data["cache_key"].item())
+                if stored_key != cache_key:
+                    return []
                 frames = np.asarray(data["frames"], dtype=np.uint8)
         except Exception:
             log.exception("Failed to load idle cache: %s", cache_path)
@@ -777,21 +986,6 @@ class FlashTalkRunner:
 
         if frames.ndim != 4 or frames.shape[0] == 0:
             return []
-
-        if stored_key != cache_key:
-            stored_parts = stored_key.split("::")
-            expected_parts = cache_key.split("::")
-            compatible = (
-                len(stored_parts) == len(expected_parts)
-                and stored_parts[3:] == expected_parts[3:]
-            )
-            if not compatible:
-                return []
-            log.warning(
-                "Using compatible stale idle cache despite key mismatch: avatar=%s path=%s",
-                self.avatar_id,
-                cache_path,
-            )
         loaded = [np.ascontiguousarray(frame) for frame in frames]
         log.info(
             "Loaded avatar idle cache: avatar=%s frames=%d path=%s",
@@ -830,6 +1024,9 @@ class FlashTalkRunner:
         mouth_temporal = max(0.0, min(1.0, _env_float("FLASHTALK_IDLE_MOUTH_TEMPORAL", 0.85)))
         temp_client = FlashTalkWSClient(self._flashtalk_ws_url)
         try:
+            # Close the main session first so the server (single-session
+            # architecture) doesn't deadlock on a concurrent HCCL broadcast.
+            await self.flashtalk.close()
             await temp_client.connect()
             ref_image_path = self.avatar_path() / "reference.png"
             if not ref_image_path.exists():
@@ -879,7 +1076,7 @@ class FlashTalkRunner:
                 )
             return built
         finally:
-            await temp_client.close()
+            await temp_client.close(send_close_msg=False)
 
     async def _prepare_idle_cache(self, ref_image_path: Path) -> None:
         avatar_dir = self.avatar_path()
@@ -919,7 +1116,7 @@ class FlashTalkRunner:
             await self._reset_flashtalk_session(ref_image_path)
 
     def _remember_tts_opener(self, opener_id: str) -> None:
-        max_history = max(0, _env_int("FLASHTALK_TTS_OPENER_MAX_HISTORY", 2))
+        max_history = max(0, int(get_settings().flashtalk_tts_opener_max_history))
         if max_history == 0:
             self._tts_opener_recent_ids.clear()
             return
@@ -936,17 +1133,17 @@ class FlashTalkRunner:
         *,
         sample_rate: int,
         chunk_samples: int,
+        default_voice: str | None = None,
     ) -> tuple[str, str, np.ndarray, bool, bool] | None:
-        if not _env_bool("FLASHTALK_TTS_OPENER_ENABLE", False):
-            return None
-        if not self._tts_supports_cached_openers():
+        s = get_settings()
+        if not s.flashtalk_tts_opener_enable:
             return None
 
         min_fill_ratio = min(
-            max(_env_float("FLASHTALK_TTS_OPENER_MIN_FILL_RATIO", 0.78), 0.0),
+            max(float(s.flashtalk_tts_opener_min_fill_ratio), 0.0),
             1.0,
         )
-        pad_to_chunk = _env_bool("FLASHTALK_TTS_OPENER_PAD_TO_CHUNK", True)
+        pad_to_chunk = bool(s.flashtalk_tts_opener_pad_to_chunk)
         ordered_candidates = _build_tts_opener_candidates(user_text)
         if not ordered_candidates:
             return None
@@ -963,7 +1160,7 @@ class FlashTalkRunner:
                 pcm, cache_hit = await _synthesize_tts_opener_pcm(
                     opener_text,
                     sample_rate=sample_rate,
-                    voice=self._tts_runtime_voice(),
+                    default_voice=default_voice,
                 )
             except Exception:
                 log.warning("Failed to synthesize TTS opener %r", opener_text, exc_info=True)
@@ -1022,16 +1219,39 @@ class FlashTalkRunner:
         self.webrtc.reset_clocks()
         self._media_clock_started = True
 
-    def create_speak_task(self, text: str) -> asyncio.Task[None]:
-        task = asyncio.create_task(self._run_speak_task(text))
+    def create_speak_task(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        *,
+        tts_provider: str | None = None,
+        tts_model: str | None = None,
+        enqueue_unix: float | None = None,
+    ) -> asyncio.Task[None]:
+        task = asyncio.create_task(
+            self._run_speak_task(text, tts_voice, tts_provider, tts_model, enqueue_unix)
+        )
         self.speech_tasks.add(task)
         task.add_done_callback(self.speech_tasks.discard)
         return task
 
-    async def _run_speak_task(self, text: str) -> None:
+    async def _run_speak_task(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        tts_provider: str | None = None,
+        tts_model: str | None = None,
+        enqueue_unix: float | None = None,
+    ) -> None:
         log.info("speak start: %s (session=%s)", text[:30], self.session_id)
         try:
-            await self.speak(text)
+            await self.speak(
+                text,
+                tts_voice=tts_voice,
+                tts_provider=tts_provider,
+                tts_model=tts_model,
+                enqueue_unix=enqueue_unix,
+            )
             log.info("speak done: session=%s", self.session_id)
         except asyncio.CancelledError:
             log.info("speak cancelled: session=%s", self.session_id)
@@ -1040,18 +1260,29 @@ class FlashTalkRunner:
             if not self._closed:
                 await set_session_state(self.redis, self.session_id, "error")
 
-    async def _publish_speech_ended(self) -> None:
+    async def _publish_speech_ended(self, reply_text: str | None = None) -> None:
         if not self._speech_started:
             return
         self._speech_started = False
+        payload: dict[str, str] = {"session_id": self.session_id}
+        if reply_text is not None:
+            payload["text"] = reply_text
         await publish_event(
             self.redis,
             self.session_id,
             "speech.ended",
-            {"session_id": self.session_id},
+            payload,
         )
 
-    async def speak(self, text: str) -> None:
+    async def speak(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        *,
+        tts_provider: str | None = None,
+        tts_model: str | None = None,
+        enqueue_unix: float | None = None,
+    ) -> None:
         """Full pipeline: user text → LLM → TTS → FlashTalk → WebRTC.
 
         Uses a producer-consumer pattern:
@@ -1062,15 +1293,18 @@ class FlashTalkRunner:
         async with self._speak_lock:
             if self._closed:
                 return
+            await self._await_dynamic_idle_prepare_done()
             self._interrupt.clear()
             self._speaking = True
-            if self._has_completed_speech and self._reset_session_each_turn:
-                await self._reset_session_before_turn()
             if self.webrtc:
-                # Drop queued idle frames so speech starts from a clean A/V boundary.
+                # Stop idle loop first, then drain queues atomically.
+                self._speech_media_active = True
+                self.webrtc.draining = True
                 self.webrtc.clear_media_queues()
+                self.webrtc.reset_clocks()
+                self.webrtc.draining = False
                 self._media_clock_started = False
-                self._speech_media_active = False
+                self._speech_media_active = False  # consumer will re-set after prebuffer
 
             await set_session_state(self.redis, self.session_id, "speaking")
             await publish_event(
@@ -1085,21 +1319,13 @@ class FlashTalkRunner:
             full_response = ""
             spoken_prefix = ""
             chunk_samples = self.flashtalk.audio_chunk_samples  # 17920
-            # Queue of fixed-size audio chunks ready for FlashTalk; None = done
-            audio_q: asyncio.Queue[np.ndarray | None] = asyncio.Queue(maxsize=8)
+            # Queue: (pcm_chunk, subtitle_for_playback) | None. Subtitle is emitted in the
+            # consumer immediately before the matching A/V is queued to WebRTC so UI tracks
+            # lip sync better than publishing at TTS start.
+            audio_q: asyncio.Queue[tuple[np.ndarray, str | None] | None] = asyncio.Queue(maxsize=8)
+            opener_chunk_count: list[int] = [0]
             sample_rate = 16000
-            configured_prebuffer_chunks = max(1, _env_int("FLASHTALK_PREBUFFER_CHUNKS", 1))
-            prebuffer_chunks = (
-                configured_prebuffer_chunks
-                if self._has_completed_speech
-                else 1
-            )
-            if prebuffer_chunks != configured_prebuffer_chunks:
-                log.info(
-                    "First speech warm start: override prebuffer_chunks %d -> %d",
-                    configured_prebuffer_chunks,
-                    prebuffer_chunks,
-                )
+            prebuffer_chunks = max(1, _env_int("FLASHTALK_PREBUFFER_CHUNKS", 1))
             boundary_fade_ms = _env_float("FLASHTALK_TTS_BOUNDARY_FADE_MS", 18.0)
             tail_fade_ms = _env_float("FLASHTALK_TTS_TAIL_FADE_MS", 80.0)
             trailing_silence_ms = _env_float("FLASHTALK_TTS_TRAILING_SILENCE_MS", 320.0)
@@ -1109,35 +1335,70 @@ class FlashTalkRunner:
                 coalesce_max_chars,
             )
 
+            # 本轮 speak 各阶段耗时（毫秒），供日志一行汇总；dict 在 speak 闭包内共享
+            t_speak_wall0 = time.perf_counter()
+            timing: dict[str, float] = {}
+            self._speak_enqueue_unix = enqueue_unix
+            if enqueue_unix is not None:
+                timing["api_enqueue_to_speak_enter_wall_ms"] = (
+                    time.time() - enqueue_unix
+                ) * 1000.0
+            # 供 _queue_av_chunk 记录首帧进 WebRTC 队列的墙钟（相对本轮 speak 起点）
+            self._speak_t0_wall = t_speak_wall0
+            self._speak_milestones = timing
+
             async def _producer():
                 """LLM → sentence split → TTS → fixed-size audio chunks into queue.
 
                 Uses a two-stage pipeline to overlap TTS startup with audio
                 streaming:
                   Stage 1 (LLM feeder): LLM deltas → sentence split → sentence_q
-                  Stage 2 (TTS worker): sentence_q → Edge TTS → audio chunks → audio_q
+                  Stage 2 (TTS worker): sentence_q → TTS adapter → audio chunks → audio_q
                 This eliminates the ~300-800ms TTS startup gap between sentences.
                 """
                 nonlocal full_response
+                t_producer_wall0 = time.perf_counter()
                 audio_buffer = np.zeros(0, dtype=np.int16)
                 text_buffer = ""
                 splitter = SentenceSplitter()
-                tts = self._build_tts_adapter(sample_rate=sample_rate)
+                tts = create_tts_adapter(
+                    sample_rate=sample_rate,
+                    chunk_ms=400.0,
+                    default_voice=tts_voice,
+                    tts_provider=tts_provider,
+                    tts_model=tts_model,
+                )
+                log.info(
+                    "TTS pipeline start | %s",
+                    tts_log_profile(
+                        request_voice=tts_voice,
+                        tts_provider_override=tts_provider,
+                        tts_model_override=tts_model,
+                    ),
+                )
                 # Sentence queue: decouples LLM stream from TTS so next sentence
                 # can be queued while current sentence is still being synthesised.
                 sentence_q: asyncio.Queue[str | None] = asyncio.Queue(maxsize=4)
+                trim_lead_after_opener = {"applied": False}
 
-                async def _append_pcm(pcm: np.ndarray) -> int:
+                async def _append_pcm(pcm: np.ndarray, *, subtitle: str | None = None) -> int:
                     nonlocal audio_buffer
                     if pcm.size == 0:
                         return 0
 
                     audio_buffer = np.concatenate([audio_buffer, pcm.astype(np.int16)])
                     chunks = 0
+                    first = True
                     while len(audio_buffer) >= chunk_samples:
                         chunk = audio_buffer[:chunk_samples]
                         audio_buffer = audio_buffer[chunk_samples:]
-                        await audio_q.put(chunk)
+                        tag = subtitle if first else None
+                        first = False
+                        await audio_q.put((chunk, tag))
+                        if "first_chunk_queued_ms" not in timing:
+                            timing["first_chunk_queued_ms"] = (
+                                time.perf_counter() - t_speak_wall0
+                            ) * 1000.0
                         chunks += 1
                     return chunks
 
@@ -1147,25 +1408,32 @@ class FlashTalkRunner:
                         text,
                         sample_rate=sample_rate,
                         chunk_samples=chunk_samples,
+                        default_voice=tts_voice,
                     )
                     if opener is None or self._interrupt.is_set():
                         return
 
                     opener_id, opener_text, opener_pcm, cache_hit, padded = opener
                     spoken_prefix = opener_text
-                    await publish_event(
-                        self.redis,
-                        self.session_id,
-                        "subtitle.chunk",
-                        {
-                            "session_id": self.session_id,
-                            "text": opener_text,
-                            "is_final": False,
-                        },
+                    # Trim trailing silence from TTS output, then fade head.
+                    opener_pcm_trimmed = _trim_trailing_silence_i16(
+                        opener_pcm, sample_rate
                     )
+                    opener_pcm_faded = _fade_head_i16(
+                        opener_pcm_trimmed, sample_rate, boundary_fade_ms
+                    )
+                    # Pad to whole chunk so no audio is truncated (e.g. last syllable).
+                    remainder = opener_pcm_faded.size % chunk_samples
+                    if remainder > 0:
+                        opener_pcm_faded = np.concatenate([
+                            opener_pcm_faded,
+                            np.zeros(chunk_samples - remainder, dtype=np.int16),
+                        ])
                     produced = await _append_pcm(
-                        _fade_head_i16(opener_pcm, sample_rate, boundary_fade_ms)
+                        opener_pcm_faded,
+                        subtitle=opener_text,
                     )
+                    opener_chunk_count[0] = produced
                     log.info(
                         "TTS opener: id=%s cache_hit=%s padded=%s samples=%d produced=%d text=%r",
                         opener_id,
@@ -1184,11 +1452,20 @@ class FlashTalkRunner:
                         log.info("Skipping empty TTS text after sanitize: %r", sentence[:40])
                         return
 
-                    await publish_event(
-                        self.redis, self.session_id,
-                        "subtitle.chunk",
-                        {"session_id": self.session_id, "text": tts_text, "is_final": False},
-                    )
+                    if spoken_prefix.strip() and not trim_lead_after_opener["applied"]:
+                        trim_lead_after_opener["applied"] = True
+                        stripped = _strip_redundant_greeting_lead(tts_text)
+                        if stripped != tts_text:
+                            log.info(
+                                "TTS lead trim (opener active): %r -> %r",
+                                tts_text[:80],
+                                stripped[:80],
+                            )
+                        tts_text = stripped
+                        if not tts_text:
+                            log.info("Skipping first LLM sentence after opener lead trim (empty)")
+                            return
+
                     log.info(
                         "TTS input: sentence=%r -> tts_text=%r",
                         sentence[:30],
@@ -1200,10 +1477,8 @@ class FlashTalkRunner:
                     seen_audio = False
                     held_tail = np.zeros(0, dtype=np.int16)
                     hold_samples = int(sample_rate * max(0.0, boundary_fade_ms) / 1000.0)
-                    async for tts_chunk in tts.synthesize_stream(
-                        tts_text,
-                        voice=self._tts_runtime_voice(),
-                    ):
+                    pending_subtitle: str | None = tts_text
+                    async for tts_chunk in tts.synthesize_stream(tts_text):
                         if self._interrupt.is_set():
                             return
                         pcm = np.asarray(tts_chunk.data, dtype=np.int16)
@@ -1222,21 +1497,36 @@ class FlashTalkRunner:
                                 continue
                             emit = combined[:-hold_samples]
                             held_tail = combined[-hold_samples:]
-                            chunks_produced += await _append_pcm(emit)
+                            n = await _append_pcm(emit, subtitle=pending_subtitle)
+                            chunks_produced += n
+                            if n > 0 and pending_subtitle is not None:
+                                pending_subtitle = None
                         else:
-                            chunks_produced += await _append_pcm(pcm)
+                            n = await _append_pcm(pcm, subtitle=pending_subtitle)
+                            chunks_produced += n
+                            if n > 0 and pending_subtitle is not None:
+                                pending_subtitle = None
 
                     if not seen_audio:
                         return
 
                     if held_tail.size > 0 and not self._interrupt.is_set():
                         held_tail = _fade_tail_i16(held_tail, sample_rate, boundary_fade_ms)
-                        chunks_produced += await _append_pcm(held_tail)
+                        n = await _append_pcm(held_tail, subtitle=pending_subtitle)
+                        chunks_produced += n
+                        if n > 0 and pending_subtitle is not None:
+                            pending_subtitle = None
 
                     t1 = _t.monotonic()
                     log.info(
-                        "TTS '%s': first_pcm=%.0fms total=%.2fs, %d chunks, buf=%d",
-                        sentence[:20],
+                        "TTS sentence done | %s | text_preview=%r | "
+                        "first_pcm=%.0fms total=%.2fs chunks=%d buf=%d",
+                        tts_log_profile(
+                            request_voice=tts_voice,
+                            tts_provider_override=tts_provider,
+                            tts_model_override=tts_model,
+                        ),
+                        sentence[:48],
                         first_pcm_ms if first_pcm_ms is not None else -1.0,
                         t1 - t0,
                         chunks_produced,
@@ -1272,21 +1562,57 @@ class FlashTalkRunner:
 
                 async def _tts_worker():
                     """Drain sentence_q and run TTS for each sentence."""
-                    while True:
-                        sentence = await sentence_q.get()
-                        if sentence is None or self._interrupt.is_set():
-                            break
-                        await _tts_sentence(sentence)
+                    t_tts0 = time.perf_counter()
+                    try:
+                        while True:
+                            sentence = await sentence_q.get()
+                            if sentence is None or self._interrupt.is_set():
+                                break
+                            await _tts_sentence(sentence)
+                    finally:
+                        timing["tts_worker_wall_ms"] = (time.perf_counter() - t_tts0) * 1000.0
+
+                def _llm_request_messages() -> list[dict[str, str]]:
+                    """Messages for this completion only (not persisted).
+
+                    When a TTS opener was already spoken: extend system with an explicit
+                    anti-repetition hint, then append the opener as a synthetic assistant
+                    turn so the model continues instead of echoing the same greeting.
+                    """
+                    base = list(self.conversation.get_messages())
+                    prefix = spoken_prefix.strip()
+                    if not prefix:
+                        return base
+                    if base and base[0].get("role") == "system":
+                        sys = base[0]["content"]
+                        nudge = (
+                            f"\n\n【本轮】你已通过语音对用户说过：「{prefix}」。"
+                            "请在此之后**只**输出对用户有用的正文；"
+                            "禁止再用「你好」「您好」「哈喽」「嗨」或与之同义的寒暄起头，也不要复述上述垫话。"
+                        )
+                        base[0] = {"role": "system", "content": sys + nudge}
+                    base.append({"role": "assistant", "content": prefix})
+                    log.info(
+                        "LLM request: opener_hint msgs=%d prefix_chars=%d",
+                        len(base),
+                        len(prefix),
+                    )
+                    return base
 
                 async def _llm_feeder():
                     """Stream LLM deltas, split into sentences, push to sentence_q."""
                     nonlocal full_response, text_buffer
+                    t_llm0 = time.perf_counter()
+                    t_first_token: float | None = None
                     try:
                         log.info("LLM streaming started for: %s", text[:50])
-                        async for delta in self.llm.chat_stream(self.conversation.get_messages()):
+                        async for delta in self.llm.chat_stream(_llm_request_messages()):
                             if self._interrupt.is_set():
                                 break
-                            full_response += strip_emoji(delta)
+                            piece = strip_emoji(delta)
+                            if t_first_token is None and piece.strip():
+                                t_first_token = time.perf_counter()
+                            full_response += piece
                             for sentence in splitter.feed(delta):
                                 if self._interrupt.is_set():
                                     break
@@ -1303,6 +1629,17 @@ class FlashTalkRunner:
                             elif text_buffer:
                                 await _queue_sentence_for_tts("", force=True)
 
+                        if spoken_prefix.strip() and full_response.strip():
+                            agg = full_response.strip()
+                            trimmed = _strip_redundant_greeting_lead(agg)
+                            if trimmed != agg:
+                                log.info(
+                                    "LLM aggregate lead trim: %r -> %r",
+                                    agg[:100],
+                                    trimmed[:100],
+                                )
+                                full_response = trimmed
+
                         log.info("LLM feeder done, full_response=%r", full_response[:100])
                     except Exception:
                         log.exception("LLM feeder failed")
@@ -1312,15 +1649,23 @@ class FlashTalkRunner:
                             text_buffer = ""
                             await _queue_sentence_for_tts(fallback_text, force=True)
                     finally:
+                        t_llm1 = time.perf_counter()
+                        timing["llm_stream_ms"] = (t_llm1 - t_llm0) * 1000.0
+                        if t_first_token is not None:
+                            timing["llm_first_token_ms"] = (t_first_token - t_llm0) * 1000.0
                         await sentence_q.put(None)  # signal TTS worker to stop
 
                 try:
+                    t_opener0 = time.perf_counter()
                     await _emit_cached_opener()
+                    timing["opener_ms"] = (time.perf_counter() - t_opener0) * 1000.0
                     # Run LLM feeder and TTS worker concurrently within
                     # the producer; the TTS worker processes sentences as
                     # fast as Edge TTS can generate audio while the LLM
                     # feeder keeps streaming deltas into sentence_q.
+                    t_gather0 = time.perf_counter()
                     await asyncio.gather(_llm_feeder(), _tts_worker())
+                    timing["llm_tts_gather_ms"] = (time.perf_counter() - t_gather0) * 1000.0
 
                     # Flush leftover audio with a short silence tail so the mouth can settle.
                     log.info("Audio buffer leftover: %d samples", len(audio_buffer))
@@ -1343,12 +1688,22 @@ class FlashTalkRunner:
                             while len(audio_buffer) >= chunk_samples:
                                 chunk = audio_buffer[:chunk_samples]
                                 audio_buffer = audio_buffer[chunk_samples:]
-                                await audio_q.put(chunk)
+                                await audio_q.put((chunk, None))
+                                if "first_chunk_queued_ms" not in timing:
+                                    timing["first_chunk_queued_ms"] = (
+                                        time.perf_counter() - t_speak_wall0
+                                    ) * 1000.0
 
+                    timing["producer_wall_ms"] = (time.perf_counter() - t_producer_wall0) * 1000.0
                     log.info("Producer done, full_response=%r", full_response[:100])
                 except Exception:
                     log.exception("Producer failed")
                 finally:
+                    if hasattr(tts, "aclose"):
+                        try:
+                            await tts.aclose()
+                        except Exception:
+                            log.exception("TTS adapter aclose failed")
                     await audio_q.put(None)  # signal done
 
             async def _consumer():
@@ -1357,49 +1712,96 @@ class FlashTalkRunner:
                 Pre-buffers chunks before starting the pacing clock so WebRTC
                 does not consume the first frames/audio without timing.
                 """
+                t_consumer0 = time.perf_counter()
+                flashtalk_gen_sum_s = 0.0
+                flashtalk_chunks = 0
                 generated = 0
-                pending: list[tuple[np.ndarray, list[Any]]] = []
+                pending: list[tuple[np.ndarray, list[Any], str | None]] = []
+                n_opener = opener_chunk_count[0]
+                pacing_started = False
+
+                async def _publish_subtitle_chunk(text: str) -> None:
+                    await publish_event(
+                        self.redis, self.session_id, "subtitle.chunk",
+                        {"session_id": self.session_id, "text": text, "is_final": False},
+                    )
+
+                def _start_pacing() -> None:
+                    nonlocal pacing_started
+                    if pacing_started:
+                        return
+                    pacing_started = True
+                    self._speech_media_active = True
+                    if self.webrtc:
+                        self.webrtc.draining = True
+                        self.webrtc.clear_media_queues()
+                        self.webrtc.reset_clocks()
+                    self._media_clock_started = True
 
                 while True:
-                    chunk = await audio_q.get()
-                    if chunk is None or self._interrupt.is_set():
+                    item = await audio_q.get()
+                    if item is None:
                         break
-                    frames = await self._generate_flashtalk_frames(chunk)
+                    pcm_chunk, sub_tag = item
+                    if self._interrupt.is_set():
+                        break
+                    g0 = time.perf_counter()
+                    frames = await self._generate_flashtalk_frames(pcm_chunk)
+                    flashtalk_gen_sum_s += time.perf_counter() - g0
+                    if "first_flashtalk_return_ms" not in timing:
+                        timing["first_flashtalk_return_ms"] = (
+                            time.perf_counter() - t_speak_wall0
+                        ) * 1000.0
+                    flashtalk_chunks += 1
                     generated += 1
 
-                    if generated <= prebuffer_chunks:
-                        pending.append((chunk, frames))
-                        if generated < prebuffer_chunks:
-                            continue
-
-                        log.info("Pre-buffer done (%d chunks), starting pacing", generated)
-                        if self.webrtc:
-                            self.webrtc.clear_media_queues()
-                            self.webrtc.reset_clocks()
-                            self._media_clock_started = True
-                            self._speech_media_active = True
-                        for pcm_chunk, buffered_frames in pending:
-                            await self._queue_av_chunk(pcm_chunk, buffered_frames)
-                        pending.clear()
+                    if generated <= n_opener:
+                        # Opener chunk: start pacing immediately.
+                        _start_pacing()
+                        if sub_tag:
+                            await _publish_subtitle_chunk(sub_tag)
+                        await self._queue_av_chunk(pcm_chunk, frames)
                         continue
 
-                    await self._queue_av_chunk(chunk, frames)
+                    # TTS chunks: if pacing already started (opener present),
+                    # send straight through.
+                    if pacing_started:
+                        if sub_tag:
+                            await _publish_subtitle_chunk(sub_tag)
+                        await self._queue_av_chunk(pcm_chunk, frames)
+                        continue
+
+                    # No opener — original prebuffer path.
+                    pending.append((pcm_chunk, frames, sub_tag))
+                    if generated < prebuffer_chunks:
+                        continue
+
+                    log.info("Pre-buffer done (%d chunks), starting pacing", generated)
+                    _start_pacing()
+                    for pc, bf, st in pending:
+                        if st:
+                            await _publish_subtitle_chunk(st)
+                        await self._queue_av_chunk(pc, bf)
+                    pending.clear()
 
                 if pending and not self._interrupt.is_set():
                     log.info("Flushing short pre-buffer (%d chunks), starting pacing", len(pending))
-                    if self.webrtc:
-                        self.webrtc.clear_media_queues()
-                        self.webrtc.reset_clocks()
-                        self._media_clock_started = True
-                        self._speech_media_active = True
-                    for pcm_chunk, buffered_frames in pending:
-                        await self._queue_av_chunk(pcm_chunk, buffered_frames)
+                    _start_pacing()
+                    for pc, buffered_frames, st in pending:
+                        if st:
+                            await _publish_subtitle_chunk(st)
+                        await self._queue_av_chunk(pc, buffered_frames)
 
+                timing["flashtalk_generate_sum_ms"] = flashtalk_gen_sum_s * 1000.0
+                timing["flashtalk_chunks"] = float(flashtalk_chunks)
+                timing["consumer_wall_ms"] = (time.perf_counter() - t_consumer0) * 1000.0
                 log.info("Consumer done")
 
             try:
                 # Run producer and consumer concurrently
+                t_parallel0 = time.perf_counter()
                 await asyncio.gather(_producer(), _consumer())
+                timing["parallel_total_ms"] = (time.perf_counter() - t_parallel0) * 1000.0
             except Exception as e:
                 log.exception("FlashTalk speak failed: session=%s", self.session_id)
                 await publish_event(
@@ -1411,14 +1813,69 @@ class FlashTalkRunner:
             finally:
                 self._speaking = False
                 self._speech_media_active = False
+                self._speak_t0_wall = None
+                self._speak_milestones = None
+                self._speak_enqueue_unix = None
 
-            await self._await_audio_playout()
+            timing["speak_wall_ms"] = (time.perf_counter() - t_speak_wall0) * 1000.0
+            _tc = len((full_response or "").strip())
+            log.info(
+                "Speak pipeline timing: session=%s speak_wall_ms=%.0f parallel_total_ms=%.0f "
+                "llm_first_token_ms=%s llm_stream_ms=%.0f tts_worker_wall_ms=%.0f opener_ms=%.0f "
+                "llm_tts_gather_ms=%.0f producer_wall_ms=%.0f "
+                "flashtalk_generate_sum_ms=%.0f flashtalk_chunks=%d consumer_wall_ms=%.0f "
+                "first_chunk_queued_ms=%s first_flashtalk_return_ms=%s first_webrtc_queue_ms=%s "
+                "api_enqueue_to_speak_enter_wall_ms=%s first_frame_from_api_wall_ms=%s "
+                "response_chars=%d",
+                self.session_id,
+                timing.get("speak_wall_ms", -1.0),
+                timing.get("parallel_total_ms", -1.0),
+                (
+                    "%.0f" % timing["llm_first_token_ms"]
+                    if "llm_first_token_ms" in timing
+                    else "n/a"
+                ),
+                timing.get("llm_stream_ms", -1.0),
+                timing.get("tts_worker_wall_ms", -1.0),
+                timing.get("opener_ms", -1.0),
+                timing.get("llm_tts_gather_ms", -1.0),
+                timing.get("producer_wall_ms", -1.0),
+                timing.get("flashtalk_generate_sum_ms", -1.0),
+                int(timing.get("flashtalk_chunks", 0.0)),
+                timing.get("consumer_wall_ms", -1.0),
+                (
+                    "%.0f" % timing["first_chunk_queued_ms"]
+                    if "first_chunk_queued_ms" in timing
+                    else "n/a"
+                ),
+                (
+                    "%.0f" % timing["first_flashtalk_return_ms"]
+                    if "first_flashtalk_return_ms" in timing
+                    else "n/a"
+                ),
+                (
+                    "%.0f" % timing["first_webrtc_queue_ms"]
+                    if "first_webrtc_queue_ms" in timing
+                    else "n/a"
+                ),
+                (
+                    "%.0f" % timing["api_enqueue_to_speak_enter_wall_ms"]
+                    if "api_enqueue_to_speak_enter_wall_ms" in timing
+                    else "n/a"
+                ),
+                (
+                    "%.0f" % timing["first_frame_from_api_wall_ms"]
+                    if "first_frame_from_api_wall_ms" in timing
+                    else "n/a"
+                ),
+                _tc,
+            )
+
             stored_response = _merge_spoken_reply(spoken_prefix, full_response)
             if stored_response:
                 self.conversation.add_assistant(stored_response)
-                self._has_completed_speech = True
 
-            await self._publish_speech_ended()
+            await self._publish_speech_ended(stored_response)
             if not self._closed:
                 await set_session_state(self.redis, self.session_id, "ready")
 
@@ -1481,7 +1938,28 @@ class FlashTalkRunner:
         async with self._generate_lock:
             if source == "idle" and (self._speaking or self._closed):
                 return []
-            frames = await self.flashtalk.generate(pcm_chunk)
+            try:
+                frames = await self.flashtalk.generate(pcm_chunk)
+            except RuntimeError as e:
+                msg = str(e).lower()
+                if (
+                    "no active session" in msg
+                    or "send 'init'" in msg
+                    or "send init" in msg
+                    or "not connected" in msg
+                ):
+                    ref = self._ref_image_path
+                    if ref is not None and ref.exists():
+                        log.warning(
+                            "FlashTalk generate lost session (%s); re-init and retry once",
+                            e,
+                        )
+                        await self._reset_flashtalk_session(ref)
+                        frames = await self.flashtalk.generate(pcm_chunk)
+                    else:
+                        raise
+                else:
+                    raise
         t1 = _t.monotonic()
         log.info(
             "FlashTalk %s generate: %d frames in %.2fs, vq=%d aq=%d",
@@ -1500,6 +1978,35 @@ class FlashTalkRunner:
         chunk so that the video and audio queues advance at the same pace.
         This prevents lip movement from running ahead of the audio.
         """
+        t0 = getattr(self, "_speak_t0_wall", None)
+        ms = getattr(self, "_speak_milestones", None)
+        eu = getattr(self, "_speak_enqueue_unix", None)
+        first_media_this_speak = False
+        if (
+            t0 is not None
+            and isinstance(ms, dict)
+            and "first_webrtc_queue_ms" not in ms
+        ):
+            ms["first_webrtc_queue_ms"] = (time.perf_counter() - t0) * 1000.0
+            first_media_this_speak = True
+        if (
+            eu is not None
+            and isinstance(ms, dict)
+            and "first_frame_from_api_wall_ms" not in ms
+        ):
+            ms["first_frame_from_api_wall_ms"] = (time.time() - eu) * 1000.0
+
+        if first_media_this_speak:
+            try:
+                await publish_event(
+                    self.redis,
+                    self.session_id,
+                    "speech.media_started",
+                    {"session_id": self.session_id},
+                )
+            except Exception:
+                log.exception("publish speech.media_started failed")
+
         n_frames = len(frames)
         if n_frames == 0:
             await self._audio_put_safe(pcm_chunk)
@@ -1512,7 +2019,10 @@ class FlashTalkRunner:
             if self._interrupt.is_set():
                 break
             await self._video_put_safe(frame)
-            # Pair each frame with its proportional audio slice
+            # Pair each frame with its proportional audio slice.
+            # Use _audio_put_safe (20ms sub-chunks) for clean opus encoding,
+            # but feed them right after the matching video frame so A/V stay
+            # in lockstep within the queue.
             audio_start = i * total_samples // n_frames
             audio_end = (i + 1) * total_samples // n_frames
             audio_slice = arr[audio_start:audio_end]
@@ -1525,89 +2035,53 @@ class FlashTalkRunner:
 
     async def interrupt(self) -> None:
         self._interrupt.set()
-        tasks = [task for task in self.speech_tasks if not task.done()]
-        for task in tasks:
+        pending_speech_tasks = [task for task in self.speech_tasks if not task.done()]
+        # 仅在「确有口播在进行」时需要整段重建 FlashTalk 会话；空闲时跳过可省 ~1s（close/reconnect/init）。
+        was_busy = self._speaking or bool(pending_speech_tasks)
+        for task in pending_speech_tasks:
             task.cancel()
-        if tasks:
+        if pending_speech_tasks:
             try:
-                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=2.0)
+                await asyncio.wait_for(
+                    asyncio.gather(*pending_speech_tasks, return_exceptions=True),
+                    timeout=2.0,
+                )
             except asyncio.TimeoutError:
                 pass
         self._speaking = False
         self._speech_media_active = False
+
+        # WebRTC：清缓冲并重置时钟，避免打断后仍播放旧一段的音画。
+        if self.webrtc:
+            try:
+                self.webrtc.clear_media_queues()
+                self.webrtc.reset_clocks()
+            except Exception:
+                log.exception("webrtc reset after interrupt failed")
+
+        # FlashTalk：服务端会话沿时间轴连续时，下一轮语音会从「半截嘴型」接着算，容易与新音频
+        # 不对齐。此处重新 init，使下一轮 generate 与**新**口播从零对齐。
+        # 不把 ``_last_frame`` 设回 reference：待机仍显示打断前最后一帧，避免画面闪回初始脸；
+        # 新一句的第一批生成帧到来后再更新。
+        #
+        # 若当前无口播任务（常见：用户在上一条说完后再发纯文本），不必 close/reconnect/init，
+        # 否则会每次 speak 先跑 interrupt 白白耗 ~1s。
+        ref = self._ref_image_path
+        if ref is not None and ref.exists():
+            if was_busy:
+                try:
+                    await self._reset_flashtalk_session(ref)
+                except Exception:
+                    log.exception("FlashTalk session reset after interrupt failed")
+            else:
+                log.info(
+                    "FlashTalk interrupt: idle path, skip session reset (session=%s)",
+                    self.session_id,
+                )
+
         await self._publish_speech_ended()
         if not self._closed:
             await set_session_state(self.redis, self.session_id, "ready")
-
-    async def _reset_session_before_turn(self) -> None:
-        ref_image_path = self._reference_image_path
-        if ref_image_path is None:
-            avatar_dir = self.avatar_path()
-            for name in ("reference.png", "reference.jpg", "reference.jpeg"):
-                candidate = avatar_dir / name
-                if candidate.is_file():
-                    ref_image_path = candidate.resolve()
-                    break
-        if ref_image_path is None:
-            raise FileNotFoundError(
-                f"No reference image found for avatar {self.avatar_id} before speech reset"
-            )
-
-        log.info(
-            "Resetting FlashTalk backend session before speech: session=%s avatar=%s",
-            self.session_id,
-            self.avatar_id,
-        )
-        await self._reset_flashtalk_session(ref_image_path)
-        self._idle_frame_idx = 0
-        if self._reference_frame is not None:
-            self._last_frame = self._reference_frame.copy()
-        self._media_clock_started = False
-        self._speech_media_active = False
-
-    async def _await_audio_playout(self) -> None:
-        if self.webrtc is None:
-            return
-
-        audio_queue = getattr(self.webrtc.audio, "_queue", None)
-        if not isinstance(audio_queue, asyncio.Queue):
-            return
-
-        poll_interval_s = max(
-            0.01,
-            _env_float("FLASHTALK_AUDIO_DRAIN_POLL_MS", 20.0) / 1000.0,
-        )
-        timeout_s = max(
-            0.5,
-            _env_float("FLASHTALK_AUDIO_DRAIN_TIMEOUT_S", 8.0),
-        )
-        grace_s = max(
-            0.0,
-            _env_float("FLASHTALK_AUDIO_DRAIN_GRACE_MS", 120.0) / 1000.0,
-        )
-
-        drained = await _wait_for_queue_empty(
-            audio_queue,
-            poll_interval_s=poll_interval_s,
-            timeout_s=timeout_s,
-            interrupted=self._interrupt,
-        )
-        if drained and grace_s > 0.0 and not self._interrupt.is_set():
-            await asyncio.sleep(grace_s)
-            log.info(
-                "FlashTalk audio drain complete: session=%s grace=%.0fms",
-                self.session_id,
-                grace_s * 1000.0,
-            )
-            return
-
-        if not drained:
-            log.warning(
-                "FlashTalk audio drain timed out: session=%s pending=%d timeout=%.2fs",
-                self.session_id,
-                audio_queue.qsize(),
-                timeout_s,
-            )
 
     async def close(self) -> None:
         self._closed = True

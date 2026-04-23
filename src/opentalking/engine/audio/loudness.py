@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import math
+import os
 
 import numpy as np
 import pyloudnorm as pyln
 import torch
 import torch.nn.functional as F
-import torchvision.transforms as transforms
 from PIL import Image
 
 
@@ -117,7 +117,49 @@ def match_and_blend_colors_torch(
     return (blended.permute(0, 4, 1, 2, 3) * 2.0 - 1.0).contiguous().to(source_chunk.dtype)
 
 
+def _cond_crop_biases() -> tuple[float, float]:
+    """Vertical/horizontal crop anchor in [0,1]. 0.5 = center (legacy center_crop).
+
+    FLASHTALK_COND_CROP_VERTICAL_BIAS > 0.5 shifts the crop window downward on the
+    resized image (keeps more of the bottom: hands on a desk, etc.).
+    """
+    def _f(name: str, default: float) -> float:
+        raw = os.environ.get(name)
+        if raw is None or not raw.strip():
+            return default
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+
+    v = max(0.0, min(1.0, _f("FLASHTALK_COND_CROP_VERTICAL_BIAS", 0.5)))
+    h = max(0.0, min(1.0, _f("FLASHTALK_COND_CROP_HORIZONTAL_BIAS", 0.5)))
+    return v, h
+
+
+def _biased_crop_top_left(
+    final_h: int,
+    final_w: int,
+    target_h: int,
+    target_w: int,
+    vertical_bias: float,
+    horizontal_bias: float,
+) -> tuple[int, int]:
+    margin_h = final_h - target_h
+    margin_w = final_w - target_w
+    top = int(round(margin_h * vertical_bias)) if margin_h > 0 else 0
+    left = int(round(margin_w * horizontal_bias)) if margin_w > 0 else 0
+    top = max(0, min(top, max(margin_h, 0)))
+    left = max(0, min(left, max(margin_w, 0)))
+    return top, left
+
+
 def resize_and_centercrop(cond_image, target_size: tuple[int, int]) -> torch.Tensor:
+    """Resize (cover) then crop to target_size.
+
+    Crop position is controlled by FLASHTALK_COND_CROP_VERTICAL_BIAS /
+    FLASHTALK_COND_CROP_HORIZONTAL_BIAS in [0, 1], default 0.5 (center).
+    """
     if isinstance(cond_image, torch.Tensor):
         _, orig_h, orig_w = cond_image.shape
     else:
@@ -127,16 +169,20 @@ def resize_and_centercrop(cond_image, target_size: tuple[int, int]) -> torch.Ten
     scale = max(target_h / orig_h, target_w / orig_w)
     final_h = math.ceil(scale * orig_h)
     final_w = math.ceil(scale * orig_w)
+    v_bias, h_bias = _cond_crop_biases()
+    top, left = _biased_crop_top_left(final_h, final_w, target_h, target_w, v_bias, h_bias)
 
     if isinstance(cond_image, torch.Tensor):
         if len(cond_image.shape) == 3:
             cond_image = cond_image[None]
         resized = F.interpolate(cond_image, size=(final_h, final_w), mode="nearest").contiguous()
-        return transforms.functional.center_crop(resized, target_size).squeeze(0)
+        cropped = resized[:, :, top : top + target_h, left : left + target_w]
+        return cropped.squeeze(0)
 
     resized_image = cond_image.resize((final_w, final_h), resample=Image.BILINEAR)
     resized_tensor = torch.from_numpy(np.array(resized_image))[None, ...].permute(0, 3, 1, 2).contiguous()
-    return transforms.functional.center_crop(resized_tensor, target_size)[:, :, None, :, :]
+    cropped = resized_tensor[:, :, top : top + target_h, left : left + target_w]
+    return cropped[:, :, None, :, :]
 
 
 def loudness_norm(audio_array, sr: int = 16000, lufs: float = -23) -> np.ndarray:

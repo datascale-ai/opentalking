@@ -1,24 +1,124 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BailianVoiceClone } from "./components/BailianVoiceClone";
 import { ChatInput } from "./components/ChatInput";
 import { ChatMessages } from "./components/ChatMessages";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { SETTINGS_DOCK_EXPANDED_KEY, SettingsPanel } from "./components/SettingsPanel";
 import { StartOverlay } from "./components/StartOverlay";
-import { SubtitleOverlay } from "./components/SubtitleOverlay";
 import { TopBar } from "./components/TopBar";
 import { VideoBackground } from "./components/VideoBackground";
 import {
   apiDelete,
   apiGet,
   apiPost,
+  apiPostForm,
   buildApiUrl,
   type AvatarSummary,
   type CreateSessionResponse,
+  type VoiceCatalogItem,
 } from "./lib/api";
 import { connectSse } from "./lib/sse";
 import { startPlayback } from "./lib/webrtc";
-import type { ConnectionStatus, Message } from "./types";
+import {
+  DEFAULT_EDGE_VOICE_ID,
+  EDGE_VOICE_STORAGE_KEY,
+  EDGE_ZH_VOICES,
+} from "./constants/edgeZhVoices";
+import {
+  COSYVOICE_MODEL_OPTIONS,
+  COSYVOICE_VOICE_OPTIONS,
+  MINIMAX_MODEL_OPTIONS,
+  MINIMAX_VOICE_OPTIONS,
+  SAMBERT_MODEL_OPTIONS,
+  type TtsProviderExtended,
+  isEdgeTts,
+} from "./constants/ttsBailian";
+import {
+  DEFAULT_QWEN_MODEL_ID,
+  DEFAULT_QWEN_VOICE_ID,
+  QWEN_MODEL_STORAGE_KEY,
+  QWEN_TTS_MODEL_OPTIONS,
+  QWEN_TTS_VOICE_OPTIONS,
+  QWEN_VOICE_CLONE_TARGET_OPTIONS,
+  QWEN_VOICE_STORAGE_KEY,
+  TTS_PROVIDER_STORAGE_KEY,
+} from "./constants/ttsQwen";
+import type { ConnectionStatus, Message, QueueInfo } from "./types";
+
+function bailianModelOptions(provider: TtsProviderExtended): { id: string; label: string }[] {
+  switch (provider) {
+    case "dashscope":
+      return QWEN_TTS_MODEL_OPTIONS;
+    case "cosyvoice":
+      return COSYVOICE_MODEL_OPTIONS;
+    case "sambert":
+      return SAMBERT_MODEL_OPTIONS;
+    case "minimax":
+      return MINIMAX_MODEL_OPTIONS;
+    default:
+      return [];
+  }
+}
+
+function bailianVoiceOptions(provider: TtsProviderExtended): { id: string; label: string }[] {
+  switch (provider) {
+    case "dashscope":
+      return QWEN_TTS_VOICE_OPTIONS;
+    case "cosyvoice":
+      return COSYVOICE_VOICE_OPTIONS;
+    case "minimax":
+      return MINIMAX_VOICE_OPTIONS;
+    case "sambert":
+      return [];
+    default:
+      return [];
+  }
+}
+
+function catalogProviderKey(p: TtsProviderExtended): string | null {
+  if (p === "dashscope") return "dashscope";
+  if (p === "cosyvoice") return "cosyvoice";
+  if (p === "minimax") return "minimax";
+  return null;
+}
+
+type VoiceOpt = { id: string; label: string; targetModel?: string | null };
+
+function mergeVoiceCatalogIntoOptions(
+  staticList: { id: string; label: string }[],
+  catalog: VoiceCatalogItem[],
+  ttsProvider: TtsProviderExtended,
+): VoiceOpt[] {
+  const cp = catalogProviderKey(ttsProvider);
+  if (!cp) {
+    return staticList.map((s) => ({ id: s.id, label: s.label }));
+  }
+  const staticIds = new Set(staticList.map((s) => s.id));
+  const extras: VoiceOpt[] = [];
+  for (const r of catalog) {
+    if (r.provider !== cp) continue;
+    if (staticIds.has(r.voice_id)) continue;
+    extras.push({
+      id: r.voice_id,
+      label: r.source === "clone" ? `✦ ${r.display_label}` : r.display_label,
+      targetModel: r.target_model,
+    });
+    staticIds.add(r.voice_id);
+  }
+  return [...staticList.map((s) => ({ id: s.id, label: s.label })), ...extras];
+}
 
 const MESSAGE_STORAGE_KEY = "opentalking-chat-history";
+
+type SpeakAudioResponse = { session_id: string; status: string; text: string };
+
+/** From Vite env: max bubbles to show (most recent). 0 = show full history. */
+function readChatMaxVisible(): number {
+  const raw = import.meta.env.VITE_CHAT_MAX_VISIBLE;
+  if (raw === undefined || raw === "") return 0;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(500, Math.floor(n));
+}
 
 let msgCounter = 0;
 function makeId() {
@@ -44,7 +144,14 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const speakAudioAbortRef = useRef<AbortController | null>(null);
+  /** Cumulative assistant text for the current speech turn (subtitle.chunk segments). */
   const subtitleAccRef = useRef("");
+  /** `messages` id of the in-progress assistant bubble for this turn; cleared on speech.ended. */
+  const streamingAssistantMsgIdRef = useRef<string | null>(null);
+  /** 首帧已进入 WebRTC 后再叠字幕（与口型对齐）；旧版 Worker 无 speech.media_started 时用定时回退 */
+  const subtitleMediaReadyRef = useRef(false);
+  const subtitleFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Data
   const [avatars, setAvatars] = useState<AvatarSummary[]>([]);
@@ -55,18 +162,167 @@ export default function App() {
   // Connection
   const [connection, setConnection] = useState<ConnectionStatus>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [queueInfo, setQueueInfo] = useState<QueueInfo | null>(null);
+  const [expiringCountdown, setExpiringCountdown] = useState<number | null>(null);
 
   // Chat
   const [messages, setMessages] = useState<Message[]>([]);
-  const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
 
+  const clearSubtitleFallbackTimer = useCallback(() => {
+    if (subtitleFallbackTimerRef.current !== null) {
+      clearTimeout(subtitleFallbackTimerRef.current);
+      subtitleFallbackTimerRef.current = null;
+    }
+  }, []);
+
+  const flushSubtitleDisplay = useCallback(() => {
+    const t = subtitleAccRef.current;
+    if (t) setCurrentSubtitle(t);
+  }, []);
+
   // UI
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsExpanded, setSettingsExpanded] = useState(() => {
+    try {
+      const s = window.localStorage.getItem(SETTINGS_DOCK_EXPANDED_KEY);
+      if (s === "1") return true;
+      if (s === "0") return false;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  });
+  const [voiceCloneOpen, setVoiceCloneOpen] = useState(false);
+  const [voiceCatalog, setVoiceCatalog] = useState<VoiceCatalogItem[]>([]);
+  const [edgeVoice, setEdgeVoice] = useState<string>(() => {
+    try {
+      const s = window.localStorage.getItem(EDGE_VOICE_STORAGE_KEY);
+      if (s && EDGE_ZH_VOICES.some((v) => v.id === s)) return s;
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_EDGE_VOICE_ID;
+  });
+
+  const [ttsProvider, setTtsProvider] = useState<TtsProviderExtended>(() => {
+    try {
+      const s = window.localStorage.getItem(TTS_PROVIDER_STORAGE_KEY)?.trim();
+      if (
+        s === "edge" ||
+        s === "dashscope" ||
+        s === "cosyvoice" ||
+        s === "sambert" ||
+        s === "minimax"
+      )
+        return s;
+    } catch {
+      /* ignore */
+    }
+    return "dashscope";
+  });
+
+  const [qwenModel, setQwenModel] = useState<string>(() => {
+    try {
+      const s = window.localStorage.getItem(QWEN_MODEL_STORAGE_KEY)?.trim();
+      if (s && /^[\w.-]+$/.test(s)) return s;
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_QWEN_MODEL_ID;
+  });
+
+  const [qwenVoice, setQwenVoice] = useState<string>(() => {
+    try {
+      const s = window.localStorage.getItem(QWEN_VOICE_STORAGE_KEY)?.trim();
+      if (s && s.length > 0 && s.length <= 256) return s;
+    } catch {
+      /* ignore */
+    }
+    return DEFAULT_QWEN_VOICE_ID;
+  });
+
+  const loadVoices = useCallback(async () => {
+    try {
+      const res = await apiGet<{ items: VoiceCatalogItem[] }>("/voices");
+      setVoiceCatalog(res.items ?? []);
+    } catch (e) {
+      console.warn("Failed to load /voices", e);
+    }
+  }, []);
+
+  const bailianModels = useMemo(() => {
+    const base = bailianModelOptions(ttsProvider);
+    if (ttsProvider === "dashscope") {
+      const ids = new Set(base.map((b) => b.id));
+      const extra = QWEN_VOICE_CLONE_TARGET_OPTIONS.filter((o) => !ids.has(o.id));
+      return [...base, ...extra];
+    }
+    return base;
+  }, [ttsProvider]);
+
+  const bailianVoices = useMemo(
+    () => mergeVoiceCatalogIntoOptions(bailianVoiceOptions(ttsProvider), voiceCatalog, ttsProvider),
+    [ttsProvider, voiceCatalog],
+  );
+
+  useEffect(() => {
+    const mids = bailianModels.map((o) => o.id);
+    const vids = bailianVoices.map((o) => o.id);
+    setQwenModel((prev) => (mids.includes(prev) ? prev : mids[0] ?? ""));
+    if (vids.length === 0) return;
+    setQwenVoice((prev) => (vids.includes(prev) ? prev : vids[0] ?? ""));
+  }, [ttsProvider, bailianModels, bailianVoices]);
+
+  useEffect(() => {
+    const opt = bailianVoices.find((o) => o.id === qwenVoice);
+    if (opt?.targetModel) {
+      setQwenModel(opt.targetModel);
+    }
+  }, [qwenVoice, bailianVoices]);
 
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(EDGE_VOICE_STORAGE_KEY, edgeVoice);
+    } catch {
+      /* ignore */
+    }
+  }, [edgeVoice]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TTS_PROVIDER_STORAGE_KEY, ttsProvider);
+    } catch {
+      /* ignore */
+    }
+  }, [ttsProvider]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(QWEN_MODEL_STORAGE_KEY, qwenModel);
+    } catch {
+      /* ignore */
+    }
+  }, [qwenModel]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(QWEN_VOICE_STORAGE_KEY, qwenVoice);
+    } catch {
+      /* ignore */
+    }
+  }, [qwenVoice]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SETTINGS_DOCK_EXPANDED_KEY, settingsExpanded ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }, [settingsExpanded]);
 
   useEffect(() => {
     try {
@@ -109,13 +365,18 @@ export default function App() {
       closePeerConnection();
       setSessionId(null);
       setIsSpeaking(false);
-      setCurrentSubtitle("");
+      setQueueInfo(null);
+      setExpiringCountdown(null);
+      slotAcquiredRef.current = null;
       subtitleAccRef.current = "";
+      subtitleMediaReadyRef.current = false;
+      clearSubtitleFallbackTimer();
+      streamingAssistantMsgIdRef.current = null;
       if (clearMessages) {
         setMessages([]);
       }
     },
-    [closePeerConnection],
+    [clearSubtitleFallbackTimer, closePeerConnection],
   );
 
   // ---------- Init: fetch avatars & models ----------
@@ -125,6 +386,7 @@ export default function App() {
         const [av, mo] = await Promise.all([
           apiGet<AvatarSummary[]>("/avatars"),
           apiGet<{ models: string[] }>("/models"),
+          loadVoices(),
         ]);
         setAvatars(av);
         setModels(mo.models);
@@ -137,7 +399,7 @@ export default function App() {
         setConnection("error");
       }
     })();
-  }, []);
+  }, [loadVoices]);
 
   // Keep model aligned with selected avatar
   useEffect(() => {
@@ -151,33 +413,122 @@ export default function App() {
   useEffect(() => {
     if (!sessionId) return;
     const stop = connectSse(buildApiUrl(`/sessions/${sessionId}/events`), (ev, data) => {
+      if (ev === "session.queued" && data && typeof data === "object") {
+        const d = data as { position?: number; message?: string };
+        const position = d.position ?? 1;
+        const message = d.message ?? "waiting";
+        if (position > 0) {
+          setConnection("queued");
+          setQueueInfo({ position, message });
+        } else if (position === 0) {
+          // Slot acquired: unblock handleStart to proceed with WebRTC
+          slotAcquiredRef.current?.();
+          slotAcquiredRef.current = null;
+          setConnection("connecting");
+          setQueueInfo(null);
+        } else {
+          // -1: rejected (queue_full or timeout)
+          slotAcquiredRef.current = null;
+          setConnection("error");
+          setQueueInfo({ position, message });
+        }
+      }
+      if (ev === "session.expiring" && data && typeof data === "object") {
+        const d = data as { remaining_sec?: number };
+        const remaining = d.remaining_sec ?? 60;
+        setConnection("expiring");
+        setExpiringCountdown(remaining);
+        // Start local countdown
+        const interval = setInterval(() => {
+          setExpiringCountdown((prev) => {
+            if (prev === null || prev <= 1) {
+              clearInterval(interval);
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+      if (ev === "session.expired") {
+        // Server force-closed the session, reset to idle
+        setConnection("idle");
+        setExpiringCountdown(null);
+        setSessionId(null);
+        setIsSpeaking(false);
+        subtitleAccRef.current = "";
+        const orphanId = streamingAssistantMsgIdRef.current;
+        streamingAssistantMsgIdRef.current = null;
+        if (orphanId) {
+          setMessages((prev) => prev.filter((m) => m.id !== orphanId));
+        }
+      }
       if (ev === "speech.started") {
         setIsSpeaking(true);
         subtitleAccRef.current = "";
+        subtitleMediaReadyRef.current = false;
+        clearSubtitleFallbackTimer();
         setCurrentSubtitle("");
+        const staleId = streamingAssistantMsgIdRef.current;
+        if (staleId) {
+          setMessages((prev) => prev.filter((m) => m.id !== staleId));
+          streamingAssistantMsgIdRef.current = null;
+        }
+        const id = makeId();
+        streamingAssistantMsgIdRef.current = id;
+        setMessages((prev) => [
+          ...prev,
+          { id, role: "assistant", text: "", timestamp: Date.now() },
+        ]);
+      }
+      if (ev === "speech.media_started") {
+        subtitleMediaReadyRef.current = true;
+        clearSubtitleFallbackTimer();
+        flushSubtitleDisplay();
       }
       if (ev === "subtitle.chunk" && data && typeof data === "object") {
         const t = (data as { text?: string }).text;
-        if (t) {
-          subtitleAccRef.current = t;
-          setCurrentSubtitle(t);
+        if (!t) return;
+        const msgId = streamingAssistantMsgIdRef.current;
+        subtitleAccRef.current += t;
+        if (msgId) {
+          const next = subtitleAccRef.current;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === msgId ? { ...m, text: next } : m)),
+          );
         }
       }
       if (ev === "speech.ended") {
         setIsSpeaking(false);
-        const finalText = subtitleAccRef.current;
-        if (finalText) {
+        clearSubtitleFallbackTimer();
+        const d = data && typeof data === "object" ? (data as { text?: string }) : {};
+        const fromEvent = typeof d.text === "string" ? d.text.trim() : "";
+        const streamed = subtitleAccRef.current.trim();
+        const finalText = fromEvent || streamed;
+        const msgId = streamingAssistantMsgIdRef.current;
+        streamingAssistantMsgIdRef.current = null;
+        subtitleAccRef.current = "";
+        if (msgId) {
+          if (finalText) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === msgId ? { ...m, text: finalText } : m)),
+            );
+          } else {
+            setMessages((prev) => prev.filter((m) => m.id !== msgId));
+          }
+        } else if (finalText) {
           setMessages((prev) => [
             ...prev,
             { id: makeId(), role: "assistant", text: finalText, timestamp: Date.now() },
           ]);
         }
-        setCurrentSubtitle("");
-        subtitleAccRef.current = "";
+        subtitleMediaReadyRef.current = false;
       }
     });
     return stop;
-  }, [sessionId]);
+  }, [clearSubtitleFallbackTimer, flushSubtitleDisplay, sessionId]);
+
+  // Resolves when FlashTalk slot is acquired (session.queued position=0)
+  const slotAcquiredRef = useRef<(() => void) | null>(null);
 
   // ---------- Actions ----------
   const handleStart = useCallback(async () => {
@@ -190,6 +541,7 @@ export default function App() {
     }
 
     setConnection("connecting");
+    setQueueInfo(null);
     let createdSessionId: string | null = null;
     try {
       const created = await apiPost<CreateSessionResponse>("/sessions", {
@@ -199,11 +551,35 @@ export default function App() {
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
 
+      // FlashTalk: session is queued, wait for slot_acquired via SSE before WebRTC
+      if (created.status === "queued") {
+        // Fetch current queue position immediately (the queued event may have
+        // fired before SSE was established and got lost in pub/sub)
+        try {
+          const qs = await apiGet<{ slot_occupied: boolean; queue_size: number }>("/queue/status");
+          if (qs.slot_occupied) {
+            setConnection("queued");
+            setQueueInfo({ position: qs.queue_size, message: "waiting" });
+          }
+        } catch { /* ignore, SSE will update */ }
+
+        await new Promise<void>((resolve, reject) => {
+          slotAcquiredRef.current = resolve;
+          // Timeout guard matching server-side slot timeout
+          const timer = setTimeout(() => {
+            slotAcquiredRef.current = null;
+            reject(new Error("FlashTalk slot wait timeout"));
+          }, 360_000);
+          // Clean up timer when resolved
+          const origResolve = resolve;
+          slotAcquiredRef.current = () => { clearTimeout(timer); origResolve(); };
+        });
+      }
+
       closePeerConnection();
-      const pc = await startPlayback(created.session_id, videoRef.current);
+      const pc = await startPlayback(created.session_id, videoRef.current!);
       pcRef.current = pc;
-      // Unmute after user gesture so audio plays (autoplay policy requires muted initially)
-      videoRef.current.muted = false;
+      videoRef.current!.muted = false;
       setConnection("live");
       await apiPost(`/sessions/${created.session_id}/start`, {});
     } catch (error) {
@@ -223,14 +599,68 @@ export default function App() {
         ...prev,
         { id: makeId(), role: "user", text, timestamp: Date.now() },
       ]);
-      void apiPost(`/sessions/${sessionId}/speak`, { text }).catch(() => {
-        setConnection("error");
+      void apiPost(`/sessions/${sessionId}/speak`, {
+        text,
+        voice:
+          isEdgeTts(ttsProvider) ? edgeVoice : ttsProvider === "sambert" ? undefined : qwenVoice,
+        tts_provider: ttsProvider,
+        tts_model: !isEdgeTts(ttsProvider) ? qwenModel : undefined,
+      }).catch((err) => {
+        console.warn("speak failed", err);
       });
     },
-    [sessionId],
+    [edgeVoice, qwenModel, qwenVoice, sessionId, ttsProvider],
+  );
+
+  /** 流式 ASR（WebSocket PCM）成功后仅追加本地消息（speak 已由后端入队） */
+  const handleSpeakAudioStreamResult = useCallback(({ text }: { text: string }) => {
+    setMessages((prev) => [
+      ...prev,
+      { id: makeId(), role: "user", text, timestamp: Date.now() },
+    ]);
+  }, []);
+
+  const handleSpeakAudio = useCallback(
+    async (blob: Blob) => {
+      if (!sessionId) return;
+      speakAudioAbortRef.current?.abort();
+      const ac = new AbortController();
+      speakAudioAbortRef.current = ac;
+      const fd = new FormData();
+      fd.append("file", blob, "speech.webm");
+      fd.append(
+        "voice",
+        isEdgeTts(ttsProvider) ? edgeVoice : ttsProvider === "sambert" ? "" : qwenVoice,
+      );
+      fd.append("tts_provider", ttsProvider);
+      if (!isEdgeTts(ttsProvider)) {
+        fd.append("tts_model", qwenModel);
+      }
+      try {
+        const res = await apiPostForm<SpeakAudioResponse>(
+          `/sessions/${sessionId}/speak_audio`,
+          fd,
+          { signal: ac.signal },
+        );
+        setMessages((prev) => [
+          ...prev,
+          { id: makeId(), role: "user", text: res.text, timestamp: Date.now() },
+        ]);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        // 勿将 connection 置为 error，否则会重新出现「开始 Demo」全屏遮罩
+        console.warn("speak_audio failed", error);
+      } finally {
+        if (speakAudioAbortRef.current === ac) {
+          speakAudioAbortRef.current = null;
+        }
+      }
+    },
+    [edgeVoice, qwenModel, qwenVoice, sessionId, ttsProvider],
   );
 
   const handleInterrupt = useCallback(() => {
+    speakAudioAbortRef.current?.abort();
     if (!sessionId) return;
     void apiPost(`/sessions/${sessionId}/interrupt`, {}).catch(() => {});
   }, [sessionId]);
@@ -286,7 +716,8 @@ export default function App() {
   }, [closePeerConnection, releaseSession]);
 
   const currentAvatar = avatars.find((a) => a.id === avatarId) ?? null;
-  const showStart = connection === "idle" || connection === "error";
+  const showStart = connection === "idle" || connection === "error" || connection === "connecting" || connection === "queued";
+  const chatMaxVisible = readChatMaxVisible();
 
   return (
     <>
@@ -302,44 +733,91 @@ export default function App() {
         }}
       />
 
-      {/* Layer 2: Subtitle */}
-      <SubtitleOverlay text={currentSubtitle} />
-
       {/* Layer 2: Chat messages */}
-      <ChatMessages messages={messages} />
+      <ChatMessages messages={messages} maxVisible={chatMaxVisible} />
 
       {/* Layer 3: Top bar */}
-      <TopBar
-        connection={connection}
-        onSettingsClick={() => setSettingsOpen(true)}
-      />
+      <TopBar connection={connection} />
+
+      {voiceCloneOpen ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-[55] cursor-default bg-black/55 backdrop-blur-[2px]"
+            aria-label="关闭音色复刻"
+            onClick={() => setVoiceCloneOpen(false)}
+          />
+          <aside className="pointer-events-none fixed inset-y-0 right-0 z-[56] flex w-[min(100vw,26rem)] shadow-2xl">
+            <div className="pointer-events-auto flex h-full max-h-[100dvh] flex-col overflow-hidden border-l border-white/15 bg-black/85 backdrop-blur-xl">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+                <BailianVoiceClone
+                  onSuccess={() => void loadVoices()}
+                  onClose={() => setVoiceCloneOpen(false)}
+                />
+              </div>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       {/* Layer 3: Input bar */}
       <ChatInput
         onSend={handleSend}
+        onSpeakAudio={handleSpeakAudio}
+        streamingAsrSessionId={sessionId}
+        onSpeakAudioStreamResult={handleSpeakAudioStreamResult}
         onInterrupt={handleInterrupt}
         isSpeaking={isSpeaking}
-        disabled={connection !== "live"}
+        disabled={connection !== "live" && connection !== "expiring"}
+        onOpenSettings={() => setSettingsExpanded(true)}
+        ttsProvider={ttsProvider}
+        edgeVoice={edgeVoice}
+        qwenModel={qwenModel}
+        qwenVoice={qwenVoice}
       />
+
+      {/* Layer 3: Session expiring countdown toast */}
+      {expiringCountdown !== null && (
+        <div className="fixed right-4 top-14 z-30 flex items-center gap-2 rounded-xl bg-amber-500/90 px-4 py-2.5 text-sm font-medium text-white shadow-lg backdrop-blur-sm">
+          <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2m6-2a10 10 0 1 1-20 0 10 10 0 0 1 20 0z" />
+          </svg>
+          体验即将到期，剩余 <span className="tabular-nums font-bold">{expiringCountdown}</span> 秒
+        </div>
+      )}
 
       {/* Layer 4: Start overlay */}
       <StartOverlay
         avatar={currentAvatar}
         loading={connection === "connecting"}
+        queued={connection === "queued"}
+        queueInfo={queueInfo}
         onStart={() => void handleStart()}
         visible={showStart}
       />
 
       {/* Layer 5: Settings panel */}
       <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
+        expanded={settingsExpanded}
+        onExpandedChange={setSettingsExpanded}
         avatars={avatars}
         models={models.length ? models : ["wav2lip", "musetalk"]}
         avatarId={avatarId}
         model={model}
         onAvatarChange={handleAvatarChange}
         onModelChange={handleModelChange}
+        edgeVoice={edgeVoice}
+        onEdgeVoiceChange={setEdgeVoice}
+        edgeVoiceOptions={EDGE_ZH_VOICES}
+        ttsProvider={ttsProvider}
+        onTtsProviderChange={setTtsProvider}
+        qwenModel={qwenModel}
+        onQwenModelChange={setQwenModel}
+        qwenModelOptions={bailianModels}
+        qwenVoice={qwenVoice}
+        onQwenVoiceChange={setQwenVoice}
+        qwenVoiceOptions={bailianVoices}
+        onOpenVoiceClone={() => setVoiceCloneOpen(true)}
       />
     </>
   );

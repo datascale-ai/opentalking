@@ -23,7 +23,12 @@ class StubRunner:
         self.prepared = True
         self.ready_event.set()
 
-    def create_speak_task(self, text: str) -> asyncio.Task[None]:
+    def create_speak_task(
+        self,
+        text: str,
+        tts_voice: str | None = None,
+        **kwargs: object,
+    ) -> asyncio.Task[None]:
         async def _speak() -> None:
             self.spoken.append(text)
 

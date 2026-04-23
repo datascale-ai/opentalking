@@ -96,6 +96,10 @@ def _load_legacy_env_source() -> dict[str, Any]:
         "FLASHTALK_JPEG_DECODE_WORKERS": "flashtalk_jpeg_decode_workers",
         "FLASHTALK_AUDIO_LOUDNESS_NORM": "flashtalk_audio_loudness_norm",
         "FLASHTALK_IDLE_CACHE_CHUNKS": "flashtalk_idle_cache_chunks",
+        "FLASHTALK_IDLE_PROMPT": "flashtalk_idle_prompt",
+        "FLASHTALK_IDLE_SEED": "flashtalk_idle_seed",
+        "FLASHTALK_IDLE_ENABLE": "flashtalk_idle_enable",
+        "FLASHTALK_IDLE_CACHE_DIR": "flashtalk_idle_cache_dir",
         "FLASHTALK_IDLE_MOUTH_LOCK": "flashtalk_idle_mouth_lock",
         "FLASHTALK_IDLE_EYE_LOCK": "flashtalk_idle_eye_lock",
         "FLASHTALK_PREBUFFER_CHUNKS": "flashtalk_prebuffer_chunks",
@@ -162,6 +166,12 @@ class Settings(BaseSettings):
     flashtalk_jpeg_decode_workers: int = 4
     flashtalk_audio_loudness_norm: int = 0
     flashtalk_idle_cache_chunks: int = 4
+    # Idle clip (IdleVideoGenerator): read from .env via OPENTALKING_FLASHTALK_IDLE_* only
+    # when declared here — pydantic does not put unknown keys into os.environ.
+    flashtalk_idle_enable: bool = True
+    flashtalk_idle_cache_dir: str | None = None
+    flashtalk_idle_prompt: str | None = None
+    flashtalk_idle_seed: int = 9999
     flashtalk_idle_mouth_lock: float = 0.97
     flashtalk_idle_eye_lock: float = 0.65
     flashtalk_prebuffer_chunks: int = 1
@@ -181,7 +191,15 @@ class Settings(BaseSettings):
     llm_model: str = "qwen-turbo"
     llm_system_prompt: str = "You are a friendly digital human assistant."
 
-    tts_provider: str = "auto"
+    #: edge | dashscope | bailian | qwen | qwen_tts | cosyvoice | minimax | sambert（OPENTALKING_TTS_PROVIDER）
+    tts_provider: str = Field(default="edge")
+
+    #: 音色目录 SQLite；默认 ./data/opentalking.sqlite3
+    sqlite_path: str = Field(default="./data/opentalking.sqlite3")
+
+    #: CosyVoice 复刻时，百炼需拉取公网 URL；若留空则用请求的 Host 拼 URL（内网部署请填公网可达地址）
+    public_base_url: str = ""
+
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
     tts_sample_rate: int = 16000
     tts_streaming_decode: bool = True
@@ -195,6 +213,14 @@ class Settings(BaseSettings):
     torch_device: str = "cpu"
     default_model: str = "flashtalk"
     default_fps: int = 25
+
+    # FlashTalk slot queue: max sessions waiting behind the active one (0 = unlimited)
+    flashtalk_max_queue_size: int = 3
+    # Seconds a session may wait in queue before being rejected (0 = no timeout)
+    flashtalk_slot_timeout_sec: int = 3600
+    # Max seconds a single session may hold the FlashTalk slot (0 = unlimited)
+    # When exceeded the session is force-closed and the slot is released.
+    flashtalk_max_session_sec: int = 600
 
     @classmethod
     def settings_customise_sources(

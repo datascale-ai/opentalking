@@ -19,6 +19,7 @@ dependencies = [
   "numpy>=1.24",
   "httpx>=0.26",
   "edge-tts>=6.1",
+  "dashscope>=1.25.11",
   "aiortc>=1.6",
   "av>=14",
   "python-multipart>=0.0.9",
