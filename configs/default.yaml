@@ -22,7 +22,7 @@ flashtalk:
 llm:
   base_url: ""
   api_key: ""
-  model: qwen-turbo
+  model: qwen-flash
   system_prompt: You are a friendly digital human assistant.
 tts:
   voice: zh-CN-XiaoxiaoNeural
