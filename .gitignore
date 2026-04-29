@@ -45,6 +45,7 @@ data/
 
 # Runtime output & debug artifacts
 output/
+outputs/
 
 # Frontend build artifacts (regenerate with npm run build)
 apps/web/dist/
