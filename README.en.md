@@ -61,27 +61,46 @@ Join our QQ group to discuss real-time digital humans, FlashTalk, OmniRT, model 
 
 ## Demo videos
 
-Six placeholder slots showcase the pipeline's range. Once the videos are ready, drop the MP4 / WebM files into `assets/demo/` and replace the paths below.
+These demo videos show how the OpenTalking pipeline behaves across different real-time digital-human scenarios. The landscape clip spans the full width on its own row; portrait clips follow so row height is not dominated by the landscape video (which can make portrait previews look vertically clipped).
 
-| Scenario | Video path | Highlights |
-| --- | --- | --- |
-| Realtime mobile capture | `assets/demo/realtime-mobile.mp4` | Live phone-recorded conversation; low latency, barge-in, end-to-end stability. |
-| Anime stand-up | `assets/demo/anime-standup.mp4` | Anime character doing stand-up; character style, expressions, sustained speech. |
-| E-commerce livestream | `assets/demo/ecommerce.mp4` | Product walkthrough, pricing, interactive sales scripts. |
-| News anchor | `assets/demo/news-anchor.mp4` | Stable frontal delivery, subtitle sync, professional tone. |
-| Singing / impression | `assets/demo/singing-parody.mp4` | Singing or impression-style content; use licensed or fictional likenesses. |
-| Companion character | `assets/demo/companion.mp4` | Soft-spoken comforting dialogue with warm expressions. |
-
-<!--
-Once the video files are in place, you can render them inline:
-
-<video src="assets/demo/realtime-mobile.mp4" controls width="32%"></video>
-<video src="assets/demo/anime-standup.mp4" controls width="32%"></video>
-<video src="assets/demo/ecommerce.mp4" controls width="32%"></video>
-<video src="assets/demo/news-anchor.mp4" controls width="32%"></video>
-<video src="assets/demo/singing-parody.mp4" controls width="32%"></video>
-<video src="assets/demo/companion.mp4" controls width="32%"></video>
--->
+<table>
+  <tr>
+    <td align="center" colspan="3">
+      <b>Realtime mobile capture</b><br/>
+      <video src="https://github.com/user-attachments/assets/a3abce76-12c0-4b8b-844f-bbc5c3227dc7" controls width="100%"></video><br/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <b>Anime stand-up</b><br/>
+      <video src="https://github.com/user-attachments/assets/b3743604-7f50-40d1-9248-f2df80ea7308" controls width="100%"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>E-commerce livestream</b><br/>
+      <video src="https://github.com/user-attachments/assets/826c777b-a9d2-49be-a1a0-b295c8a4b498" controls width="100%"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>News anchor</b><br/>
+      <video src="https://github.com/user-attachments/assets/34a282da-84cb-4134-bc4b-644356ac4f6f" controls width="100%"></video><br/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" colspan="3">
+      <table>
+        <tr>
+          <td align="center" valign="top" width="50%">
+            <b>Singing / impression</b><br/>
+            <video src="https://github.com/user-attachments/assets/98e813c2-f170-4cc8-b934-a77a72061d2e" controls width="100%"></video><br/>
+          </td>
+          <td align="center" valign="top" width="50%">
+            <b>Companion character</b><br/>
+            <video src="https://github.com/user-attachments/assets/44bbf1d9-75b1-4b0a-9704-c7f81c39446e" controls width="100%"></video><br/>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
 
 ## Architecture
 
@@ -190,11 +209,11 @@ Requirements: Python ≥ 3.9, Node.js ≥ 18, FFmpeg; distributed mode also requ
 
 High-quality digital-human models served by OmniRT (see [omnirt/docs/user_guide/generation/talking_head.en.md](https://github.com/datascale-ai/omnirt/blob/main/docs/user_guide/generation/talking_head.en.md)):
 
-| Model | Input | Hardware | OpenTalking integration |
-| --- | --- | --- | --- |
-| `soulx-flashtalk-14b` (default) | portrait + audio | ≥ 20 GB VRAM | OmniRT FlashTalk WebSocket, `OPENTALKING_DEFAULT_MODEL=flashtalk` |
-| `soulx-flashhead-1.3b` | portrait + audio | ≥ 48 GB aggregate VRAM | OmniRT currently exposes only HTTP `/v1/generate`; OpenTalking WebSocket adapter is planned |
-| `soulx-liveact-14b` | portrait + audio | 4× Ascend 910B recommended | same as above |
+| Model | Input | OpenTalking integration |
+| --- | --- | --- |
+| `soulx-flashtalk-14b` (default) | portrait + audio | OmniRT FlashTalk WebSocket, `OPENTALKING_DEFAULT_MODEL=flashtalk` |
+| `soulx-flashhead-1.3b` | portrait + audio | OmniRT currently exposes only HTTP `/v1/generate`; OpenTalking WebSocket adapter is planned |
+| `soulx-liveact-14b` | portrait + audio | same as above |
 
 OpenTalking built-in lightweight adapters (no OmniRT dependency, run in-process, suitable for demos on smaller GPUs):
 
@@ -211,7 +230,7 @@ OpenTalking built-in lightweight adapters (no OmniRT dependency, run in-process,
 - [x] **Real-time digital-human baseline**  
   Web console, LLM dialogue, TTS, subtitle events, WebRTC media playback.
 
-- [~] **More natural realtime dialogue**  
+- [ ] **More natural realtime dialogue(in progress)**  
   Barge-in, session state, low-latency response, audio-video sync, error recovery.
 
 - [ ] **OmniRT model service integration**  
@@ -220,7 +239,7 @@ OpenTalking built-in lightweight adapters (no OmniRT dependency, run in-process,
 - [ ] **Consumer-grade GPU support**  
   Lightweight models, single-card realtime configs, end-to-end benchmarks for RTX 3090 / 4090.
 
-- [~] **High-quality private deployment**  
+- [ ] **High-quality private deployment(in progress)**  
   Enterprise private deployment with external OmniRT inference, capacity scheduling, health checks, production monitoring; Ascend 910B and similar enterprise GPU / NPU paths in progress.
 
 - [ ] **Custom characters and voices**  
