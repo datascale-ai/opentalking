@@ -10,7 +10,9 @@ NPROC="${OPENTALKING_FLASHTALK_GPU_COUNT:-8}"
 CKPT_DIR="${OPENTALKING_FLASHTALK_CKPT_DIR:-./models/SoulX-FlashTalk-14B}"
 WAV2VEC_DIR="${OPENTALKING_FLASHTALK_WAV2VEC_DIR:-./models/chinese-wav2vec2-base}"
 
-exec torchrun --nproc_per_node="${NPROC}" -m opentalking.server \
+PYTHON_BIN="${PYTHON:-python}"
+
+exec "${PYTHON_BIN}" -m torch.distributed.run --nproc_per_node="${NPROC}" -m opentalking.server \
   --host "${HOST}" \
   --port "${PORT}" \
   --ckpt_dir "${CKPT_DIR}" \
