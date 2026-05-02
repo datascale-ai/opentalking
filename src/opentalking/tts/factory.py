@@ -189,6 +189,20 @@ def create_tts_adapter(
             chunk_ms=chunk_ms,
             model=tts_model,
         )
+    if p == "elevenlabs":
+        try:
+            from opentalking.core.config import get_settings
+
+            settings = get_settings()
+        except Exception:
+            settings = SimpleNamespace()
+        return _build_elevenlabs_adapter(
+            settings=settings,
+            sample_rate=sample_rate,
+            chunk_ms=chunk_ms,
+            default_voice=default_voice,
+            tts_model=tts_model,
+        )
     return EdgeTTSAdapter(
         default_voice=default_voice or _edge_default_voice(),
         sample_rate=sample_rate,
@@ -208,7 +222,14 @@ def _build_edge_adapter(*, settings, sample_rate: int, chunk_ms: float) -> EdgeT
     )
 
 
-def _build_elevenlabs_adapter(*, settings, sample_rate: int, chunk_ms: float):
+def _build_elevenlabs_adapter(
+    *,
+    settings,
+    sample_rate: int,
+    chunk_ms: float,
+    default_voice: str | None = None,
+    tts_model: str | None = None,
+):
     from opentalking.tts.elevenlabs.adapter import ElevenLabsTTSAdapter
 
     api_key = (
@@ -216,11 +237,13 @@ def _build_elevenlabs_adapter(*, settings, sample_rate: int, chunk_ms: float):
         or os.environ.get("OPENTALKING_TTS_ELEVENLABS_API_KEY", "").strip()
     )
     voice_id = (
-        getattr(settings, "tts_elevenlabs_voice_id", "").strip()
+        (default_voice or "").strip()
+        or getattr(settings, "tts_elevenlabs_voice_id", "").strip()
         or os.environ.get("OPENTALKING_TTS_ELEVENLABS_VOICE_ID", "").strip()
     )
     model_id = (
-        getattr(settings, "tts_elevenlabs_model_id", "").strip()
+        (tts_model or "").strip()
+        or getattr(settings, "tts_elevenlabs_model_id", "").strip()
         or os.environ.get("OPENTALKING_TTS_ELEVENLABS_MODEL_ID", "eleven_flash_v2_5").strip()
     )
     base_url = (
@@ -263,15 +286,13 @@ def build_tts_adapter(
     provider = (tts_provider or "").strip().lower() or getattr(settings, "normalized_tts_provider", _provider())
 
     if provider == "elevenlabs":
-        try:
-            settings = settings or get_settings()
-        except Exception:
-            settings = SimpleNamespace()
-        if default_voice:
-            settings.tts_elevenlabs_voice_id = default_voice
-        if tts_model:
-            settings.tts_elevenlabs_model_id = tts_model
-        return _build_elevenlabs_adapter(settings=settings, sample_rate=sample_rate, chunk_ms=chunk_ms)
+        return _build_elevenlabs_adapter(
+            settings=settings,
+            sample_rate=sample_rate,
+            chunk_ms=chunk_ms,
+            default_voice=default_voice,
+            tts_model=tts_model,
+        )
 
     # For dashscope/bailian/etc., delegate to create_tts_adapter
     if provider in _QWEN_RT or provider in _COSY_WS or provider in _SAMBERT:

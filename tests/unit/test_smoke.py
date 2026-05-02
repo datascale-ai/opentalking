@@ -37,7 +37,7 @@ def test_demo_musetalk_avatar_visible_and_fallback_animates() -> None:
 
     manifest = parse_manifest(demo / "manifest.json")
     state = load_frame_avatar_state(demo, manifest)
-    assert state.frames[0].shape[:2] == (256, 256)
+    assert state.frames[0].shape[:2] == (manifest.height, manifest.width)
 
     first = compose_simple(state, 0, None, timestamp_ms=0).data
     second = compose_simple(state, 1, None, timestamp_ms=40).data

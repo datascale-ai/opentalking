@@ -28,6 +28,7 @@ from apps.api.schemas.session import (
 from apps.api.services import session_service
 from apps.api.services.worker_service import forward_webrtc_offer, forward_worker_post_empty
 from apps.api.core.config import get_settings
+from opentalking.core.queue_status import get_flashtalk_queue_status
 from opentalking.core.redis_keys import offline_bundle_job_key
 from opentalking.core.session_store import (
     apply_flashtalk_recording_start,
@@ -79,6 +80,10 @@ def _normalize_voice_for_speak(
             vn = normalize_optional_qwen_voice(voice)
             tm = sanitize_qwen_model(tts_model)
             return vn, eff, tm
+        if eff == "elevenlabs":
+            vn = str(voice).strip() if voice else None
+            tm = str(tts_model).strip() if tts_model and str(tts_model).strip() else None
+            return vn, eff, tm
         vn = normalize_optional_edge_voice(voice)
         if tts_model and str(tts_model).strip():
             raise HTTPException(
@@ -101,32 +106,40 @@ async def _stream_worker_flashtalk_recording(
     base = worker_url.rstrip("/")
     url = f"{base}/sessions/{session_id}/flashtalk-recording"
     timeout = httpx.Timeout(120.0, connect=10.0)
+    client = httpx.AsyncClient(timeout=timeout)
+    stream_cm = client.stream("GET", url)
+
+    try:
+        r = await stream_cm.__aenter__()
+    except httpx.RequestError as exc:
+        await client.aclose()
+        raise HTTPException(
+            status_code=502,
+            detail=f"worker recording download unreachable: {exc}",
+        ) from exc
+
+    if r.status_code != 200:
+        text = (await r.aread()).decode("utf-8", errors="replace")
+        await stream_cm.__aexit__(None, None, None)
+        await client.aclose()
+        if r.status_code == 404:
+            raise HTTPException(status_code=404, detail="recording not ready")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "worker recording download failed "
+                f"({r.status_code}): {text[:500]}"
+            ),
+        )
 
     async def body() -> AsyncIterator[bytes]:
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                async with client.stream("GET", url) as r:
-                    if r.status_code != 200:
-                        text = (await r.aread()).decode("utf-8", errors="replace")
-                        if r.status_code == 404:
-                            raise HTTPException(status_code=404, detail="recording not ready")
-                        raise HTTPException(
-                            status_code=502,
-                            detail=(
-                                "worker recording download failed "
-                                f"({r.status_code}): {text[:500]}"
-                            ),
-                        )
-                    async for chunk in r.aiter_bytes():
-                        if chunk:
-                            yield chunk
-        except HTTPException:
-            raise
-        except httpx.RequestError as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"worker recording download unreachable: {exc}",
-            ) from exc
+            async for chunk in r.aiter_bytes():
+                if chunk:
+                    yield chunk
+        finally:
+            await stream_cm.__aexit__(None, None, None)
+            await client.aclose()
 
     return StreamingResponse(
         body(),
@@ -194,11 +207,40 @@ def _session_customizations(request: Request) -> dict[str, dict[str, str]]:
     return custom
 
 
+def _resolve_avatar_dir(settings: object, avatar_id: str) -> tuple[Path, Path]:
+    avatars_root = Path(getattr(settings, "avatars_dir")).resolve()
+    avatar_dir = (avatars_root / avatar_id).resolve()
+    try:
+        avatar_dir.relative_to(avatars_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid avatar_id") from exc
+    return avatars_root, avatar_dir
+
+
+async def _wait_for_session_worker_ready(
+    r: redis.Redis,
+    session_id: str,
+    *,
+    max_wait_sec: float,
+    poll_interval: float = 0.1,
+) -> bool:
+    deadline = time.monotonic() + max(0.0, max_wait_sec)
+    while time.monotonic() < deadline:
+        rec = await session_service.get_session(r, session_id)
+        state = (rec or {}).get("state")
+        if state in {"worker_ready", "ready", "speaking"}:
+            return True
+        if state == "error":
+            raise HTTPException(status_code=503, detail="Session worker failed to initialize.")
+        await asyncio.sleep(poll_interval)
+    return False
+
+
 @router.post("", response_model=CreateSessionResponse)
 async def create_session(body: CreateSessionRequest, request: Request) -> CreateSessionResponse:
     r: redis.Redis = request.app.state.redis
     settings = request.app.state.settings
-    avatar_dir = Path(settings.avatars_dir).resolve() / body.avatar_id
+    _, avatar_dir = _resolve_avatar_dir(settings, body.avatar_id)
     if not avatar_dir.is_dir():
         raise HTTPException(status_code=404, detail="avatar not found")
     try:
@@ -245,10 +287,10 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").
+    is_flashtalk = body.model == "flashtalk"
     runners = getattr(request.app.state, "session_runners", None)
     if runners is not None:
         settings = request.app.state.settings
-        is_flashtalk = body.model == "flashtalk"
 
         if is_flashtalk:
             from opentalking.worker.task_consumer import slot_is_occupied
@@ -287,6 +329,13 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
                 status_code=503,
                 detail="Session worker did not become ready in time.",
             )
+    elif is_flashtalk:
+        qs = await get_flashtalk_queue_status(r)
+        if qs["slot_occupied"] or qs["queue_size"] > 0:
+            return CreateSessionResponse(session_id=sid, status="queued")
+        if await _wait_for_session_worker_ready(r, sid, max_wait_sec=3.0):
+            return CreateSessionResponse(session_id=sid, status="created")
+        return CreateSessionResponse(session_id=sid, status="queued")
     return CreateSessionResponse(session_id=sid, status="created")
 
 
@@ -298,7 +347,7 @@ async def customize_session(
     reference_image: UploadFile | None = File(default=None),
 ) -> dict[str, str | bool]:
     settings = request.app.state.settings
-    avatar_dir = (Path(settings.avatars_dir).resolve() / avatar_id).resolve()
+    _, avatar_dir = _resolve_avatar_dir(settings, avatar_id)
     if not avatar_dir.is_dir():
         raise HTTPException(status_code=404, detail="avatar not found")
 
@@ -342,7 +391,7 @@ async def customize_prompt(
         raise HTTPException(status_code=400, detail="avatar_id is required")
     llm_system_prompt = (body.get("llm_system_prompt") or "").strip()
     settings = request.app.state.settings
-    avatar_dir = (Path(settings.avatars_dir).resolve() / avatar_id).resolve()
+    _, avatar_dir = _resolve_avatar_dir(settings, avatar_id)
     if not avatar_dir.is_dir():
         raise HTTPException(status_code=404, detail="avatar not found")
 
@@ -363,7 +412,7 @@ async def customize_reference(
     reference_image: UploadFile = File(...),
 ) -> dict[str, str | bool]:
     settings = request.app.state.settings
-    avatar_dir = (Path(settings.avatars_dir).resolve() / avatar_id).resolve()
+    _, avatar_dir = _resolve_avatar_dir(settings, avatar_id)
     if not avatar_dir.is_dir():
         raise HTTPException(status_code=404, detail="avatar not found")
 
