@@ -4,9 +4,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-from opentalking.models.wav2lip.network import Wav2Lip
-from opentalking.models.wav2lip.model_defs import Wav2Lip256
-
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
@@ -52,6 +49,9 @@ def load_wav2lip_torch(weights: Path, device: str) -> Any:
         import torch
     except ImportError as e:
         raise RuntimeError("Wav2Lip neural path requires torch. pip install opentalking[torch]") from e
+    from opentalking.models.wav2lip.model_defs import Wav2Lip256
+    from opentalking.models.wav2lip.network import Wav2Lip
+
     if device.startswith("cuda") and not torch.cuda.is_available():
         device = "cpu"
     checkpoint = torch.load(weights, map_location=device)
