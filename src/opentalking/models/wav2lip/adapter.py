@@ -24,7 +24,6 @@ from opentalking.models.wav2lip.feature_extractor import (
     extract_mel_for_wav2lip,
     extract_stream_mel_chunks,
 )
-from opentalking.models.wav2lip.face_detection import FaceAlignment, LandmarksType
 from opentalking.models.wav2lip.loader import (
     ensure_wav2lip_imports,
     load_wav2lip_torch,
@@ -559,6 +558,8 @@ class Wav2LipAdapter:
         if self._face_detector is not None:
             return self._face_detector
         ensure_wav2lip_imports()
+        from opentalking.models.wav2lip.face_detection import FaceAlignment, LandmarksType
+
         detector_path = resolve_wav2lip_s3fd(self._models_dir)
         if detector_path is None:
             raise RuntimeError("missing s3fd.pth for wav2lip face detection")
