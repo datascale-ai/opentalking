@@ -33,6 +33,13 @@ interface SettingsPanelProps {
   qwenVoice: string;
   onQwenVoiceChange: (voiceId: string) => void;
   qwenVoiceOptions: VoiceOpt[];
+  llmSystemPrompt: string;
+  onLlmSystemPromptChange: (value: string) => void;
+  onReferenceImageChange: (file: File | null) => void;
+  onSavePrompt: () => void;
+  onSaveReferenceImage: () => void;
+  promptSaving?: boolean;
+  referenceSaving?: boolean;
   onOpenVoiceClone?: () => void;
 }
 
@@ -56,6 +63,13 @@ export function SettingsPanel({
   qwenVoice,
   onQwenVoiceChange,
   qwenVoiceOptions,
+  llmSystemPrompt,
+  onLlmSystemPromptChange,
+  onReferenceImageChange,
+  onSavePrompt,
+  onSaveReferenceImage,
+  promptSaving = false,
+  referenceSaving = false,
   onOpenVoiceClone,
 }: SettingsPanelProps) {
   useEffect(() => {
@@ -147,6 +161,49 @@ export function SettingsPanel({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="mb-5 border-t border-white/10 pt-5">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+                会话自定义（Prompt / 参考图）
+              </p>
+              <label className="mb-3 block">
+                <span className="mb-1.5 block text-[11px] text-slate-500">LLM System Prompt</span>
+                <textarea
+                  value={llmSystemPrompt}
+                  onChange={(e) => onLlmSystemPromptChange(e.target.value)}
+                  rows={4}
+                  className="w-full resize-none rounded-xl bg-white/10 px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors focus:bg-white/15"
+                  placeholder="输入新的系统提示词（保存后对新会话生效；未点保存时「开始」也会带上当前框内内容）"
+                />
+              </label>
+              <label className="mb-3 block">
+                <span className="mb-1.5 block text-[11px] text-slate-500">自定义参考图（可选）</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="w-full rounded-xl bg-white/10 px-3 py-2 text-xs text-slate-200 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-600 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-white hover:file:bg-cyan-500"
+                  onChange={(e) => onReferenceImageChange(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={onSavePrompt}
+                  disabled={promptSaving}
+                  className="rounded-xl bg-cyan-600/90 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {promptSaving ? "保存中..." : "只保存 Prompt"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onSaveReferenceImage}
+                  disabled={referenceSaving}
+                  className="rounded-xl bg-indigo-600/90 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {referenceSaving ? "上传中..." : "只上传参考图"}
+                </button>
+              </div>
             </div>
 
             <div className="mb-5 border-t border-white/10 pt-5">

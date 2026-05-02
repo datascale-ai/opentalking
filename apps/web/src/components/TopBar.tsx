@@ -29,6 +29,9 @@ interface TopBarProps {
   onFlashtalkRecordStart?: () => void;
   onFlashtalkRecordStop?: () => void;
   onFlashtalkRecordSave?: () => void;
+  /** 上传整段音频，推理结束后下载对齐音视频（不经 WebRTC 实时预览） */
+  flashtalkOfflineBundleBusy?: boolean;
+  onFlashtalkOfflineBundleClick?: () => void;
 }
 
 export function TopBar({
@@ -40,8 +43,10 @@ export function TopBar({
   onFlashtalkRecordStart,
   onFlashtalkRecordStop,
   onFlashtalkRecordSave,
+  flashtalkOfflineBundleBusy = false,
+  onFlashtalkOfflineBundleClick,
 }: TopBarProps) {
-  const busy = flashtalkRecordBusy || recordingSaving;
+  const busy = flashtalkRecordBusy || recordingSaving || flashtalkOfflineBundleBusy;
 
   return (
     <div className="glass fixed inset-x-0 top-0 z-30 flex items-center justify-between pr-[3.25rem] pl-5 py-3 sm:pr-16">
@@ -50,6 +55,17 @@ export function TopBar({
       <div className="flex min-w-0 max-w-[min(100vw-6rem,28rem)] flex-wrap items-center justify-end gap-1.5 sm:gap-2">
         {flashtalkRecording ? (
           <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {onFlashtalkOfflineBundleClick ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onFlashtalkOfflineBundleClick}
+                className="rounded-full border border-sky-400/35 bg-sky-500/15 px-2.5 py-1 text-[11px] font-medium text-sky-100 shadow-lg shadow-black/20 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-45 sm:px-3 sm:text-xs"
+                title="上传整段音频：服务端跑完全部推理后再保存，下载已对齐的音视频 MP4（可不录屏）"
+              >
+                {flashtalkOfflineBundleBusy ? "离线导出中…" : "离线整段导出"}
+              </button>
+            ) : null}
             {flashtalkRecordPhase === "idle" ? (
               <button
                 type="button"

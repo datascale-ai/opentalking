@@ -126,10 +126,11 @@ def _create_runner(
             redis=r,
             flashtalk_ws_url=flashtalk_ws_url,
             flashtalk_client=flashtalk_client,
+            custom_ref_image_path=str(task.get("custom_ref_image_path", "") or ""),
             llm_base_url=settings.llm_base_url,
             llm_api_key=settings.llm_api_key,
             llm_model=settings.llm_model,
-            system_prompt=settings.llm_system_prompt
+            system_prompt=str(task.get("llm_system_prompt", "") or settings.llm_system_prompt)
             or "你是一个友好的数字人助手，请用简洁的语言回答问题。不要使用表情符号或emoji。",
         )
 
@@ -156,7 +157,6 @@ async def _do_init(
     runners[sid] = runner
     try:
         await runner.prepare()
-        await set_session_state(r, sid, "worker_ready")
     except Exception:
         runners.pop(sid, None)
         await set_session_state(r, sid, "error")
@@ -358,7 +358,7 @@ async def handle_worker_task(
         return
     if cmd == "speak":
         text = str(task.get("text", ""))
-        raw_voice = task.get("voice")
+        raw_voice = task.get("tts_voice") or task.get("voice")
         tts_voice = str(raw_voice).strip() if raw_voice else None
         tp = task.get("tts_provider")
         tts_provider = str(tp).strip().lower() if tp else None
@@ -417,6 +417,54 @@ async def handle_worker_task(
             pcm_path.strip(),
             enqueue_unix=float(eu) if isinstance(eu, (int, float)) else None,
         )
+    elif cmd == "flashtalk_offline_bundle":
+        job_id = task.get("job_id")
+        pcm_path = task.get("pcm_path")
+        if not job_id or not pcm_path:
+            log.warning("flashtalk_offline_bundle missing job_id or pcm_path")
+            return
+        from pathlib import Path
+
+        import numpy as np
+
+        from opentalking.core.redis_keys import offline_bundle_job_key
+        from opentalking.worker.flashtalk_offline_export import run_flashtalk_offline_av_bundle
+        from opentalking.worker.flashtalk_runner import FlashTalkRunner
+
+        k = offline_bundle_job_key(str(job_id))
+        if not isinstance(runner, FlashTalkRunner):
+            await r.hset(k, mapping={"status": "error", "message": "not a FlashTalk session"})
+            log.warning("flashtalk_offline_bundle: not FlashTalkRunner session=%s", sid)
+            return
+        try:
+            await r.hset(k, mapping={"status": "processing"})
+            path = Path(str(pcm_path))
+            raw = path.read_bytes()
+            path.unlink(missing_ok=True)
+            pcm = np.frombuffer(raw, dtype=np.int16).copy()
+            paths = await run_flashtalk_offline_av_bundle(
+                runner,
+                pcm,
+                session_id=str(sid),
+                job_id=str(job_id),
+            )
+            await r.hset(
+                k,
+                mapping={
+                    "status": "done",
+                    "bundle_mp4": paths["bundle_mp4"],
+                    "aligned_audio_wav": paths["aligned_audio_wav"],
+                    "video_only_mp4": paths["video_only_mp4"],
+                    "zip": paths["zip"],
+                    "work_dir": paths["work_dir"],
+                },
+            )
+        except Exception as e:  # noqa: BLE001
+            log.exception("flashtalk_offline_bundle failed session=%s job=%s", sid, job_id)
+            await r.hset(
+                k,
+                mapping={"status": "error", "message": str(e)[:2000]},
+            )
     elif cmd == "interrupt":
         await runner.interrupt()
     elif cmd == "close":

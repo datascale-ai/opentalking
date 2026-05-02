@@ -588,10 +588,6 @@ class SessionRunner:
         self,
         speech_text: str,
         debug_capture: _SpeechDebugCapture,
-        *,
-        tts_voice: str | None = None,
-        tts_provider: str | None = None,
-        tts_model: str | None = None,
     ) -> bool:
         if self.model_type != "wav2lip":
             return False
@@ -747,13 +743,7 @@ class SessionRunner:
                 debug_capture = self._build_debug_capture(speech_text)
                 official_done = False
                 try:
-                    official_done = await self._speak_wav2lip_official(
-                        speech_text,
-                        debug_capture,
-                        tts_voice=tts_voice,
-                        tts_provider=tts_provider,
-                        tts_model=tts_model,
-                    )
+                    official_done = await self._speak_wav2lip_official(speech_text, debug_capture)
                 except asyncio.CancelledError:
                     raise
                 except Exception:  # noqa: BLE001

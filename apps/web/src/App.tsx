@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { BailianVoiceClone } from "./components/BailianVoiceClone";
 import { ChatInput } from "./components/ChatInput";
 import { ChatMessages } from "./components/ChatMessages";
@@ -101,6 +101,7 @@ function mergeVoiceCatalogIntoOptions(
 }
 
 const MESSAGE_STORAGE_KEY = "opentalking-chat-history";
+const LLM_SYSTEM_PROMPT_STORAGE_KEY = "opentalking-llm-system-prompt";
 
 type SpeakAudioResponse = { session_id: string; status: string; text: string };
 
@@ -187,9 +188,14 @@ export default function App() {
     return false;
   });
   const [voiceCloneOpen, setVoiceCloneOpen] = useState(false);
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [referenceSaving, setReferenceSaving] = useState(false);
+  const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [recordingSaving, setRecordingSaving] = useState(false);
   const [ftRecordPhase, setFtRecordPhase] = useState<"idle" | "recording" | "stopped">("idle");
   const [ftRecordBusy, setFtRecordBusy] = useState(false);
+  const [offlineBundleBusy, setOfflineBundleBusy] = useState(false);
+  const offlineBundleInputRef = useRef<HTMLInputElement>(null);
   const [voiceCatalog, setVoiceCatalog] = useState<VoiceCatalogItem[]>([]);
   const [edgeVoice, setEdgeVoice] = useState<string>(() => {
     try {
@@ -229,6 +235,14 @@ export default function App() {
       /* ignore */
     }
     return DEFAULT_QWEN_VOICE_ID;
+  });
+
+  const [llmSystemPrompt, setLlmSystemPrompt] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem(LLM_SYSTEM_PROMPT_STORAGE_KEY) ?? "";
+    } catch {
+      return "";
+    }
   });
 
   const loadVoices = useCallback(async () => {
@@ -305,6 +319,14 @@ export default function App() {
       /* ignore */
     }
   }, [qwenVoice]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LLM_SYSTEM_PROMPT_STORAGE_KEY, llmSystemPrompt);
+    } catch {
+      /* ignore */
+    }
+  }, [llmSystemPrompt]);
 
   useEffect(() => {
     try {
@@ -537,6 +559,7 @@ export default function App() {
       const created = await apiPost<CreateSessionResponse>("/sessions", {
         avatar_id: avatarId,
         model,
+        llm_system_prompt: llmSystemPrompt.trim() || undefined,
       });
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
@@ -580,7 +603,54 @@ export default function App() {
       console.warn("Failed to start session", error);
       setConnection("error");
     }
-  }, [avatarId, closePeerConnection, model, releaseSession, resetLiveState]);
+  }, [avatarId, closePeerConnection, llmSystemPrompt, model, releaseSession, resetLiveState]);
+
+  const handleSavePrompt = useCallback(async () => {
+    setPromptSaving(true);
+    try {
+      await apiPost("/sessions/customize/prompt", {
+        avatar_id: avatarId,
+        llm_system_prompt: llmSystemPrompt,
+      });
+      const sid = sessionIdRef.current;
+      if (sid) await releaseSession(sid);
+      resetLiveState(true);
+      setConnection("idle");
+      window.alert("System Prompt 已保存。页面将刷新并在新会话生效。");
+      window.location.reload();
+    } catch (e) {
+      console.warn("save prompt failed", e);
+      window.alert("保存 Prompt 失败，请查看后端日志。");
+    } finally {
+      setPromptSaving(false);
+    }
+  }, [avatarId, llmSystemPrompt, releaseSession, resetLiveState]);
+
+  const handleSaveReferenceImage = useCallback(async () => {
+    if (!referenceImageFile) {
+      window.alert("请先选择一张参考图再上传。");
+      return;
+    }
+    setReferenceSaving(true);
+    try {
+      const fd = new FormData();
+      fd.set("avatar_id", avatarId);
+      fd.set("reference_image", referenceImageFile);
+      await apiPostForm("/sessions/customize/reference", fd);
+      setReferenceImageFile(null);
+      const sid = sessionIdRef.current;
+      if (sid) await releaseSession(sid);
+      resetLiveState(true);
+      setConnection("idle");
+      window.alert("参考图已保存。页面将刷新并在新会话生效。");
+      window.location.reload();
+    } catch (e) {
+      console.warn("save reference image failed", e);
+      window.alert("上传参考图失败，请查看后端日志。");
+    } finally {
+      setReferenceSaving(false);
+    }
+  }, [avatarId, referenceImageFile, releaseSession, resetLiveState]);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -750,6 +820,76 @@ export default function App() {
     }
   }, [sessionId, model]);
 
+  const handleOfflineBundleFile = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file || !sessionId || model !== "flashtalk") return;
+      setOfflineBundleBusy(true);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const enq = await apiPostForm<{ session_id: string; job_id: string; status: string }>(
+          `/sessions/${sessionId}/flashtalk-offline-bundle`,
+          fd,
+        );
+        const jobId = enq.job_id;
+        const deadline = Date.now() + 45 * 60 * 1000;
+        type St = {
+          session_id: string;
+          job_id: string;
+          status: string;
+          message?: string;
+        };
+        let last: St = { session_id: sessionId, job_id: jobId, status: "queued" };
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000));
+          last = await apiGet<St>(`/sessions/${sessionId}/flashtalk-offline-bundle/${jobId}`);
+          if (last.status === "done" || last.status === "error") break;
+        }
+        if (last.status !== "done" && last.status !== "error") {
+          throw new Error("离线导出超时（超过 45 分钟），请稍后重试。");
+        }
+        if (last.status === "error") {
+          throw new Error(last.message || "Worker 处理失败");
+        }
+        const url = buildApiUrl(
+          `/sessions/${sessionId}/flashtalk-offline-bundle/${jobId}/download?artifact=bundle`,
+        );
+        const response = await fetch(url);
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(`${response.status} ${detail}`);
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = objectUrl;
+        a.download = `${sessionId}_offline_${jobId}_bundle.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(objectUrl);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: makeId(),
+            role: "user",
+            text: `[离线导出完成] ${file.name} → bundle.mp4`,
+            timestamp: Date.now(),
+          },
+        ]);
+      } catch (error) {
+        console.warn("flashtalk offline bundle failed", error);
+        const msg = error instanceof Error ? error.message : String(error);
+        window.alert(`离线整段导出失败：${msg}`);
+      } finally {
+        setOfflineBundleBusy(false);
+      }
+    },
+    [model, sessionId],
+  );
+
   const handleAvatarChange = useCallback(
     (newId: string) => {
       setAvatarId(newId);
@@ -812,6 +952,16 @@ export default function App() {
       {/* Layer 0: Full-screen video background */}
       <VideoBackground ref={videoRef} />
 
+      <input
+        ref={offlineBundleInputRef}
+        type="file"
+        accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden
+        onChange={(ev) => void handleOfflineBundleFile(ev)}
+      />
+
       {/* Layer 1: Bottom gradient overlay */}
       <div
         className="pointer-events-none fixed inset-x-0 bottom-0 z-10"
@@ -838,6 +988,8 @@ export default function App() {
         onFlashtalkRecordStart={() => void handleFtRecordStart()}
         onFlashtalkRecordStop={() => void handleFtRecordStop()}
         onFlashtalkRecordSave={() => void handleFtRecordSave()}
+        flashtalkOfflineBundleBusy={offlineBundleBusy}
+        onFlashtalkOfflineBundleClick={() => offlineBundleInputRef.current?.click()}
       />
 
       {voiceCloneOpen ? (
@@ -921,6 +1073,13 @@ export default function App() {
         qwenVoice={qwenVoice}
         onQwenVoiceChange={setQwenVoice}
         qwenVoiceOptions={bailianVoices}
+        llmSystemPrompt={llmSystemPrompt}
+        onLlmSystemPromptChange={setLlmSystemPrompt}
+        onReferenceImageChange={setReferenceImageFile}
+        onSavePrompt={() => void handleSavePrompt()}
+        onSaveReferenceImage={() => void handleSaveReferenceImage()}
+        promptSaving={promptSaving}
+        referenceSaving={referenceSaving}
         onOpenVoiceClone={() => setVoiceCloneOpen(true)}
       />
     </>

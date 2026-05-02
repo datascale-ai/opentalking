@@ -24,10 +24,21 @@ def _load_images_from_dir(d: Path) -> list[np.ndarray]:
     return frames
 
 
+def load_preview_frame(avatar_path: Path, fallback_frame: np.ndarray) -> np.ndarray:
+    for name in ("preview.png", "preview.jpg", "preview.jpeg", "preview.webp"):
+        candidate = avatar_path / name
+        if candidate.is_file():
+            img = Image.open(candidate).convert("RGB")
+            arr = np.array(img, dtype=np.uint8)
+            return arr[:, :, ::-1].copy()
+    return fallback_frame.copy()
+
+
 @dataclass
 class FrameAvatarState:
     manifest: AvatarManifest
     frames: list[np.ndarray]
+    avatar_path: Path
     frame_paths: list[Path] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
@@ -35,9 +46,10 @@ class FrameAvatarState:
 def load_frame_avatar_state(avatar_path: Path, manifest: AvatarManifest) -> FrameAvatarState:
     avatar_path = avatar_path.resolve()
     if manifest.model_type == "musetalk":
-        sub = avatar_path / "full_frames"
+        candidates = [avatar_path / "full_frames", avatar_path / "full_imgs"]
     else:
-        sub = avatar_path / "frames"
+        candidates = [avatar_path / "frames"]
+    sub = next((p for p in candidates if p.is_dir()), candidates[0])
     if not sub.is_dir():
         raise FileNotFoundError(f"Expected image directory: {sub}")
     frames = _load_images_from_dir(sub)
@@ -46,7 +58,12 @@ def load_frame_avatar_state(avatar_path: Path, manifest: AvatarManifest) -> Fram
     paths = sorted(
         p for p in sub.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
     )
-    return FrameAvatarState(manifest=manifest, frames=frames, frame_paths=paths)
+    return FrameAvatarState(
+        manifest=manifest,
+        frames=frames,
+        avatar_path=avatar_path,
+        frame_paths=paths,
+    )
 
 
 def audio_chunk_to_frame_count(chunk: AudioChunk, fps: int) -> int:

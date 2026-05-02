@@ -10,8 +10,8 @@ from typing import Any
 
 import redis.asyncio as redis
 
-from opentalking.core.session_store import get_session_record, session_key, set_session_state
 from opentalking.core.redis_keys import TASK_QUEUE, uploaded_pcm_key
+from opentalking.core.session_store import get_session_record, session_key, set_session_state
 
 
 async def _await_result(value: Awaitable[Any] | Any) -> Any:
@@ -78,6 +78,25 @@ async def update_session_state(r: redis.Redis, sid: str, state: str) -> None:
     await set_session_state(r, sid, state)
 
 
+async def enqueue_flashtalk_offline_bundle(
+    r: redis.Redis,
+    sid: str,
+    *,
+    pcm_path: str,
+    job_id: str,
+) -> None:
+    """离线：上传 PCM 路径 → Worker 跑完整 FlashTalk 推理并落盘音视频（不经 WebRTC）。"""
+    await _push_task(
+        r,
+        {
+            "cmd": "flashtalk_offline_bundle",
+            "session_id": sid,
+            "pcm_path": pcm_path,
+            "job_id": job_id,
+        },
+    )
+
+
 async def speak_flashtalk_uploaded_pcm(
     r: redis.Redis,
     sid: str,
@@ -122,6 +141,7 @@ async def speak(
     }
     if voice:
         task["voice"] = voice
+        task["tts_voice"] = voice
     if tts_provider:
         task["tts_provider"] = tts_provider.strip().lower()
     if tts_model:

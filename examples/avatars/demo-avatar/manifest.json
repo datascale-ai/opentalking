@@ -1,13 +1,18 @@
 {
   "id": "demo-avatar",
-  "name": "Demo Wav2Lip fallback avatar",
+  "name": "Avator Wav2Lip",
   "model_type": "wav2lip",
-  "fps": 25,
+  "fps": 30,
   "sample_rate": 16000,
-  "width": 256,
-  "height": 256,
+  "width": 720,
+  "height": 1248,
   "version": "1.0",
   "metadata": {
-    "description": "Animated demo frames for local dev without real model weights."
+    "description": "Single-frame avatar aligned to wav2lip_new frame_00000 with reference preview.",
+    "idle_mode": "loop",
+    "freeze_speaking_to_preview": true,
+    "source_video": "avator.mp4",
+    "source_fps": 30,
+    "source_frame_count": 1
   }
 }

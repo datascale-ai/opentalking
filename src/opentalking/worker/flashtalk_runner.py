@@ -574,6 +574,7 @@ class FlashTalkRunner:
         redis: Any,
         flashtalk_ws_url: str | None = None,
         flashtalk_client: Any | None = None,
+        custom_ref_image_path: str = "",
         llm_base_url: str = "",
         llm_api_key: str = "",
         llm_model: str = "qwen-turbo",
@@ -584,6 +585,7 @@ class FlashTalkRunner:
         self.avatars_root = avatars_root
         self.redis = redis
         self._flashtalk_ws_url = flashtalk_ws_url or _default_flashtalk_ws_url()
+        self._custom_ref_image_path = custom_ref_image_path.strip()
 
         self.flashtalk = flashtalk_client or FlashTalkWSClient(
             self._flashtalk_ws_url
@@ -673,13 +675,16 @@ class FlashTalkRunner:
         """Load avatar, connect to FlashTalk server, init session."""
         avatar_dir = self.avatar_path()
 
-        # Read reference image (used for speech generation)
-        ref_image_path = avatar_dir / "reference.png"
-        if not ref_image_path.exists():
-            ref_image_path = avatar_dir / "reference.jpg"
+        # Read reference image (used for speech generation); optional API 上传的 reference_custom.*
+        if self._custom_ref_image_path:
+            ref_image_path = Path(self._custom_ref_image_path).expanduser().resolve()
+        else:
+            ref_image_path = avatar_dir / "reference.png"
+            if not ref_image_path.exists():
+                ref_image_path = avatar_dir / "reference.jpg"
         if not ref_image_path.exists():
             raise FileNotFoundError(
-                f"No reference image in {avatar_dir} (expected reference.png or .jpg)"
+                f"No reference image (custom or {avatar_dir}/reference.png|.jpg)"
             )
 
         self._ref_image_path = ref_image_path

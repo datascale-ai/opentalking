@@ -1,13 +1,20 @@
 {
   "id": "demo-musetalk",
-  "name": "Demo MuseTalk avatar",
+  "name": "Avator MuseTalk",
   "model_type": "musetalk",
-  "fps": 25,
+  "fps": 30,
   "sample_rate": 16000,
-  "width": 256,
-  "height": 256,
+  "width": 720,
+  "height": 1248,
   "version": "1.0",
   "metadata": {
-    "description": "Visible full_frames for MuseTalk adapter dev and fallback preview."
+    "description": "Single-frame avatar reusing musetalk_new prepared assets for reference-quality composition.",
+    "idle_mode": "loop",
+    "freeze_speaking_to_preview": true,
+    "source_video": "avator.mp4",
+    "prepared_compose_mode": "strict_mask",
+    "source_fps": 30,
+    "source_frame_count": 1,
+    "prepared_assets": true
   }
 }
