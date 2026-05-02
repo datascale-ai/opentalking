@@ -4,11 +4,9 @@ from dataclasses import dataclass
 import math
 
 import numpy as np
-from scipy import signal
 
 from opentalking.core.types.frames import AudioChunk
 from opentalking.models.common.frame_avatar import audio_chunk_to_frame_count
-from opentalking.models.wav2lip import audio as wav2lip_audio
 
 
 WAV2LIP_SAMPLE_RATE = 16000
@@ -40,6 +38,10 @@ def _smoothstep01(x: np.ndarray) -> np.ndarray:
 def _resample_pcm(pcm: np.ndarray, sample_rate: int, target_rate: int) -> np.ndarray:
     if sample_rate == target_rate or pcm.size == 0:
         return pcm.astype(np.float32, copy=False)
+    try:
+        from scipy import signal
+    except ImportError as exc:
+        raise RuntimeError("scipy is required for Wav2Lip audio resampling") from exc
     up = target_rate // math.gcd(sample_rate, target_rate)
     down = sample_rate // math.gcd(sample_rate, target_rate)
     return signal.resample_poly(pcm, up, down).astype(np.float32, copy=False)
@@ -52,6 +54,8 @@ def pcm_to_wav2lip_mel(pcm: np.ndarray, sample_rate: int) -> np.ndarray:
     wav = wav / 32768.0
     if sample_rate != WAV2LIP_SAMPLE_RATE:
         wav = _resample_pcm(wav, sample_rate, WAV2LIP_SAMPLE_RATE)
+    from opentalking.models.wav2lip import audio as wav2lip_audio
+
     mel = wav2lip_audio.melspectrogram(wav)
     mel = np.nan_to_num(mel, nan=0.0, posinf=0.0, neginf=0.0)
     return np.asarray(mel, dtype=np.float32)
