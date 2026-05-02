@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import queue as sync_queue
 import tempfile
 import time
 import uuid
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import httpx
 import redis.asyncio as redis
@@ -56,6 +58,12 @@ def _effective_tts_provider(requested: str | None) -> str:
 
 
 _BAILIAN_TTS = BAILIAN_TTS_PROVIDERS
+
+
+async def _await_result(value: Awaitable[Any] | Any) -> Any:
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 def _normalize_voice_for_speak(
@@ -569,15 +577,7 @@ async def speak_flashtalk_audio(
     if pcm.size == 0:
         raise HTTPException(status_code=400, detail="解码后音频为空")
 
-    base = Path(tempfile.gettempdir()) / "opentalking_upload_pcm"
-    base.mkdir(parents=True, exist_ok=True)
-    pcm_path = base / f"{session_id}_{uuid.uuid4().hex}.pcm"
-    try:
-        pcm_path.write_bytes(pcm.tobytes())
-    except OSError as e:
-        raise HTTPException(status_code=500, detail=f"failed to write pcm: {e}") from e
-
-    await session_service.speak_flashtalk_uploaded_pcm(r, session_id, str(pcm_path.resolve()))
+    await session_service.speak_flashtalk_uploaded_pcm(r, session_id, pcm.tobytes())
     return {"session_id": session_id, "status": "queued"}
 
 
@@ -848,14 +848,14 @@ async def flashtalk_offline_bundle_enqueue(
         raise HTTPException(status_code=500, detail=f"failed to write pcm: {e}") from e
 
     k = offline_bundle_job_key(job_id)
-    await r.hset(
+    await _await_result(r.hset(
         k,
         mapping={
             "session_id": session_id,
             "job_id": job_id,
             "status": "queued",
         },
-    )
+    ))
     await session_service.enqueue_flashtalk_offline_bundle(
         r,
         session_id,
@@ -873,7 +873,7 @@ async def flashtalk_offline_bundle_status(
 ) -> dict[str, str]:
     r: redis.Redis = request.app.state.redis
     k = offline_bundle_job_key(job_id)
-    raw = await r.hgetall(k)
+    raw = await _await_result(r.hgetall(k))
     if not raw:
         raise HTTPException(status_code=404, detail="job not found")
 
@@ -907,7 +907,7 @@ async def flashtalk_offline_bundle_download(
 ) -> FileResponse:
     r: redis.Redis = request.app.state.redis
     k = offline_bundle_job_key(job_id)
-    raw = await r.hgetall(k)
+    raw = await _await_result(r.hgetall(k))
     if not raw:
         raise HTTPException(status_code=404, detail="job not found")
 

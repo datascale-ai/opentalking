@@ -37,10 +37,25 @@ except Exception:
     def official_runtime_available() -> bool:
         return False
 
-    def run_official_inference(*args, **kwargs):
+    def run_official_inference(
+        *,
+        avatar_path: Path,
+        face_image: Path | None = None,
+        pcm: np.ndarray,
+        sample_rate: int,
+        fps: int,
+        ffmpeg_bin: str,
+        checkpoint_path: Path | None = None,
+        pads: tuple[int, int, int, int] = (0, 10, 0, 0),
+        box: tuple[int, int, int, int] | None = None,
+        resize_factor: int = 1,
+        face_det_batch_size: int = 8,
+        wav2lip_batch_size: int = 64,
+        nosmooth: bool = False,
+    ) -> tuple[Path, Path, Path]:
         raise RuntimeError("wav2lip official runtime is unavailable")
 
-    def load_video_frames(*args, **kwargs):
+    def load_video_frames(video_path: Path) -> list[np.ndarray]:
         raise RuntimeError("wav2lip official runtime is unavailable")
 from opentalking.worker.bus import publish_event
 from opentalking.worker.pipeline.render_pipeline import (

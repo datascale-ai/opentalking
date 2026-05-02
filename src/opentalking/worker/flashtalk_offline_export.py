@@ -89,9 +89,10 @@ def _frames_to_mp4(frames_dir: Path, out_mp4: Path, fps: float) -> None:
         raise RuntimeError("first frame unreadable")
     height, width = first.shape[:2]
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    video_writer_fourcc = getattr(cv2, "VideoWriter_fourcc")
     writer = cv2.VideoWriter(
         str(out_mp4),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        video_writer_fourcc(*"mp4v"),
         max(1.0, float(fps)),
         (width, height),
     )
