@@ -423,7 +423,6 @@ async def handle_worker_task(
         if not job_id or not pcm_path:
             log.warning("flashtalk_offline_bundle missing job_id or pcm_path")
             return
-        from pathlib import Path
 
         import numpy as np
 
