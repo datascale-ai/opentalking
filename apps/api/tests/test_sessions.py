@@ -204,6 +204,45 @@ def test_split_flashtalk_create_returns_queued_until_worker_ready(
     assert response.json()["status"] == "queued"
 
 
+def test_split_flashtalk_create_returns_created_when_worker_ready(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    avatar_id = "flashtalk-demo"
+    sid = "sess_worker_ready"
+    (tmp_path / avatar_id).mkdir()
+
+    monkeypatch.setattr(
+        sessions_routes,
+        "load_avatar_bundle",
+        lambda *_args, **_kwargs: SimpleNamespace(manifest=SimpleNamespace(model_type="flashtalk")),
+    )
+
+    async def fake_create_session(*_args: object, **_kwargs: object) -> str:
+        await set_session_state(redis, sid, "worker_ready")
+        return sid
+
+    monkeypatch.setattr(sessions_routes.session_service, "create_session", fake_create_session)
+
+    app = FastAPI()
+    redis = InMemoryRedis()
+    app.state.redis = redis
+    app.state.settings = SimpleNamespace(
+        avatars_dir=str(tmp_path),
+        normalized_flashtalk_mode="remote",
+    )
+    app.include_router(sessions_routes.router)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/sessions",
+            json={"avatar_id": avatar_id, "model": "flashtalk"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"session_id": sid, "status": "created"}
+
+
 def test_customize_prompt_rejects_avatar_path_traversal(tmp_path: Path) -> None:
     avatars_root = tmp_path / "avatars"
     avatars_root.mkdir()

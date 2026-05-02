@@ -219,9 +219,11 @@ def run_official_inference(
     s3fd_path = ensure_s3fd()
     face_image = face_image.resolve() if face_image is not None else resolve_face_image(avatar_path)
     device = _runtime_device()
+    debug_dir = (REPO_ROOT / "debug").resolve()
+    debug_dir.mkdir(parents=True, exist_ok=True)
 
     work_dir = Path(
-        tempfile.mkdtemp(prefix="opentalking-wav2lip-live-", dir=str(REPO_ROOT / "debug"))
+        tempfile.mkdtemp(prefix="opentalking-wav2lip-live-", dir=str(debug_dir))
     ).resolve()
     wav_path = work_dir / "tts.wav"
     silent_path = work_dir / "rendered_silent.mp4"

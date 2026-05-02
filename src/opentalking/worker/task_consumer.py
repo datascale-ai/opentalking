@@ -157,6 +157,7 @@ async def _do_init(
     runners[sid] = runner
     try:
         await runner.prepare()
+        await set_session_state(r, sid, "worker_ready")
     except Exception:
         runners.pop(sid, None)
         await set_session_state(r, sid, "error")
@@ -335,14 +336,7 @@ async def handle_worker_task(
 
             t.add_done_callback(_done)
         else:
-            runner = _create_runner(task, r, avatars_root, device)
-            runners[sid] = runner
-            try:
-                await runner.prepare()
-            except Exception:
-                runners.pop(sid, None)
-                await set_session_state(r, sid, "error")
-                raise
+            await _do_init(task, r, avatars_root, device, runners, sid)
         return
     runner = runners.get(sid)
     if not runner:

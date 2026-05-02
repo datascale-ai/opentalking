@@ -11,8 +11,9 @@ from apps.api.services import session_service
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.core.redis_keys import TASK_QUEUE
 from opentalking.core.session_store import get_session_record, session_key
-from opentalking.worker.task_consumer import handle_worker_task
+import opentalking.worker.task_consumer as task_consumer
 from opentalking.worker.session_runner import SessionRunner
+from opentalking.worker.task_consumer import handle_worker_task
 
 
 class StubRunner:
@@ -194,6 +195,9 @@ async def test_handle_worker_task_tracks_runner_lifecycle(monkeypatch: pytest.Mo
         runners,
     )
     assert runner.prepared is True
+    rec = await get_session_record(redis, sid)
+    assert rec is not None
+    assert rec["state"] == "worker_ready"
 
     await handle_worker_task({"cmd": "speak", "session_id": sid, "text": "hello"}, redis, Path("."), "cpu", runners)
     await asyncio.sleep(0)
@@ -206,3 +210,45 @@ async def test_handle_worker_task_tracks_runner_lifecycle(monkeypatch: pytest.Mo
     assert runner.closed is True
     assert sid not in runners
     assert await get_session_record(redis, sid) is not None
+
+
+@pytest.mark.asyncio
+async def test_handle_worker_task_flashtalk_init_marks_worker_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = StubRunner()
+
+    def fake_create_runner(*_args, **_kwargs) -> StubRunner:
+        return runner
+
+    monkeypatch.setattr(task_consumer, "_create_runner", fake_create_runner)
+    monkeypatch.setattr(task_consumer, "_flashtalk_slot_lock", None)
+    monkeypatch.setattr(task_consumer, "_slot_queue_size", 0)
+    monkeypatch.setattr(task_consumer, "_queued_tasks", {})
+
+    redis = InMemoryRedis()
+    sid = "sess_flashtalk_ready"
+    await redis.hset(session_key(sid), mapping={"session_id": sid, "state": "created", "model": "flashtalk"})
+    runners: dict[str, StubRunner] = {}
+
+    await handle_worker_task(
+        {"cmd": "init", "session_id": sid, "avatar_id": "demo-avatar", "model": "flashtalk"},
+        redis,
+        Path("."),
+        "cpu",
+        runners,
+    )
+
+    for _ in range(100):
+        rec = await get_session_record(redis, sid)
+        if rec is not None and rec.get("state") == "worker_ready":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("FlashTalk init did not publish worker_ready")
+
+    assert runner.prepared is True
+    assert runners[sid] is runner
+
+    await handle_worker_task({"cmd": "close", "session_id": sid}, redis, Path("."), "cpu", runners)
+    await asyncio.sleep(0.6)
