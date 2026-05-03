@@ -342,7 +342,7 @@ class Wav2LipAdapter:
         landmarks = _landmarks_from_metadata(bundle.manifest, state.frames[0]) or _estimate_avatar_landmarks(state.frames[0])
         metadata = getattr(bundle.manifest, "metadata", None) or {}
         preview = _runtime_preview_frame(
-            load_preview_frame(bundle.path, state.frames[0]),
+            load_preview_frame(bundle.path, state.frames[0], bundle.manifest),
             state.frames,
         )
         idle_mode = str(metadata.get("idle_mode", "")).strip().lower()
