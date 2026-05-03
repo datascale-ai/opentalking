@@ -48,6 +48,23 @@ def _env_bool(name: str, default: bool) -> bool:
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        return float(str(raw).strip())
+    except ValueError:
+        log.warning("Invalid %s=%r, using %.1f", name, raw, default)
+        return default
+
+
+def _dashscope_callback_error(*args: Any, **kwargs: Any) -> str:
+    parts = [str(arg) for arg in args if arg is not None]
+    parts.extend(f"{key}={value}" for key, value in kwargs.items())
+    return " ".join(parts).strip() or "unknown error"
+
+
 def _split_pcm_chunks(pcm: np.ndarray, sr: int, chunk_ms: float) -> list[AudioChunk]:
     samples_per_chunk = max(1, int(sr * (chunk_ms / 1000.0)))
     out: list[AudioChunk] = []
@@ -200,6 +217,25 @@ class DashScopeQwenTTSAdapter:
                         except Exception:  # noqa: BLE001
                             log.exception("DashScope TTS inbox push failed")
 
+                    def on_error(self, *args: Any, **kwargs: Any) -> None:
+                        q = self._adapter._active_inbox
+                        if q is not None:
+                            loop.call_soon_threadsafe(
+                                q.put_nowait,
+                                {"type": "error", "error": _dashscope_callback_error(*args, **kwargs)},
+                            )
+
+                    def on_close(self, *args: Any, **kwargs: Any) -> None:
+                        q = self._adapter._active_inbox
+                        if q is not None:
+                            loop.call_soon_threadsafe(
+                                q.put_nowait,
+                                {
+                                    "type": "closed",
+                                    "reason": _dashscope_callback_error(*args, **kwargs),
+                                },
+                            )
+
                 cb = _StableCb(self)
                 self._stable_cb = cb
                 client = QwenTtsRealtime(model=self._model, callback=cb, url=self._ws_url)
@@ -259,6 +295,21 @@ class DashScopeQwenTTSAdapter:
                 except Exception:  # noqa: BLE001
                     log.exception("DashScope TTS inbox push failed")
 
+            def on_error(self, *args: Any, **kwargs: Any) -> None:
+                loop.call_soon_threadsafe(
+                    inbox.put_nowait,
+                    {"type": "error", "error": _dashscope_callback_error(*args, **kwargs)},
+                )
+
+            def on_close(self, *args: Any, **kwargs: Any) -> None:
+                loop.call_soon_threadsafe(
+                    inbox.put_nowait,
+                    {
+                        "type": "closed",
+                        "reason": _dashscope_callback_error(*args, **kwargs),
+                    },
+                )
+
         def _run_one_roundtrip() -> None:
             cb = _Cb()
             client = QwenTtsRealtime(model=self._model, callback=cb, url=self._ws_url)
@@ -298,9 +349,15 @@ class DashScopeQwenTTSAdapter:
             bytes_per_chunk += 1
 
         completed = False
+        timeout_s = max(1.0, _env_float("OPENTALKING_QWEN_TTS_TIMEOUT_SEC", 20.0))
         try:
             while True:
-                msg = await asyncio.wait_for(inbox.get(), timeout=180.0)
+                try:
+                    msg = await asyncio.wait_for(inbox.get(), timeout=timeout_s)
+                except asyncio.TimeoutError as e:
+                    raise RuntimeError(
+                        f"DashScope Qwen TTS timed out after {timeout_s:.0f}s"
+                    ) from e
                 mtype = msg.get("type")
                 if mtype == "response.audio.delta":
                     raw = base64.b64decode(msg["delta"])
@@ -325,6 +382,10 @@ class DashScopeQwenTTSAdapter:
                     break
                 elif mtype == "error" or "error" in msg:
                     raise RuntimeError(f"DashScope TTS error: {msg}")
+                elif mtype == "closed":
+                    if pcm_acc:
+                        break
+                    raise RuntimeError("DashScope Qwen TTS connection closed before audio")
         finally:
             self._active_inbox = None
             if self._reuse_ws and self._client is not None and not completed:

@@ -214,7 +214,7 @@ export default function App() {
     } catch {
       /* ignore */
     }
-    return "dashscope";
+    return "edge";
   });
 
   const [qwenModel, setQwenModel] = useState<string>(() => {
@@ -474,6 +474,25 @@ export default function App() {
           setMessages((prev) => prev.filter((m) => m.id !== orphanId));
         }
       }
+      if (ev === "error") {
+        setIsSpeaking(false);
+        clearSubtitleFallbackTimer();
+        const d = data && typeof data === "object" ? (data as { message?: string; code?: string }) : {};
+        const detail = d.message || d.code || "语音合成失败，请切换可用音色后重试。";
+        const msgId = streamingAssistantMsgIdRef.current;
+        streamingAssistantMsgIdRef.current = null;
+        subtitleAccRef.current = "";
+        if (msgId) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === msgId ? { ...m, text: `出错了：${detail}` } : m)),
+          );
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { id: makeId(), role: "assistant", text: `出错了：${detail}`, timestamp: Date.now() },
+          ]);
+        }
+      }
       if (ev === "speech.started") {
         setIsSpeaking(true);
         subtitleAccRef.current = "";
@@ -560,6 +579,8 @@ export default function App() {
         avatar_id: avatarId,
         model,
         llm_system_prompt: llmSystemPrompt.trim() || undefined,
+        tts_provider: ttsProvider,
+        tts_voice: isEdgeTts(ttsProvider) ? edgeVoice : ttsProvider === "sambert" ? undefined : qwenVoice,
       });
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
@@ -603,7 +624,17 @@ export default function App() {
       console.warn("Failed to start session", error);
       setConnection("error");
     }
-  }, [avatarId, closePeerConnection, llmSystemPrompt, model, releaseSession, resetLiveState]);
+  }, [
+    avatarId,
+    closePeerConnection,
+    edgeVoice,
+    llmSystemPrompt,
+    model,
+    qwenVoice,
+    releaseSession,
+    resetLiveState,
+    ttsProvider,
+  ]);
 
   const handleSavePrompt = useCallback(async () => {
     setPromptSaving(true);

@@ -631,6 +631,7 @@ class FlashTalkRunner:
         self._tts_opener_warm_task: asyncio.Task[None] | None = None
         self._media_clock_started = False
         self._speech_media_active = False
+        self._av_ts_ms = 0.0
         #: Background dynamic idle cache (closes main WS briefly); speak() must await this.
         self._dynamic_idle_prepare_task: asyncio.Task[None] | None = None
 
@@ -1363,6 +1364,7 @@ class FlashTalkRunner:
                 self.webrtc.reset_clocks()
                 self.webrtc.draining = False
                 self._media_clock_started = False
+                self._av_ts_ms = 0.0
                 self._speech_media_active = False  # consumer will re-set after prebuffer
 
             await set_session_state(self.redis, self.session_id, "speaking")
@@ -1405,6 +1407,8 @@ class FlashTalkRunner:
             # 供 _queue_av_chunk 记录首帧进 WebRTC 队列的墙钟（相对本轮 speak 起点）
             self._speak_t0_wall = t_speak_wall0
             self._speak_milestones = timing
+
+            producer_error: list[BaseException] = []
 
             async def _producer():
                 """LLM → sentence split → TTS → fixed-size audio chunks into queue.
@@ -1755,7 +1759,8 @@ class FlashTalkRunner:
 
                     timing["producer_wall_ms"] = (time.perf_counter() - t_producer_wall0) * 1000.0
                     log.info("Producer done, full_response=%r", full_response[:100])
-                except Exception:
+                except Exception as exc:
+                    producer_error.append(exc)
                     log.exception("Producer failed")
                 finally:
                     if hasattr(tts, "aclose"):
@@ -1855,6 +1860,9 @@ class FlashTalkRunner:
                 timing["flashtalk_chunks"] = float(flashtalk_chunks)
                 timing["consumer_wall_ms"] = (time.perf_counter() - t_consumer0) * 1000.0
                 log.info("Consumer done")
+
+                if producer_error and flashtalk_chunks == 0:
+                    raise producer_error[0]
 
             try:
                 # Run producer and consumer concurrently
@@ -2292,11 +2300,12 @@ class FlashTalkRunner:
 
         arr = np.asarray(pcm_chunk, dtype=np.int16)
         total_samples = len(arr)
+        sample_rate = max(1, int(getattr(self.flashtalk, "sample_rate", 16000) or 16000))
+        fallback_frame_ms = 1000.0 / max(1.0, float(getattr(self.flashtalk, "fps", 25) or 25))
 
         for i, frame in enumerate(frames):
             if self._interrupt.is_set():
                 break
-            await self._video_put_safe(frame)
             # Pair each frame with its proportional audio slice.
             # Use _audio_put_safe (20ms sub-chunks) for clean opus encoding,
             # but feed them right after the matching video frame so A/V stay
@@ -2304,8 +2313,13 @@ class FlashTalkRunner:
             audio_start = i * total_samples // n_frames
             audio_end = (i + 1) * total_samples // n_frames
             audio_slice = arr[audio_start:audio_end]
+            frame.timestamp_ms = self._av_ts_ms
+            await self._video_put_safe(frame)
             if len(audio_slice) > 0:
                 await self._audio_put_safe(audio_slice)
+                self._av_ts_ms += (len(audio_slice) * 1000.0) / sample_rate
+            else:
+                self._av_ts_ms += fallback_frame_ms
 
         # Cache last frame for idle loop
         if frames:
