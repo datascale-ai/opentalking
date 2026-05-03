@@ -236,7 +236,7 @@ class MuseTalkAdapter:
         state = load_frame_avatar_state(bundle.path, bundle.manifest)
         metadata = getattr(bundle.manifest, "metadata", None) or {}
         state.extra["preview_frame"] = _runtime_preview_frame(
-            load_preview_frame(bundle.path, state.frames[0]),
+            load_preview_frame(bundle.path, state.frames[0], bundle.manifest),
             state.frames,
         )
         state.extra["preview_frame_index"] = 0

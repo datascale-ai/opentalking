@@ -100,7 +100,11 @@ async def post_voice_clone(
 
     suffix = Path(audio.filename or "upload.bin").suffix.lower() or ".webm"
     try:
-        wav = bailian_clone.convert_audio_to_wav_24k_mono(raw, suffix)
+        wav = bailian_clone.convert_audio_to_wav_24k_mono(
+            raw,
+            suffix,
+            max_seconds=bailian_clone.voice_clone_sample_seconds(),
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

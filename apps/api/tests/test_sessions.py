@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +21,33 @@ import opentalking.worker.task_consumer as task_consumer
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.core.redis_keys import FLASHTALK_QUEUE_STATUS
 from opentalking.core.session_store import set_session_state
-from opentalking.worker.flashtalk_recording import append_flashtalk_frames
+from opentalking.worker.flashtalk_recording import (
+    append_flashtalk_av_chunk,
+    append_flashtalk_frames,
+    export_flashtalk_recording,
+)
+from opentalking.worker.flashtalk_runner import FlashTalkRunner
+
+
+def _media_stream_types(path: Path) -> set[str]:
+    proc = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type",
+            "-of",
+            "json",
+            str(path),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", errors="replace")
+    data = json.loads(proc.stdout.decode("utf-8"))
+    return {str(stream.get("codec_type")) for stream in data.get("streams", [])}
 
 
 def test_normalize_voice_for_speak_accepts_elevenlabs_voice_id() -> None:
@@ -394,9 +422,10 @@ def test_worker_flashtalk_recording_endpoint_exports_mp4(
     from opentalking.worker.server import create_app as create_worker_app
 
     session_id = "sess_worker_dl"
-    append_flashtalk_frames(
+    append_flashtalk_av_chunk(
         session_id,
-        [np.full((10, 12, 3), 32, dtype=np.uint8)],
+        [np.full((10, 12, 3), 32 + i, dtype=np.uint8) for i in range(5)],
+        np.linspace(-12000, 12000, 3200, dtype=np.int16),
         start_index=0,
         fps=25.0,
     )
@@ -407,6 +436,43 @@ def test_worker_flashtalk_recording_endpoint_exports_mp4(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("video/mp4")
     assert len(response.content) > 0
+    saved = tmp_path / session_id / "flashtalk_capture.mp4"
+    assert _media_stream_types(saved) == {"video", "audio"}
+
+
+def test_flashtalk_runner_appends_recording_frames_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_FLASHTALK_RECORDINGS_DIR", str(tmp_path))
+
+    async def run() -> None:
+        redis = InMemoryRedis()
+        session_id = "sess_runner_recording"
+        await redis.hset(
+            f"opentalking:session:{session_id}",
+            mapping={"session_id": session_id, "model": "flashtalk"},
+        )
+        await sessions_routes.apply_flashtalk_recording_start(redis, session_id)
+
+        runner = object.__new__(FlashTalkRunner)
+        runner.session_id = session_id
+        runner.redis = redis
+        runner.flashtalk = SimpleNamespace(fps=25.0)
+        runner._recording_epoch = 0
+        runner._recording_frame_idx = 0
+
+        frame = SimpleNamespace(data=np.full((10, 12, 3), 96, dtype=np.uint8))
+        pcm = np.linspace(-8000, 8000, 1600, dtype=np.int16)
+        await runner._record_flashtalk_av_chunk([frame, frame], pcm)
+        await sessions_routes.apply_flashtalk_recording_stop(redis, session_id)
+
+        path = export_flashtalk_recording(session_id)
+        assert path.is_file()
+        assert path.stat().st_size > 0
+        assert _media_stream_types(path) == {"video", "audio"}
+
+    asyncio.run(run())
 
 
 def test_interrupt_cancels_active_speech_and_restores_ready(unified_client: TestClient) -> None:

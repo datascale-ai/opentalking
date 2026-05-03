@@ -217,10 +217,21 @@ OmniRT 提供的高质量数字人模型（详见 [omnirt/docs/user_guide/genera
 
 OpenTalking 内置轻量适配（不依赖 OmniRT，进程内运行，适合无大显存机器的 demo 体验）：
 
-| 模型 | 用途 |
-| --- | --- |
-| `wav2lip` | 轻量口型同步 demo / fallback；无需独立模型服务 |
-| `musetalk` | 轻量 talking-head 适配验证 |
+| 模型 | 用途 | RTX 3090 实测 |
+| --- | --- | --- |
+| `wav2lip` | 轻量口型同步 demo | 当前 `demo-avatar` 资产约 `128.91 FPS` |
+| `musetalk` | 轻量 talking-head 适配验证 | 当前 `demo-musetalk` 资产约 `30.55 FPS` |
+
+3090 实测条件：`NVIDIA GeForce RTX 3090 24GB`、`cuda:0`、3s 合成音频、200ms chunk、warmup 后统计离线 adapter 渲染 FPS。可用同一命令复测：
+
+```bash
+PYTHONPATH="$PWD:$PWD/src" \
+OPENTALKING_MODELS_DIR=/path/to/models \
+OPENTALKING_TORCH_DEVICE=cuda:0 \
+python -m apps.cli.benchmark_models --model all --device cuda:0 --duration-s 3 --chunk-ms 200 --warmup-chunks 5
+```
+
+> Avatar 图片加载时会按 manifest 中的 `width` / `height` 归一化尺寸；自定义头像的 FPS 会随目标分辨率、裁剪方式和模型权重变化。
 
 > 仅想跑通 API / TTS / WebRTC / 前端、不部署任何模型后端：设 `OPENTALKING_FLASHTALK_MODE=off`，使用 `demo-avatar / wav2lip` 路径即可。
 

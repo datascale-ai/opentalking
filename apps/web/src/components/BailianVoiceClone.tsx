@@ -37,6 +37,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
   const [preferredName, setPreferredName] = useState("");
   const [recording, setRecording] = useState(false);
   const [blob, setBlob] = useState<Blob | null>(null);
+  const [sampleName, setSampleName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -77,12 +78,14 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     const b = new Blob(chunksRef.current, { type: mime });
     chunksRef.current = [];
     setBlob(b);
+    setSampleName("browser-recording.webm");
     setRecording(false);
   }, []);
 
   const startRecording = useCallback(async () => {
     setMessage(null);
     setBlob(null);
+    setSampleName("");
     chunksRef.current = [];
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
@@ -96,9 +99,16 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     setRecording(true);
   }, []);
 
+  const onPickFile = useCallback((file: File | null) => {
+    setMessage(null);
+    if (!file) return;
+    setBlob(file);
+    setSampleName(file.name || "sample.m4s");
+  }, []);
+
   const submit = useCallback(async () => {
     if (!blob || blob.size < 64) {
-      setMessage("请先录制一段音频");
+      setMessage("请先录制或选择一段音频");
       return;
     }
     if (!targetModel.trim()) {
@@ -108,12 +118,21 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     setBusy(true);
     setMessage(null);
     try {
-      const ext = blob.type.includes("webm") ? "webm" : blob.type.includes("ogg") ? "ogg" : "webm";
+      const byName = sampleName.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase();
+      const ext =
+        byName ||
+        (blob.type.includes("webm")
+          ? "webm"
+          : blob.type.includes("ogg")
+            ? "ogg"
+            : blob.type.includes("mp4") || blob.type.includes("m4a")
+              ? "m4a"
+              : "webm");
       const fd = new FormData();
       fd.append("provider", provider);
       fd.append("target_model", targetModel.trim());
       fd.append("display_label", displayLabel.trim() || "我的复刻音色");
-      fd.append("audio", blob, `sample.${ext}`);
+      fd.append("audio", blob, sampleName || `sample.${ext}`);
       fd.append("prefix", prefix.trim());
       fd.append("preferred_name", preferredName.trim());
       const res = await apiPostForm<{
@@ -128,7 +147,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     } finally {
       setBusy(false);
     }
-  }, [blob, displayLabel, onSuccess, preferredName, prefix, provider, targetModel]);
+  }, [blob, displayLabel, onSuccess, preferredName, prefix, provider, sampleName, targetModel]);
 
   return (
     <div className="glass mx-auto max-w-xl rounded-2xl border border-white/10 p-4 text-sm text-slate-200 shadow-xl">
@@ -244,8 +263,21 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
         >
           {busy ? "提交中…" : "上传并复刻"}
         </button>
+        <label className="cursor-pointer rounded-xl bg-white/10 px-4 py-2 text-xs font-medium text-white hover:bg-white/20">
+          选择音频文件
+          <input
+            type="file"
+            className="hidden"
+            accept="audio/*,.m4s,.m4a,.mp3,.wav,.webm,.ogg"
+            disabled={busy || recording}
+            onChange={(e) => onPickFile(e.currentTarget.files?.[0] ?? null)}
+          />
+        </label>
         {blob ? (
-          <span className="text-xs text-slate-500">已录 {Math.round(blob.size / 1024)} KB</span>
+          <span className="text-xs text-slate-500">
+            {sampleName ? `${sampleName} · ` : null}
+            {Math.round(blob.size / 1024)} KB
+          </span>
         ) : null}
       </div>
       {message ? <p className="mt-3 text-xs text-amber-200/90">{message}</p> : null}

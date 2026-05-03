@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { AvatarSummary } from "../lib/api";
+import type { AvatarSummary, VoiceCatalogItem } from "../lib/api";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
 
 type VoiceOpt = { id: string; label: string; targetModel?: string | null };
@@ -33,6 +33,9 @@ interface SettingsPanelProps {
   qwenVoice: string;
   onQwenVoiceChange: (voiceId: string) => void;
   qwenVoiceOptions: VoiceOpt[];
+  clonedVoices?: VoiceCatalogItem[];
+  deletingVoiceId?: number | null;
+  onDeleteClonedVoice?: (entry: VoiceCatalogItem) => void;
   llmSystemPrompt: string;
   onLlmSystemPromptChange: (value: string) => void;
   onReferenceImageChange: (file: File | null) => void;
@@ -63,6 +66,9 @@ export function SettingsPanel({
   qwenVoice,
   onQwenVoiceChange,
   qwenVoiceOptions,
+  clonedVoices = [],
+  deletingVoiceId = null,
+  onDeleteClonedVoice,
   llmSystemPrompt,
   onLlmSystemPromptChange,
   onReferenceImageChange,
@@ -264,20 +270,49 @@ export function SettingsPanel({
                     </select>
                   </label>
                   {qwenVoiceOptions.length > 0 ? (
-                    <label className="block">
-                      <span className="mb-1.5 block text-[11px] text-slate-500">音色</span>
-                      <select
-                        value={qwenVoice}
-                        onChange={(e) => onQwenVoiceChange(e.target.value)}
-                        className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors focus:bg-white/15"
-                      >
-                        {qwenVoiceOptions.map((o) => (
-                          <option key={o.id} value={o.id} className="bg-slate-900">
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    <div className="block">
+                      <label className="block">
+                        <span className="mb-1.5 block text-[11px] text-slate-500">音色</span>
+                        <select
+                          value={qwenVoice}
+                          onChange={(e) => onQwenVoiceChange(e.target.value)}
+                          className="w-full rounded-xl bg-white/10 px-3 py-2.5 text-sm text-slate-100 outline-none transition-colors focus:bg-white/15"
+                        >
+                          {qwenVoiceOptions.map((o) => (
+                            <option key={o.id} value={o.id} className="bg-slate-900">
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {clonedVoices.length > 0 && onDeleteClonedVoice ? (
+                        <div className="mt-2 space-y-1">
+                          {clonedVoices.map((v) => (
+                            <div
+                              key={v.id}
+                              className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-xs text-slate-200">
+                                  ✦ {v.display_label}
+                                </div>
+                                <div className="truncate text-[10px] text-slate-500">
+                                  {v.voice_id}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-rose-200 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={deletingVoiceId === v.id}
+                                onClick={() => onDeleteClonedVoice(v)}
+                              >
+                                {deletingVoiceId === v.id ? "删除中" : "删除"}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                 </>
               )}

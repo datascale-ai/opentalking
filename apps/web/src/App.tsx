@@ -197,6 +197,7 @@ export default function App() {
   const [offlineBundleBusy, setOfflineBundleBusy] = useState(false);
   const offlineBundleInputRef = useRef<HTMLInputElement>(null);
   const [voiceCatalog, setVoiceCatalog] = useState<VoiceCatalogItem[]>([]);
+  const [deletingVoiceId, setDeletingVoiceId] = useState<number | null>(null);
   const [edgeVoice, setEdgeVoice] = useState<string>(() => {
     try {
       const s = window.localStorage.getItem(EDGE_VOICE_STORAGE_KEY);
@@ -267,6 +268,35 @@ export default function App() {
   const bailianVoices = useMemo(
     () => mergeVoiceCatalogIntoOptions(bailianVoiceOptions(ttsProvider), voiceCatalog, ttsProvider),
     [ttsProvider, voiceCatalog],
+  );
+
+  const clonedVoicesForProvider = useMemo(() => {
+    const cp = catalogProviderKey(ttsProvider);
+    if (!cp) return [];
+    return voiceCatalog.filter((v) => v.provider === cp && v.source === "clone");
+  }, [ttsProvider, voiceCatalog]);
+
+  const handleDeleteClonedVoice = useCallback(
+    async (entry: VoiceCatalogItem) => {
+      const ok = window.confirm(`删除复刻音色「${entry.display_label}」？`);
+      if (!ok) return;
+      setDeletingVoiceId(entry.id);
+      try {
+        await apiDelete<{ ok: boolean }>(`/voices/${entry.id}`);
+        const fallback = bailianVoiceOptions(ttsProvider)[0]?.id ?? "";
+        setVoiceCatalog((prev) => prev.filter((v) => v.id !== entry.id));
+        if (qwenVoice === entry.voice_id && fallback) {
+          setQwenVoice(fallback);
+        }
+        await loadVoices();
+      } catch (e) {
+        console.warn("delete cloned voice failed", e);
+        window.alert("删除复刻音色失败，请查看后端日志。");
+      } finally {
+        setDeletingVoiceId(null);
+      }
+    },
+    [loadVoices, qwenVoice, ttsProvider],
   );
 
   useEffect(() => {
@@ -1073,6 +1103,9 @@ export default function App() {
         qwenVoice={qwenVoice}
         onQwenVoiceChange={setQwenVoice}
         qwenVoiceOptions={bailianVoices}
+        clonedVoices={clonedVoicesForProvider}
+        deletingVoiceId={deletingVoiceId}
+        onDeleteClonedVoice={handleDeleteClonedVoice}
         llmSystemPrompt={llmSystemPrompt}
         onLlmSystemPromptChange={setLlmSystemPrompt}
         onReferenceImageChange={setReferenceImageFile}

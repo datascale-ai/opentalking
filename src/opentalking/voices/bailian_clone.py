@@ -15,6 +15,7 @@ import httpx
 log = logging.getLogger(__name__)
 
 DASHSCOPE_CUSTOMIZATION_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization"
+DEFAULT_CLONE_SAMPLE_SECONDS = 20.0
 
 
 def _dashscope_api_key() -> str:
@@ -40,8 +41,25 @@ def _ffmpeg_bin() -> str:
         return os.environ.get("OPENTALKING_FFMPEG_BIN", "ffmpeg")
 
 
-def convert_audio_to_wav_24k_mono(upload_bytes: bytes, suffix: str) -> bytes:
-    """将浏览器上传（webm/wav/mp3 等）转为 24kHz 单声道 s16 WAV（百炼常见要求）。"""
+def voice_clone_sample_seconds() -> float:
+    raw = os.environ.get("OPENTALKING_VOICE_CLONE_SAMPLE_SECONDS", "").strip()
+    if not raw:
+        return DEFAULT_CLONE_SAMPLE_SECONDS
+    try:
+        seconds = float(raw)
+    except ValueError:
+        log.warning("Invalid OPENTALKING_VOICE_CLONE_SAMPLE_SECONDS=%r, using %.1f", raw, DEFAULT_CLONE_SAMPLE_SECONDS)
+        return DEFAULT_CLONE_SAMPLE_SECONDS
+    return min(60.0, max(3.0, seconds))
+
+
+def convert_audio_to_wav_24k_mono(
+    upload_bytes: bytes,
+    suffix: str,
+    *,
+    max_seconds: float | None = None,
+) -> bytes:
+    """将浏览器上传（webm/wav/mp3 等）转为 24kHz 单声道 s16 WAV，并截取复刻样本时长。"""
     ffmpeg = _ffmpeg_bin()
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fin:
         fin.write(upload_bytes)
@@ -59,14 +77,20 @@ def convert_audio_to_wav_24k_mono(upload_bytes: bytes, suffix: str) -> bytes:
             "-y",
             "-i",
             in_path,
-            "-ac",
-            "1",
-            "-ar",
-            "24000",
-            "-f",
-            "wav",
-            out_path,
         ]
+        if max_seconds is not None and max_seconds > 0:
+            cmd.extend(["-t", f"{min(60.0, max(3.0, float(max_seconds))):.3f}"])
+        cmd.extend(
+            [
+                "-ac",
+                "1",
+                "-ar",
+                "24000",
+                "-f",
+                "wav",
+                out_path,
+            ]
+        )
         subprocess.run(cmd, check=True, capture_output=True)
         return Path(out_path).read_bytes()
     except subprocess.CalledProcessError as e:

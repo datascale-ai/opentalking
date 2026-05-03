@@ -13,6 +13,7 @@ from opentalking.core.types.frames import AudioChunk, VideoFrameData
 
 log = logging.getLogger(__name__)
 _OVERLAP_FRAMES = int(os.environ.get("OPENTALKING_MUSETALK_OVERLAP_FRAMES", "0"))
+_TIMING_BREAKDOWN = os.environ.get("OPENTALKING_RENDER_TIMING_BREAKDOWN", "0") == "1"
 
 
 class VideoSink(Protocol):
@@ -155,12 +156,14 @@ def prepare_rendered_chunk_sync(
         extra["rendering_speech"] = True
 
     try:
+        t_extract0 = time.perf_counter()
         features = _extract_chunk_features(
             adapter,
             avatar_state,
             chunk,
             streaming=streaming,
         )
+        t_extract1 = time.perf_counter()
         predictions = _infer_predictions(
             adapter,
             avatar_state,
@@ -168,6 +171,7 @@ def prepare_rendered_chunk_sync(
             frame_index_start=frame_index_start,
             infer_batch_frames=infer_batch_frames,
         )
+        t_infer1 = time.perf_counter()
         predictions = _apply_prediction_overlap(avatar_state, predictions)
 
         idx = frame_index_start
@@ -175,6 +179,16 @@ def prepare_rendered_chunk_sync(
         for pred in predictions:
             frames.append(adapter.compose_frame(avatar_state, idx, pred))
             idx += 1
+        if _TIMING_BREAKDOWN:
+            log.info(
+                "render_chunk breakdown: extract=%.0fms infer=%.0fms compose=%.0fms frames=%d idx=%d speech_idx=%d",
+                (t_extract1 - t_extract0) * 1000.0,
+                (t_infer1 - t_extract1) * 1000.0,
+                (time.perf_counter() - t_infer1) * 1000.0,
+                len(frames),
+                frame_index_start,
+                speech_frame_index_start,
+            )
         return RenderedChunkData(
             next_frame_idx=idx,
             features=features,

@@ -17,7 +17,12 @@ import numpy as np
 
 from opentalking.core.config import get_settings
 from opentalking.models.flashtalk.idle_generator import IdleVideoGenerator
-from opentalking.core.session_store import set_session_state
+from opentalking.core.session_store import (
+    FLASHTALK_DISK_RECORDING_FIELD,
+    FLASHTALK_RECORDING_EPOCH_FIELD,
+    get_session_record,
+    set_session_state,
+)
 from opentalking.llm.openai_compatible import OpenAICompatibleLLMClient
 from opentalking.llm.sentence_splitter import SentenceSplitter
 from opentalking.llm.conversation import ConversationHistory
@@ -25,6 +30,7 @@ from opentalking.models.flashtalk.ws_client import FlashTalkWSClient
 from opentalking.rtc.aiortc_adapter import WebRTCSession
 from opentalking.tts.factory import create_tts_adapter, tts_log_profile
 from opentalking.worker.bus import publish_event
+from opentalking.worker.flashtalk_recording import append_flashtalk_av_chunk
 from opentalking.worker.text_sanitize import sanitize_tts_text, strip_emoji
 
 log = logging.getLogger(__name__)
@@ -633,6 +639,30 @@ class FlashTalkRunner:
         self._speech_media_active = False
         #: Background dynamic idle cache (closes main WS briefly); speak() must await this.
         self._dynamic_idle_prepare_task: asyncio.Task[None] | None = None
+        self._recording_epoch: int = 0
+        self._recording_frame_idx: int = 0
+
+    async def _record_flashtalk_av_chunk(self, frames: list[Any], pcm_chunk: np.ndarray) -> None:
+        if not frames:
+            return
+        try:
+            rec = await get_session_record(self.redis, self.session_id)
+            if not rec or rec.get(FLASHTALK_DISK_RECORDING_FIELD) != "1":
+                return
+            epoch = int(rec.get(FLASHTALK_RECORDING_EPOCH_FIELD) or 0)
+            if epoch != self._recording_epoch:
+                self._recording_epoch = epoch
+                self._recording_frame_idx = 0
+            self._recording_frame_idx = append_flashtalk_av_chunk(
+                self.session_id,
+                frames,
+                pcm_chunk,
+                start_index=self._recording_frame_idx,
+                fps=float(self.flashtalk.fps or 25.0),
+                sample_rate=16000,
+            )
+        except Exception:
+            log.exception("Failed to append FlashTalk recording chunk: session=%s", self.session_id)
 
     def avatar_path(self) -> Path:
         return (self.avatars_root / self.avatar_id).resolve()
@@ -2289,6 +2319,7 @@ class FlashTalkRunner:
         if n_frames == 0:
             await self._audio_put_safe(pcm_chunk)
             return
+        await self._record_flashtalk_av_chunk(frames, pcm_chunk)
 
         arr = np.asarray(pcm_chunk, dtype=np.int16)
         total_samples = len(arr)
