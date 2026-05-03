@@ -8,6 +8,7 @@ import time
 
 import numpy as np
 
+from opentalking.core.interfaces.model_adapter import ModelAdapter
 from opentalking.core.types.frames import AudioChunk
 from opentalking.models import get_adapter
 from opentalking.worker.pipeline.render_pipeline import (
@@ -75,7 +76,7 @@ def _set_stream_context(
 def _render_chunks(
     *,
     model_type: str,
-    adapter: object,
+    adapter: ModelAdapter,
     avatar_state: object,
     chunks: list[AudioChunk],
     device: str,
