@@ -1,0 +1,14 @@
+use_neural: true
+force_static: true
+min_context_frames: 8
+stream_batch_size: 8
+infer_frame_stride: 1
+pads: [0, 10, 0, 0]
+face_box_scale: 0.86
+face_box_center_y_bias: 0.02
+attack: 0.72
+release: 0.38
+max_step_up: 0.080
+max_step_down: 0.060
+frame_step_up: 1.50
+frame_step_down: 1.10

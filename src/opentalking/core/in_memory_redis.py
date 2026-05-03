@@ -23,9 +23,15 @@ class InMemoryRedis:
     def __init__(self) -> None:
         self._hash: dict[str, dict[str, str]] = {}
         self._kv: dict[str, bytes] = {}
-        self._task_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._task_queue: asyncio.Queue[str] | None = None
         self._listeners: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
         self._expiry: dict[str, float] = {}
+
+    @property
+    def task_queue(self) -> asyncio.Queue[str]:
+        if self._task_queue is None:
+            self._task_queue = asyncio.Queue()
+        return self._task_queue
 
     def _purge_if_expired(self, name: str) -> None:
         deadline = self._expiry.get(name)
@@ -119,7 +125,7 @@ class InMemoryRedis:
     async def rpush(self, name: str, *values: str) -> int:
         _ = name  # only TASK_QUEUE used
         for v in values:
-            await self._task_queue.put(str(v))
+            await self.task_queue.put(str(v))
         return len(values)
 
     async def brpop(self, keys: str | list[str], timeout: int = 0) -> tuple[str, str] | None:
@@ -132,9 +138,9 @@ class InMemoryRedis:
         t = float(timeout) if timeout else None
         try:
             if t is not None and t > 0:
-                item = await asyncio.wait_for(self._task_queue.get(), timeout=t)
+                item = await asyncio.wait_for(self.task_queue.get(), timeout=t)
             else:
-                item = await self._task_queue.get()
+                item = await self.task_queue.get()
             return (TASK_QUEUE, item)
         except asyncio.TimeoutError:
             return None

@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 from opentalking.avatars.loader import load_avatar_bundle
+from opentalking.core.model_config import get_model_config
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.models.common.frame_avatar import (
     FrameAvatarState,
@@ -286,32 +287,35 @@ class Wav2LipAdapter:
     model_type = "wav2lip"
 
     def __init__(self) -> None:
+        config = get_model_config("wav2lip")
         self._device = os.environ.get("OPENTALKING_TORCH_DEVICE", "cuda")
         self._models_dir = Path(os.environ.get("OPENTALKING_MODELS_DIR", "./models")).resolve()
         self._torch_bundle: dict[str, Any] | None = None
         self._fps = int(os.environ.get("OPENTALKING_DEFAULT_FPS", "25"))
-        self._prefer_neural = os.environ.get("OPENTALKING_WAV2LIP_USE_NEURAL", "1") != "0"
-        self._force_static = os.environ.get("OPENTALKING_WAV2LIP_FORCE_STATIC", "1") != "0"
-        self._min_context_frames = int(os.environ.get("OPENTALKING_WAV2LIP_MIN_CONTEXT_FRAMES", "8"))
-        self._batch_size = int(os.environ.get("OPENTALKING_WAV2LIP_STREAM_BATCH_SIZE", "8"))
-        self._pads = self._parse_pads(os.environ.get("OPENTALKING_WAV2LIP_PADS", "0,10,0,0"))
+        self._prefer_neural = bool(config["use_neural"])
+        self._force_static = bool(config["force_static"])
+        self._min_context_frames = int(config["min_context_frames"])
+        self._batch_size = int(config["stream_batch_size"])
+        self._infer_frame_stride = max(1, int(config["infer_frame_stride"]))
+        self._pads = self._parse_pads(config["pads"])
         self._face_detector: Any = None
         self._neural_warmed_up = False
         self._model_input_size = 96
-        self._face_box_scale = float(os.environ.get("OPENTALKING_WAV2LIP_FACE_BOX_SCALE", "0.86"))
-        self._face_box_center_y_bias = float(
-            os.environ.get("OPENTALKING_WAV2LIP_FACE_BOX_CENTER_Y_BIAS", "0.02")
-        )
-        self._attack = float(os.environ.get("OPENTALKING_WAV2LIP_ATTACK", "0.72"))
-        self._release = float(os.environ.get("OPENTALKING_WAV2LIP_RELEASE", "0.38"))
-        self._max_step_up = float(os.environ.get("OPENTALKING_WAV2LIP_MAX_STEP_UP", "0.080"))
-        self._max_step_down = float(os.environ.get("OPENTALKING_WAV2LIP_MAX_STEP_DOWN", "0.060"))
-        self._frame_step_up = float(os.environ.get("OPENTALKING_WAV2LIP_FRAME_STEP_UP", "1.50"))
-        self._frame_step_down = float(os.environ.get("OPENTALKING_WAV2LIP_FRAME_STEP_DOWN", "1.10"))
+        self._face_box_scale = float(config["face_box_scale"])
+        self._face_box_center_y_bias = float(config["face_box_center_y_bias"])
+        self._attack = float(config["attack"])
+        self._release = float(config["release"])
+        self._max_step_up = float(config["max_step_up"])
+        self._max_step_down = float(config["max_step_down"])
+        self._frame_step_up = float(config["frame_step_up"])
+        self._frame_step_down = float(config["frame_step_down"])
 
     @staticmethod
-    def _parse_pads(raw: str) -> tuple[int, int, int, int]:
-        parts = [part.strip() for part in raw.split(",")]
+    def _parse_pads(raw: Any) -> tuple[int, int, int, int]:
+        if isinstance(raw, (list, tuple)):
+            parts = list(raw)
+        else:
+            parts = [part.strip() for part in str(raw).split(",")]
         if len(parts) != 4:
             return (0, 10, 0, 0)
         try:

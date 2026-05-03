@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from opentalking.avatars.loader import load_avatar_bundle
+from opentalking.core.model_config import get_model_config
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.models.common.frame_avatar import (
     FrameAvatarState,
@@ -62,30 +63,21 @@ class MuseTalkAdapter:
     model_type = "musetalk"
 
     def __init__(self) -> None:
+        config = get_model_config("musetalk")
         self._device = os.environ.get("OPENTALKING_TORCH_DEVICE", "cuda")
         self._models_dir = Path(os.environ.get("OPENTALKING_MODELS_DIR", "./models")).resolve()
         self._torch_bundle: dict[str, Any] | None = None
         self._v15_bundle: dict[str, Any] | None = None
         self._fps = int(os.environ.get("OPENTALKING_DEFAULT_FPS", "25"))
-        self._stream_context_ms = float(
-            os.environ.get("OPENTALKING_MUSETALK_CONTEXT_MS", "320.0")
-        )
-        self._stream_overlap_frames = int(
-            os.environ.get("OPENTALKING_MUSETALK_OVERLAP_FRAMES", "0")
-        )
-        self._silence_gate_threshold = float(
-            os.environ.get("OPENTALKING_MUSETALK_SILENCE_GATE", "0.04")
-        )
-        self._smooth_crop_boxes = os.environ.get("OPENTALKING_MUSETALK_SMOOTH_CROP", "0") == "1"
-        self._energy_gain = float(os.environ.get("OPENTALKING_MUSETALK_ENERGY_GAIN", "0.0"))
-        self._energy_attack = float(os.environ.get("OPENTALKING_MUSETALK_ENERGY_ATTACK", "0.28"))
-        self._energy_release = float(os.environ.get("OPENTALKING_MUSETALK_ENERGY_RELEASE", "0.16"))
-        self._energy_max_step_up = float(
-            os.environ.get("OPENTALKING_MUSETALK_ENERGY_MAX_STEP_UP", "0.075")
-        )
-        self._energy_max_step_down = float(
-            os.environ.get("OPENTALKING_MUSETALK_ENERGY_MAX_STEP_DOWN", "0.06")
-        )
+        self._stream_context_ms = float(config["context_ms"])
+        self._stream_overlap_frames = int(config["overlap_frames"])
+        self._silence_gate_threshold = float(config["silence_gate"])
+        self._smooth_crop_boxes = bool(config["smooth_crop"])
+        self._energy_gain = float(config["energy_gain"])
+        self._energy_attack = float(config["energy_attack"])
+        self._energy_release = float(config["energy_release"])
+        self._energy_max_step_up = float(config["energy_max_step_up"])
+        self._energy_max_step_down = float(config["energy_max_step_down"])
 
     def _small_face_ratio(self, avatar_state: FrameAvatarState, avatar_frame_idx: int) -> float:
         crop_infos = avatar_state.extra.get("crop_infos")

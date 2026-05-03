@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from opentalking.core.config import get_settings
+from opentalking.core.model_config import get_model_config
 from opentalking.core.queue_status import set_flashtalk_queue_status
 from opentalking.core.redis_keys import TASK_QUEUE
 from opentalking.core.session_store import set_session_state
@@ -100,17 +101,18 @@ def _create_runner(
         elif flashtalk_mode == "local":
             from opentalking.models.flashtalk import FlashTalkLocalClient
 
+            flashtalk_config = get_model_config("flashtalk")
             flashtalk_client = FlashTalkLocalClient(
                 ckpt_dir=settings.flashtalk_ckpt_dir,
                 wav2vec_dir=settings.flashtalk_wav2vec_dir,
                 device=settings.flashtalk_device,
                 world_size=1,
-                frame_num=settings.flashtalk_frame_num,
-                motion_frames_num=settings.flashtalk_motion_frames_num,
-                fps=settings.flashtalk_tgt_fps,
-                height=settings.flashtalk_height,
-                width=settings.flashtalk_width,
-                sample_rate=settings.flashtalk_sample_rate,
+                frame_num=int(flashtalk_config["frame_num"]),
+                motion_frames_num=int(flashtalk_config["motion_frames_num"]),
+                fps=int(flashtalk_config["tgt_fps"]),
+                height=int(flashtalk_config["height"]),
+                width=int(flashtalk_config["width"]),
+                sample_rate=int(flashtalk_config["sample_rate"]),
             )
         else:
             raise RuntimeError(

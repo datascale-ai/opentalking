@@ -1,0 +1,12 @@
+context_ms: 320.0
+overlap_frames: 0
+silence_gate: 0.04
+smooth_crop: false
+energy_gain: 0.0
+energy_attack: 0.28
+energy_release: 0.16
+energy_max_step_up: 0.075
+energy_max_step_down: 0.06
+eye_align: false
+prepared_compose: ""
+prebuffer_chunks: 3

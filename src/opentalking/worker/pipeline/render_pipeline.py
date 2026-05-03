@@ -2,17 +2,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
-import os
 import time
 from typing import Any, Protocol
 
 import numpy as np
 
 from opentalking.core.interfaces.model_adapter import ModelAdapter
+from opentalking.core.model_config import get_model_config
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 
 log = logging.getLogger(__name__)
-_OVERLAP_FRAMES = int(os.environ.get("OPENTALKING_MUSETALK_OVERLAP_FRAMES", "0"))
+
+
+def _musetalk_overlap_frames() -> int:
+    return int(get_model_config("musetalk").get("overlap_frames", 0))
 
 
 class VideoSink(Protocol):
@@ -116,7 +119,7 @@ def _apply_prediction_overlap(
     if hasattr(avatar_state, "extra") and isinstance(getattr(avatar_state, "extra", None), dict):
         prev_pred_tail = avatar_state.extra.get("prediction_overlap_tail")
     if isinstance(prev_pred_tail, list) and predictions:
-        overlap = min(_OVERLAP_FRAMES, len(prev_pred_tail), len(predictions))
+        overlap = min(_musetalk_overlap_frames(), len(prev_pred_tail), len(predictions))
         for i in range(overlap):
             prev = prev_pred_tail[len(prev_pred_tail) - overlap + i]
             cur = predictions[i]
@@ -127,10 +130,11 @@ def _apply_prediction_overlap(
                     + cur.astype(np.float32) * alpha
                 ).clip(0.0, 255.0).astype(np.uint8)
     if hasattr(avatar_state, "extra") and isinstance(getattr(avatar_state, "extra", None), dict):
-        if predictions and _OVERLAP_FRAMES > 0:
+        overlap_frames = _musetalk_overlap_frames()
+        if predictions and overlap_frames > 0:
             avatar_state.extra["prediction_overlap_tail"] = [
                 p.copy() if isinstance(p, np.ndarray) else p
-                for p in predictions[-_OVERLAP_FRAMES:]
+                for p in predictions[-overlap_frames:]
             ]
         else:
             avatar_state.extra["prediction_overlap_tail"] = []

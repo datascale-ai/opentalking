@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import numpy as np
 
+from opentalking.core.model_config import get_model_config
 from opentalking.core.types.frames import VideoFrameData
 from opentalking.models.common.frame_avatar import FrameAvatarState, numpy_bgr_to_videoframe
 
@@ -131,7 +131,9 @@ def compose_simple(
                     state.extra.get("musetalk_prepared_compose_mode", "")
                 ).strip().lower()
                 if not prepared_mode:
-                    prepared_mode = os.environ.get("OPENTALKING_MUSETALK_PREPARED_COMPOSE", "").strip()
+                    prepared_mode = str(
+                        get_model_config("musetalk").get("prepared_compose", "")
+                    ).strip().lower()
                 if not prepared_mode:
                     face_ratio = float(crop_w * crop_h) / float(
                         max(1, state.manifest.width * state.manifest.height)

@@ -1,10 +1,7 @@
-import os
-from importlib.resources import files
-
 import torch
-import yaml
 from loguru import logger
 
+from opentalking.core.model_config import get_model_config
 from opentalking.engine.accelerator import patch_cuda_api_for_npu
 from opentalking.engine.pipeline.flash_talk_pipeline import FlashTalkPipeline
 from opentalking.engine.distributed.usp_device import get_device, get_parallel_degree
@@ -12,48 +9,31 @@ from opentalking.engine.distributed.usp_device import get_device, get_parallel_d
 from opentalking.engine.configs import multitalk_14B
 from opentalking.engine.audio.loudness import loudness_norm
 
-with files("opentalking.configs").joinpath("flashtalk.yaml").open("r", encoding="utf-8") as f:
-    infer_params = yaml.safe_load(f)
+infer_params = get_model_config("flashtalk")
 
 
-def _flashtalk_env(name: str) -> str | None:
-    value = os.environ.get(name)
-    if value is not None:
+def _bool_enabled(value) -> bool:
+    if isinstance(value, bool):
         return value
-    if name.startswith("FLASHTALK_"):
-        return os.environ.get(f"OPENTALKING_{name}")
-    return None
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
-_ENV_OVERRIDES = {
-    "frame_num": ("FLASHTALK_FRAME_NUM", int),
-    "motion_frames_num": ("FLASHTALK_MOTION_FRAMES_NUM", int),
-    "sample_steps": ("FLASHTALK_SAMPLE_STEPS", int),
-    "color_correction_strength": ("FLASHTALK_COLOR_CORRECTION_STRENGTH", float),
-    "height": ("FLASHTALK_HEIGHT", int),
-    "width": ("FLASHTALK_WIDTH", int),
-}
-
-for _param_name, (_env_name, _cast) in _ENV_OVERRIDES.items():
-    _raw = _flashtalk_env(_env_name)
-    if _raw is not None:
-        infer_params[_param_name] = _cast(_raw)
-
-_AUDIO_LOUDNESS_NORM = (_flashtalk_env("FLASHTALK_AUDIO_LOUDNESS_NORM") or "1").lower()
-_AUDIO_LOUDNESS_NORM_ENABLED = _AUDIO_LOUDNESS_NORM not in {"0", "false", "no", "off"}
+_AUDIO_LOUDNESS_NORM_ENABLED = _bool_enabled(infer_params.get("audio_loudness_norm", 1))
 
 
-def _optional_env(name):
-    value = _flashtalk_env(name)
+def _optional_config(name):
+    value = infer_params.get(name)
     if value is None:
         return None
-    value = value.strip()
-    return value or None
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
 
 
 def _resolve_t5_quant_options(t5_quant=None, t5_quant_dir=None, ckpt_dir=None):
-    quant = t5_quant if t5_quant is not None else _optional_env("FLASHTALK_T5_QUANT")
-    quant_dir = t5_quant_dir if t5_quant_dir is not None else _optional_env("FLASHTALK_T5_QUANT_DIR")
+    quant = t5_quant if t5_quant is not None else _optional_config("t5_quant")
+    quant_dir = t5_quant_dir if t5_quant_dir is not None else _optional_config("t5_quant_dir")
 
     if quant is not None:
         quant = quant.lower()
@@ -68,9 +48,9 @@ def _resolve_t5_quant_options(t5_quant=None, t5_quant_dir=None, ckpt_dir=None):
 
 
 def _resolve_wan_quant_options(wan_quant=None, wan_quant_include=None, wan_quant_exclude=None):
-    quant = wan_quant if wan_quant is not None else _optional_env("FLASHTALK_WAN_QUANT")
-    include = wan_quant_include if wan_quant_include is not None else _optional_env("FLASHTALK_WAN_QUANT_INCLUDE")
-    exclude = wan_quant_exclude if wan_quant_exclude is not None else _optional_env("FLASHTALK_WAN_QUANT_EXCLUDE")
+    quant = wan_quant if wan_quant is not None else _optional_config("wan_quant")
+    include = wan_quant_include if wan_quant_include is not None else _optional_config("wan_quant_include")
+    exclude = wan_quant_exclude if wan_quant_exclude is not None else _optional_config("wan_quant_exclude")
 
     if quant is not None:
         quant = quant.lower()

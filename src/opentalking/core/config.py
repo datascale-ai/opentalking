@@ -54,6 +54,9 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
     }
 
     for key, value in raw.items():
+        if key == "models":
+            flattened[key] = value
+            continue
         if key in section_map and isinstance(value, dict):
             for inner_key, inner_value in value.items():
                 mapped_key = section_map[key].get(inner_key)
@@ -137,6 +140,7 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
     config_file: str = Field(default="./configs/default.yaml")
+    models: dict[str, Any] = Field(default_factory=dict)
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
