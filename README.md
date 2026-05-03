@@ -33,10 +33,11 @@
 
 OpenTalking 是一个开源实时数字人框架，目标是把 **数字人对话产品** 需要的链路串起来：前端交互、会话状态、LLM 回复、TTS/音色选择、打断控制、字幕事件、WebRTC 音视频播放，以及外部模型服务调用。
 
-OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地部署模型。基于 [OmniRT](https://github.com/datascale-ai/omnirt) 数字人推理框架，支持两条部署路线：
+OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地部署模型。默认入口优先让新用户先跑通完整链路，再按需要升级模型能力：
 
-- **消费级显卡可用**：面向 RTX 3090 / 4090，提供轻量模型、单卡实时配置和完整端到端体验。
-- **高质量私有化部署**：面向企业内网、私有数据和高质量数字人表现，支持昇腾 910B 等企业级 GPU/NPU 推理服务。
+- **快速体验**：`demo-avatar / wav2lip`，不需要独立模型服务，适合第一次验证 API、TTS、WebRTC 和前端。
+- **轻量适配验证**：`wav2lip / musetalk`，用于验证 Avatar 资产格式、模型适配器和端到端编排。
+- **高质量部署**：通过 [OmniRT](https://github.com/datascale-ai/omnirt) 接入 FlashTalk-compatible WebSocket，面向消费级 GPU 和企业私有化推理服务。
 
 ## 当前能力
 
@@ -135,7 +136,7 @@ opentalking/
 
 ## 快速开始
 
-OpenTalking 默认 avatar 模型是 `flashtalk`，为了帮助大家快速体验，整条链路只需要本地部署 **一个** 模型服务（FlashTalk WebSocket）；LLM、STT、TTS 全部走阿里云百炼 API（OpenAI 兼容端点 + DashScope 实时 ASR/TTS），也可无痛切换为自己启动或者OmniRT部署的自定义模型服务。完整安装说明、模型权重下载和分布式部署见 [docs/quickstart.md](docs/quickstart.md)、[docs/deployment.md](docs/deployment.md) 和 [docs/hardware.md](docs/hardware.md)。
+默认快速体验使用 `demo-avatar / wav2lip`，`OPENTALKING_FLASHTALK_MODE=off`，不需要先下载 FlashTalk 权重或启动 OmniRT。LLM / STT 可走阿里云百炼 API，TTS 默认 Edge TTS，无需 key。完整说明见 [docs/quickstart.md](docs/quickstart.md)。
 
 ### 1. 准备 OpenTalking 编排层
 
@@ -150,9 +151,13 @@ pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-在 [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) 申请百炼 API Key，然后在 `.env` 里补上密钥（其它字段保持默认即可）：
+在 [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) 申请百炼 API Key，然后在 `.env` 里补上密钥；其它字段保持默认即可：
 
 ```env
+# 快速体验：不启用 FlashTalk，默认使用 demo-avatar / wav2lip
+OPENTALKING_DEFAULT_MODEL=wav2lip
+OPENTALKING_FLASHTALK_MODE=off
+
 # LLM：百炼 OpenAI-compatible endpoint
 OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 OPENTALKING_LLM_API_KEY=sk-your-dashscope-key
@@ -169,25 +174,11 @@ OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
 # 可选：切到百炼 Qwen realtime TTS（复用上面的 DASHSCOPE_API_KEY）
 # OPENTALKING_TTS_PROVIDER=dashscope
 # OPENTALKING_QWEN_TTS_MODEL=qwen3-tts-flash-realtime
-
-# FlashTalk WebSocket 后端
-OPENTALKING_FLASHTALK_MODE=remote
-OPENTALKING_FLASHTALK_WS_URL=ws://127.0.0.1:8765
 ```
 
-### 2. 用 OmniRT 启动 FlashTalk 模型服务
+### 2. 启动 OpenTalking 与前端
 
-我们推荐用 [OmniRT](https://github.com/datascale-ai/omnirt) 部署 FlashTalk-compatible WebSocket，默认监听 `ws://0.0.0.0:8765`，正好对应 OpenTalking 的 `OPENTALKING_FLASHTALK_WS_URL`，无需改 OpenTalking 配置。
-
-完整流程（venv、`torch_npu`、SoulX-FlashTalk 依赖、模型权重、`bash scripts/start_flashtalk_ws.sh` 的所有环境变量、后台启动 / 量化 / warmup / 排错）直接照 OmniRT 官方文档操作：
-
-OmniRT 官方文档：[omnirt/docs/user_guide/serving/flashtalk_ws.md](https://github.com/datascale-ai/omnirt/blob/main/docs/user_guide/serving/flashtalk_ws.md)
-
-> 同机部署：保持 `OPENTALKING_FLASHTALK_WS_URL=ws://127.0.0.1:8765` 即可。跨机部署：在 OmniRT 侧设 `OMNIRT_FLASHTALK_HOST=0.0.0.0`，把 OpenTalking 这边的 WS URL 指向那台机器。
-
-### 3. 启动 OpenTalking 与前端
-
-确认 FlashTalk WS 已经就绪后，回到 OpenTalking 仓再开两个终端：
+开两个终端：
 
 ```bash
 # 终端 1：后端
@@ -205,13 +196,21 @@ npm run dev -- --host 0.0.0.0
 
 环境要求：Python ≥ 3.9、Node.js ≥ 18、FFmpeg；分布式模式额外需要 Redis。
 
-### 模型支持
+### 三条使用路径
 
-OmniRT 提供的高质量数字人模型（详见 [omnirt/docs/user_guide/generation/talking_head.md](https://github.com/datascale-ai/omnirt/blob/main/docs/user_guide/generation/talking_head.md)）：
+| 路径 | 推荐对象 | 配置 | 说明 |
+| --- | --- | --- | --- |
+| 快速体验 | 第一次运行、普通用户 | `.env.example`，`OPENTALKING_FLASHTALK_MODE=off`，`OPENTALKING_DEFAULT_MODEL=wav2lip` | 不需要独立模型服务，默认 `demo-avatar / wav2lip` |
+| 轻量适配验证 | 模型/Avatar 适配开发 | `wav2lip` 或 `musetalk` | MuseTalk 当前偏适配验证和准备资产体验 |
+| 高质量部署 | 私有化、生产验证、高质量数字人 | `.env.flashtalk.example`，FlashTalk + OmniRT | 见 [FlashTalk + OmniRT 部署](docs/flashtalk-omnirt.md) |
+
+### 模型支持
 
 | 模型 | 输入 | OpenTalking 接入 |
 | --- | --- | --- |
-| `soulx-flashtalk-14b`（默认） | portrait + audio | OmniRT FlashTalk WebSocket，`OPENTALKING_DEFAULT_MODEL=flashtalk` |
+| `wav2lip`（默认快速体验） | frames + audio | 轻量口型同步 demo / fallback；无需独立模型服务 |
+| `musetalk` | full frames + audio | 轻量 talking-head 适配验证 |
+| `soulx-flashtalk-14b` | portrait + audio | OmniRT FlashTalk WebSocket；使用 `.env.flashtalk.example` 启用 |
 | `soulx-flashhead-1.3b` | portrait + audio | OmniRT 当前仅暴露 HTTP `/v1/generate`，OpenTalking WebSocket 适配计划中 |
 | `soulx-liveact-14b` | portrait + audio | 同上 |
 
@@ -265,6 +264,7 @@ python -m apps.cli.benchmark_models --model all --device cuda:0 --duration-s 3 -
 ## 文档
 
 - [快速开始](docs/quickstart.md)
+- [FlashTalk + OmniRT 部署](docs/flashtalk-omnirt.md)
 - [架构说明](docs/architecture.md)
 - [配置说明](docs/configuration.md)
 - [部署文档](docs/deployment.md)（Docker Compose、分布式部署）

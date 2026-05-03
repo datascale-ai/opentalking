@@ -147,7 +147,7 @@ class Settings(BaseSettings):
     models_dir: str = "./models"
     worker_url: str = "http://127.0.0.1:9001"
 
-    flashtalk_mode: str = "remote"
+    flashtalk_mode: str = "off"
     flashtalk_ws_url: str = f"ws://{os.environ.get('SERVER_HOST', 'localhost')}:8765"
     flashtalk_ckpt_dir: str = "./models/SoulX-FlashTalk-14B"
     flashtalk_wav2vec_dir: str = "./models/chinese-wav2vec2-base"
@@ -215,7 +215,7 @@ class Settings(BaseSettings):
     ffmpeg_bin: str = "ffmpeg"
 
     torch_device: str = "cpu"
-    default_model: str = "flashtalk"
+    default_model: str = "wav2lip"
     default_fps: int = 25
 
     # FlashTalk slot queue: max sessions waiting behind the active one (0 = unlimited)
@@ -258,7 +258,7 @@ class Settings(BaseSettings):
         mode = self.flashtalk_mode.strip().lower()
         if mode in {"remote", "local", "off"}:
             return mode
-        return "remote"
+        return "off"
 
     @property
     def normalized_tts_provider(self) -> str:
