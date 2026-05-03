@@ -217,10 +217,21 @@ High-quality digital-human models served by OmniRT (see [omnirt/docs/user_guide/
 
 OpenTalking built-in lightweight adapters (no OmniRT dependency, run in-process, suitable for demos on smaller GPUs):
 
-| Model | Purpose |
-| --- | --- |
-| `wav2lip` | Lightweight lip-sync demo / fallback; no separate model service required |
-| `musetalk` | Lightweight talking-head adapter validation |
+| Model | Purpose | RTX 3090 measurement |
+| --- | --- | --- |
+| `wav2lip` | Lightweight lip-sync demo | About `128.91 FPS` with the current `demo-avatar` asset |
+| `musetalk` | Lightweight talking-head adapter validation | About `30.55 FPS` with the current `demo-musetalk` asset |
+
+3090 measurement conditions: `NVIDIA GeForce RTX 3090 24GB`, `cuda:0`,  3s synthetic audio, 200ms chunks, offline adapter FPS measured after warmup. Re-run with:
+
+```bash
+PYTHONPATH="$PWD:$PWD/src" \
+OPENTALKING_MODELS_DIR=/path/to/models \
+OPENTALKING_TORCH_DEVICE=cuda:0 \
+python -m apps.cli.benchmark_models --model all --device cuda:0 --duration-s 3 --chunk-ms 200 --warmup-chunks 5
+```
+
+> Avatar images are normalized to the manifest `width` / `height` during loading; custom-avatar FPS will vary with target resolution, cropping, and model weights.
 
 > Want to exercise just the API / TTS / WebRTC / frontend without any model backend? Set `OPENTALKING_FLASHTALK_MODE=off` and use the `demo-avatar / wav2lip` path.
 

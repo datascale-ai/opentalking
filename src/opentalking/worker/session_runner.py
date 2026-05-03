@@ -275,6 +275,10 @@ class SessionRunner:
         self._render_in_executor = os.environ.get("OPENTALKING_RENDER_IN_EXECUTOR", "1") == "1"
         self._tts_prewarm_on_prepare = os.environ.get("OPENTALKING_TTS_PREWARM_ON_PREPARE", "1") != "0"
         self._tts_prewarm_text = os.environ.get("OPENTALKING_TTS_PREWARM_TEXT", "你好")
+        self._render_prewarm_on_prepare = os.environ.get("OPENTALKING_RENDER_PREWARM_ON_PREPARE", "1") != "0"
+        self._render_prewarm_ms = float(os.environ.get("OPENTALKING_RENDER_PREWARM_MS", "200.0"))
+        self._render_prewarm_chunks = max(1, self._read_int_env("OPENTALKING_RENDER_PREWARM_CHUNKS", 1))
+        self._render_prewarm_signal = os.environ.get("OPENTALKING_RENDER_PREWARM_SIGNAL", "speechlike").strip().lower()
         self._render_executor: ThreadPoolExecutor | None = None
         self._audio_resampler = _StreamingPCMResampler()
         self._active_timing: SpeechTiming | None = None
@@ -329,10 +333,91 @@ class SessionRunner:
             self._idle_task = asyncio.create_task(self._idle_loop())
         if self._tts_prewarm_on_prepare:
             await self._prewarm_tts()
+        if self._render_prewarm_on_prepare:
+            await self._prewarm_render()
         self.ready_event.set()
 
     async def _prewarm_tts(self) -> None:
         return
+
+    async def _prewarm_render(self) -> None:
+        if self.avatar_state is None:
+            return
+        sample_rate = int(self.avatar_state.manifest.sample_rate)
+        samples = max(1, int(sample_rate * max(20.0, self._render_prewarm_ms) / 1000.0))
+        old_frame_idx = self._frame_idx
+        old_speech_frame_idx = self._speech_frame_idx
+        chunk_count = self._render_prewarm_chunk_count()
+        frame_idx = 0
+        speech_frame_idx = 0
+        try:
+            reset_avatar_speech_state(self.avatar_state)
+            t0 = _time.perf_counter()
+            for chunk_idx in range(chunk_count):
+                chunk = AudioChunk(
+                    data=self._render_prewarm_pcm(samples, sample_rate, chunk_idx),
+                    sample_rate=sample_rate,
+                    duration_ms=1000.0 * samples / sample_rate,
+                )
+                self._set_render_prewarm_stream_context(chunk, is_final=chunk_idx == chunk_count - 1)
+                next_frame_idx, _frames = await self._render_chunk_frames(
+                    chunk,
+                    frame_index_start=frame_idx,
+                    speech_frame_index_start=speech_frame_idx,
+                )
+                rendered_frames = max(0, int(next_frame_idx) - int(frame_idx))
+                frame_idx = int(next_frame_idx)
+                speech_frame_idx += rendered_frames
+            log.info(
+                "render prewarm done: session=%s model=%s chunks=%d samples_per_chunk=%d frames=%d wall_ms=%.0f",
+                self.session_id,
+                self.model_type,
+                chunk_count,
+                samples,
+                frame_idx,
+                (_time.perf_counter() - t0) * 1000.0,
+            )
+        except Exception:
+            log.warning("render prewarm failed: session=%s model=%s", self.session_id, self.model_type, exc_info=True)
+        finally:
+            reset_avatar_speech_state(self.avatar_state)
+            self._frame_idx = old_frame_idx
+            self._speech_frame_idx = old_speech_frame_idx
+
+    def _render_prewarm_chunk_count(self) -> int:
+        if self.model_type == "wav2lip" and self._wav2lip_live_mode not in {"official", "auto"}:
+            return max(3, self._render_prewarm_chunks)
+        return self._render_prewarm_chunks
+
+    def _render_prewarm_pcm(self, samples: int, sample_rate: int, chunk_idx: int) -> np.ndarray:
+        if self._render_prewarm_signal in {"0", "off", "silent", "silence"}:
+            return np.zeros(samples, dtype=np.int16)
+        t = (np.arange(samples, dtype=np.float32) + float(chunk_idx * samples)) / max(1, sample_rate)
+        envelope = 0.55 + 0.45 * np.sin(2.0 * np.pi * 3.0 * t)
+        signal = (
+            0.55 * np.sin(2.0 * np.pi * 180.0 * t)
+            + 0.30 * np.sin(2.0 * np.pi * 320.0 * t)
+            + 0.15 * np.sin(2.0 * np.pi * 620.0 * t)
+        )
+        pcm = np.clip(signal * envelope * 1200.0, -32768.0, 32767.0)
+        return pcm.astype(np.int16)
+
+    def _set_render_prewarm_stream_context(self, chunk: AudioChunk, *, is_final: bool) -> None:
+        if (
+            self.avatar_state is None
+            or self.model_type != "wav2lip"
+            or self._wav2lip_live_mode in {"official", "auto"}
+        ):
+            return
+        extra = getattr(self.avatar_state, "extra", None)
+        if not isinstance(extra, dict):
+            return
+        extra["wav2lip_stream_is_final"] = bool(is_final)
+        extra["wav2lip_stream_lookahead_pcm"] = (
+            np.zeros(0, dtype=np.int16)
+            if is_final
+            else np.asarray(chunk.data, dtype=np.int16).reshape(-1).copy()
+        )
 
     async def _idle_loop(self) -> None:
         fps = max(1.0, float(self.avatar_state.manifest.fps)) if self.avatar_state else 25.0

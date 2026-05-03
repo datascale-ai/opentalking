@@ -4,7 +4,9 @@ import asyncio
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from apps.api.services import session_service
@@ -12,6 +14,7 @@ from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.core.redis_keys import TASK_QUEUE
 from opentalking.core.session_store import get_session_record, session_key
 import opentalking.worker.task_consumer as task_consumer
+from opentalking.core.types.frames import AudioChunk
 from opentalking.worker.session_runner import SessionRunner
 from opentalking.worker.task_consumer import handle_worker_task
 
@@ -116,6 +119,78 @@ def test_session_runner_create_speak_task_accepts_tts_overrides() -> None:
         "tts_model": "qwen3-tts-flash-realtime",
         "enqueue_unix": 123.0,
     }
+
+
+def test_session_runner_render_prewarm_discards_media_and_preserves_indices() -> None:
+    runner = object.__new__(SessionRunner)
+    runner.session_id = "sess_prewarm"
+    runner.model_type = "wav2lip"
+    runner._wav2lip_live_mode = "streaming"
+    runner._render_prewarm_ms = 200.0
+    runner._render_prewarm_chunks = 1
+    runner._render_prewarm_signal = "speechlike"
+    runner._frame_idx = 7
+    runner._speech_frame_idx = 3
+    runner.avatar_state = SimpleNamespace(
+        manifest=SimpleNamespace(sample_rate=16000),
+        extra={
+            "wav2lip_stream_pcm": np.ones(4, dtype=np.int16),
+            "wav2lip_stream_lookahead_pcm": np.ones(4, dtype=np.int16),
+            "wav2lip_stream_emitted_frames": 4,
+        },
+    )
+    captured: list[dict[str, object]] = []
+
+    async def fake_render_chunk_frames(
+        chunk: AudioChunk,
+        *,
+        frame_index_start: int,
+        speech_frame_index_start: int,
+    ) -> tuple[int, list[object]]:
+        extra = runner.avatar_state.extra
+        captured.append(
+            {
+                "samples": int(chunk.data.size),
+                "frame_index_start": frame_index_start,
+                "speech_frame_index_start": speech_frame_index_start,
+                "lookahead_samples": int(extra["wav2lip_stream_lookahead_pcm"].size),
+                "is_final": bool(extra.get("wav2lip_stream_is_final")),
+            }
+        )
+        return frame_index_start + 6, [object()]
+
+    runner._render_chunk_frames = fake_render_chunk_frames  # type: ignore[method-assign]
+
+    asyncio.run(runner._prewarm_render())
+
+    assert captured == [
+        {
+            "samples": 3200,
+            "frame_index_start": 0,
+            "speech_frame_index_start": 0,
+            "lookahead_samples": 3200,
+            "is_final": False,
+        },
+        {
+            "samples": 3200,
+            "frame_index_start": 6,
+            "speech_frame_index_start": 6,
+            "lookahead_samples": 3200,
+            "is_final": False,
+        },
+        {
+            "samples": 3200,
+            "frame_index_start": 12,
+            "speech_frame_index_start": 12,
+            "lookahead_samples": 0,
+            "is_final": True,
+        },
+    ]
+    assert runner._frame_idx == 7
+    assert runner._speech_frame_idx == 3
+    assert runner.avatar_state.extra["wav2lip_stream_pcm"].size == 0
+    assert runner.avatar_state.extra["wav2lip_stream_lookahead_pcm"].size == 0
+    assert runner.avatar_state.extra["wav2lip_stream_emitted_frames"] == 0
 
 
 def test_speak_flashtalk_uploaded_pcm_queues_redis_pcm_key() -> None:
