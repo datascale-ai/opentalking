@@ -213,6 +213,7 @@ Requirements: Python ≥ 3.9, Node.js ≥ 18, FFmpeg; distributed mode also requ
 | `soulx-flashtalk-14b` | portrait + audio | OmniRT FlashTalk WebSocket; enable with `.env.flashtalk.example` |
 | `soulx-flashhead-1.3b` | portrait + audio | OmniRT currently exposes only HTTP `/v1/generate`; OpenTalking WebSocket adapter is planned |
 | `soulx-liveact-14b` | portrait + audio | same as above |
+
 OpenTalking built-in lightweight adapters (no OmniRT dependency, run in-process, suitable for demos on smaller GPUs):
 
 | Model | Purpose | RTX 3090 measurement |
