@@ -31,3 +31,13 @@ tts:
 model:
   torch_device: cpu
   default_model: wav2lip
+models:
+  wav2lip:
+    stream_batch_size: 8
+    pads: [0, 10, 0, 0]
+  musetalk:
+    context_ms: 320.0
+    silence_gate: 0.04
+  flashtalk:
+    frame_num: 33
+    sample_steps: 2

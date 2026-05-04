@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
+from opentalking.core.model_config import get_model_config
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,7 @@ def estimate_face_crop_box(
 
     x1, y1, x2, y2 = bbox
     bw, bh = x2 - x1, y2 - y1
-    use_eye_align = os.environ.get("OPENTALKING_MUSETALK_EYE_ALIGN", "0") == "1"
+    use_eye_align = bool(get_model_config("musetalk").get("eye_align", False))
     eye_centers = detect_eye_centers(frame, bbox) if use_eye_align else None
 
     if eye_centers is not None:

@@ -23,9 +23,15 @@ class InMemoryRedis:
     def __init__(self) -> None:
         self._hash: dict[str, dict[str, str]] = {}
         self._kv: dict[str, bytes] = {}
-        self._task_queue: asyncio.Queue[str] = asyncio.Queue()
+        self._task_queue: asyncio.Queue[str] | None = None
         self._listeners: dict[str, list[asyncio.Queue[dict[str, Any]]]] = defaultdict(list)
         self._expiry: dict[str, float] = {}
+
+    @property
+    def task_queue(self) -> asyncio.Queue[str]:
+        if self._task_queue is None:
+            self._task_queue = asyncio.Queue()
+        return self._task_queue
 
     def _purge_if_expired(self, name: str) -> None:
         deadline = self._expiry.get(name)
@@ -119,7 +125,7 @@ class InMemoryRedis:
     async def rpush(self, name: str, *values: str) -> int:
         _ = name  # only TASK_QUEUE used
         for v in values:
-            await self._task_queue.put(str(v))
+            await self.task_queue.put(str(v))
         return len(values)
 
     async def brpop(self, keys: str | list[str], timeout: int = 0) -> tuple[str, str] | None:
@@ -132,9 +138,9 @@ class InMemoryRedis:
         t = float(timeout) if timeout else None
         try:
             if t is not None and t > 0:
-                item = await asyncio.wait_for(self._task_queue.get(), timeout=t)
+                item = await asyncio.wait_for(self.task_queue.get(), timeout=t)
             else:
-                item = await self._task_queue.get()
+                item = await self.task_queue.get()
             return (TASK_QUEUE, item)
         except asyncio.TimeoutError:
             return None
@@ -166,18 +172,25 @@ class MemoryPubSub:
 
     def __init__(self, broker: InMemoryRedis) -> None:
         self._broker = broker
-        self._incoming: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=256)
+        self._incoming: asyncio.Queue[dict[str, Any]] | None = None
         self._channels: set[str] = set()
+
+    @property
+    def incoming(self) -> asyncio.Queue[dict[str, Any]]:
+        if self._incoming is None:
+            self._incoming = asyncio.Queue(maxsize=256)
+        return self._incoming
 
     async def subscribe(self, *channels: str) -> None:
         for ch in channels:
             self._channels.add(ch)
-            self._broker._register_listener(ch, self._incoming)
+            self._broker._register_listener(ch, self.incoming)
 
     async def unsubscribe(self, *channels: str) -> None:
         for ch in channels:
             self._channels.discard(ch)
-            self._broker._unregister_listener(ch, self._incoming)
+            if self._incoming is not None:
+                self._broker._unregister_listener(ch, self._incoming)
 
     async def get_message(
         self,
@@ -188,8 +201,8 @@ class MemoryPubSub:
         _ = ignore_subscribe_messages
         try:
             if timeout is None:
-                return await self._incoming.get()
-            return await asyncio.wait_for(self._incoming.get(), timeout=timeout)
+                return await self.incoming.get()
+            return await asyncio.wait_for(self.incoming.get(), timeout=timeout)
         except asyncio.TimeoutError:
             return None
 
