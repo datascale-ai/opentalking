@@ -1,0 +1,10 @@
+{
+  "id": "flashhead-demo",
+  "model_type": "flashhead",
+  "fps": 25,
+  "sample_rate": 16000,
+  "width": 512,
+  "height": 512,
+  "version": "1.0",
+  "name": "FlashHead Demo"
+}

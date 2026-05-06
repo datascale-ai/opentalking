@@ -33,6 +33,23 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "gpu_count": "flashtalk_gpu_count",
             "jpeg_quality": "flashtalk_jpeg_quality",
         },
+        "flashhead": {
+            "ws_url": "flashhead_ws_url",
+            "base_url": "flashhead_base_url",
+            "model": "flashhead_model",
+            "shared_local_dir": "flashhead_shared_local_dir",
+            "shared_remote_dir": "flashhead_shared_remote_dir",
+            "output_local_dir": "flashhead_output_local_dir",
+            "output_remote_dir": "flashhead_output_remote_dir",
+            "output_base_url": "flashhead_output_base_url",
+            "timeout_sec": "flashhead_timeout_sec",
+            "fps": "flashhead_fps",
+            "sample_rate": "flashhead_sample_rate",
+            "width": "flashhead_width",
+            "height": "flashhead_height",
+            "frame_num": "flashhead_frame_num",
+            "chunk_samples": "flashhead_chunk_samples",
+        },
         "llm": {
             "base_url": "llm_base_url",
             "api_key": "llm_api_key",
@@ -119,6 +136,21 @@ def _load_legacy_env_source() -> dict[str, Any]:
         "FLASHTALK_TTS_OPENER_MIN_FILL_RATIO": "flashtalk_tts_opener_min_fill_ratio",
         "FLASHTALK_TTS_OPENER_PAD_TO_CHUNK": "flashtalk_tts_opener_pad_to_chunk",
         "FLASHTALK_TTS_OPENER_MAX_HISTORY": "flashtalk_tts_opener_max_history",
+        "FLASHHEAD_BASE_URL": "flashhead_base_url",
+        "FLASHHEAD_WS_URL": "flashhead_ws_url",
+        "FLASHHEAD_MODEL": "flashhead_model",
+        "FLASHHEAD_SHARED_LOCAL_DIR": "flashhead_shared_local_dir",
+        "FLASHHEAD_SHARED_REMOTE_DIR": "flashhead_shared_remote_dir",
+        "FLASHHEAD_OUTPUT_LOCAL_DIR": "flashhead_output_local_dir",
+        "FLASHHEAD_OUTPUT_REMOTE_DIR": "flashhead_output_remote_dir",
+        "FLASHHEAD_OUTPUT_BASE_URL": "flashhead_output_base_url",
+        "FLASHHEAD_TIMEOUT_SEC": "flashhead_timeout_sec",
+        "FLASHHEAD_FPS": "flashhead_fps",
+        "FLASHHEAD_SAMPLE_RATE": "flashhead_sample_rate",
+        "FLASHHEAD_WIDTH": "flashhead_width",
+        "FLASHHEAD_HEIGHT": "flashhead_height",
+        "FLASHHEAD_FRAME_NUM": "flashhead_frame_num",
+        "FLASHHEAD_CHUNK_SAMPLES": "flashhead_chunk_samples",
         "DASHSCOPE_API_KEY": "llm_api_key",
         "DASHSCOPE_MODEL": "llm_model",
         "LLM_SYSTEM_PROMPT": "llm_system_prompt",
@@ -193,6 +225,22 @@ class Settings(BaseSettings):
     flashtalk_tts_opener_min_fill_ratio: float = 0.78
     flashtalk_tts_opener_pad_to_chunk: bool = True
     flashtalk_tts_opener_max_history: int = 2
+
+    flashhead_ws_url: str = "ws://8.92.7.195:8766/v1/avatar/realtime"
+    flashhead_base_url: str = "http://8.92.7.195:8766"
+    flashhead_model: str = "soulx-flashhead-1.3b"
+    flashhead_shared_local_dir: str = "/tmp/opentalking_flashhead_io"
+    flashhead_shared_remote_dir: str = "/tmp/opentalking_flashhead_io"
+    flashhead_output_local_dir: str = ""
+    flashhead_output_remote_dir: str = ""
+    flashhead_output_base_url: str = ""
+    flashhead_timeout_sec: float = 600.0
+    flashhead_fps: int = 25
+    flashhead_sample_rate: int = 16000
+    flashhead_width: int = 512
+    flashhead_height: int = 512
+    flashhead_frame_num: int = 29
+    flashhead_chunk_samples: int = 17920
 
     llm_base_url: str = ""
     llm_api_key: str = ""

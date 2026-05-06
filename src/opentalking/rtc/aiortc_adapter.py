@@ -4,6 +4,7 @@ import asyncio
 import fractions
 import os
 import time
+from dataclasses import dataclass
 
 import numpy as np
 from aiortc import RTCPeerConnection, RTCSessionDescription
@@ -16,6 +17,11 @@ try:
     from aiortc.mediastreams import MediaStreamTrack
 except ImportError:  # pragma: no cover
     from aiortc import MediaStreamTrack  # type: ignore
+
+
+@dataclass
+class _SharedWallClock:
+    start_time: float | None = None
 
 
 class _LegacyNumpyVideoTrack(MediaStreamTrack):
@@ -65,7 +71,7 @@ class _LegacyNumpyVideoTrack(MediaStreamTrack):
 class _BufferedNumpyVideoTrack(MediaStreamTrack):
     kind = "video"
 
-    def __init__(self, fps: float = 25.0) -> None:
+    def __init__(self, fps: float = 25.0, *, shared_clock: _SharedWallClock | None = None) -> None:
         super().__init__()
         self._fps = fps
         self._queue: asyncio.Queue[VideoFrameData | None] = asyncio.Queue(maxsize=256)
@@ -73,6 +79,7 @@ class _BufferedNumpyVideoTrack(MediaStreamTrack):
         self._timeline_base_ms: float | None = None
         self._prev_source_ts_ms: float | None = None
         self._next_pts_ms = 0
+        self._shared_clock = shared_clock
 
     async def put(self, frame: VideoFrameData | None) -> None:
         await self._queue.put(frame)
@@ -92,7 +99,8 @@ class _BufferedNumpyVideoTrack(MediaStreamTrack):
 
         frame_ts_ms = max(0.0, float(item.timestamp_ms))
         if self._timeline_start is None or self._timeline_base_ms is None:
-            self._timeline_start = time.monotonic()
+            shared_start = self._shared_clock.start_time if self._shared_clock else None
+            self._timeline_start = shared_start if shared_start is not None else time.monotonic()
             self._timeline_base_ms = frame_ts_ms
 
         target = self._timeline_start + max(
@@ -171,7 +179,7 @@ class _LegacyPCM16AudioTrack(MediaStreamTrack):
 class _BufferedPCM16AudioTrack(MediaStreamTrack):
     kind = "audio"
 
-    def __init__(self, sample_rate: int = 16000) -> None:
+    def __init__(self, sample_rate: int = 16000, *, shared_clock: _SharedWallClock | None = None) -> None:
         super().__init__()
         self.sample_rate = sample_rate
         self._queue: asyncio.Queue[np.ndarray | None] = asyncio.Queue(maxsize=512)
@@ -184,6 +192,7 @@ class _BufferedPCM16AudioTrack(MediaStreamTrack):
         self._clock_start_pts = 0
         self._seen_audio = False
         self._eof = False
+        self._shared_clock = shared_clock
 
     async def put_pcm(self, samples: np.ndarray | None) -> None:
         await self._queue.put(samples)
@@ -224,7 +233,8 @@ class _BufferedPCM16AudioTrack(MediaStreamTrack):
 
         pts = self._next_pts
         if self._start_time is None:
-            self._start_time = time.monotonic()
+            shared_start = self._shared_clock.start_time if self._shared_clock else None
+            self._start_time = shared_start if shared_start is not None else time.monotonic()
             self._clock_start_pts = pts
             self._seen_audio = True
 
@@ -259,12 +269,13 @@ class WebRTCSession:
             asyncio.set_event_loop(asyncio.new_event_loop())
         self.pc = RTCPeerConnection()
         normalized_mode = mode.strip().lower()
+        self._shared_clock = _SharedWallClock()
         if normalized_mode == "legacy":
             self.video = _LegacyNumpyVideoTrack(fps=fps)
             self.audio = _LegacyPCM16AudioTrack(sample_rate=sample_rate)
         else:
-            self.video = _BufferedNumpyVideoTrack(fps=fps)
-            self.audio = _BufferedPCM16AudioTrack(sample_rate=sample_rate)
+            self.video = _BufferedNumpyVideoTrack(fps=fps, shared_clock=self._shared_clock)
+            self.audio = _BufferedPCM16AudioTrack(sample_rate=sample_rate, shared_clock=self._shared_clock)
         self.mode = normalized_mode
         self.pc.addTrack(self.video)
         self.pc.addTrack(self.audio)
@@ -273,6 +284,7 @@ class WebRTCSession:
     def reset_clocks(self) -> None:
         """Reset pacing wall-clock so next frame/audio is sent immediately.
         Does NOT reset PTS counters — keeps the RTP stream continuous."""
+        self._shared_clock.start_time = time.monotonic()
         self.video.reset_clock()
         self.audio.reset_clock()
         self.draining = False

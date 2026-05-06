@@ -23,6 +23,7 @@ def test_buffered_reset_clocks_resets_timeline_without_rewinding_pts() -> None:
         assert session.video._timeline_base_ms is None
         assert session.video._prev_source_ts_ms is None
         assert session.video._next_pts_ms == 960
+        assert session._shared_clock.start_time is not None
         assert session.audio._start_time is None
         assert session.audio._clock_start_pts == 32640
         assert session.audio._next_pts == 32640

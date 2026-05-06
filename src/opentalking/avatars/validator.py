@@ -30,6 +30,9 @@ def validate_avatar_dir(avatar_dir: Path) -> list[str]:
             errors.append("musetalk avatar should have full_frames/ directory")
         elif not any(ff.iterdir()):
             errors.append("full_frames/ is empty")
+    elif m.model_type in {"flashtalk", "flashhead"}:
+        if not (avatar_dir / "reference.png").is_file() and not (avatar_dir / "reference.jpg").is_file():
+            errors.append(f"{m.model_type} avatar should have reference.png or reference.jpg")
     elif m.model_type == "wav2lip":
         frames = avatar_dir / "frames"
         if not frames.is_dir():

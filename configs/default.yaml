@@ -19,6 +19,22 @@ flashtalk:
   device: auto
   gpu_count: 8
   jpeg_quality: 40
+flashhead:
+  ws_url: ws://8.92.7.195:8766/v1/avatar/realtime
+  base_url: http://8.92.7.195:8766
+  model: soulx-flashhead-1.3b
+  shared_local_dir: /tmp/opentalking_flashhead_io
+  shared_remote_dir: /tmp/opentalking_flashhead_io
+  output_local_dir: ""
+  output_remote_dir: ""
+  output_base_url: ""
+  timeout_sec: 600
+  fps: 25
+  sample_rate: 16000
+  width: 512
+  height: 512
+  frame_num: 29
+  chunk_samples: 17920
 llm:
   base_url: ""
   api_key: ""

@@ -14,10 +14,12 @@ def test_list_models() -> None:
     assert "wav2lip" in opentalking.models.list_models()
     assert "musetalk" in opentalking.models.list_models()
     assert "flashtalk" in opentalking.models.list_models()
+    assert "flashhead" in opentalking.models.list_models()
 
 
 def test_list_available_models_hides_flashtalk_when_off() -> None:
     assert "flashtalk" not in opentalking.models.list_available_models(flashtalk_mode="off")
+    assert "flashhead" in opentalking.models.list_available_models(flashtalk_mode="off")
     assert "wav2lip" in opentalking.models.list_available_models(flashtalk_mode="off")
     assert "flashtalk" in opentalking.models.list_available_models(flashtalk_mode="local")
 
@@ -25,6 +27,13 @@ def test_list_available_models_hides_flashtalk_when_off() -> None:
 def test_demo_avatar_valid() -> None:
     root = Path(__file__).resolve().parents[2]
     demo = root / "examples" / "avatars" / "demo-avatar"
+    errs = validate_avatar_dir(demo)
+    assert errs == []
+
+
+def test_flashhead_demo_avatar_valid() -> None:
+    root = Path(__file__).resolve().parents[2]
+    demo = root / "examples" / "avatars" / "flashhead-demo"
     errs = validate_avatar_dir(demo)
     assert errs == []
 

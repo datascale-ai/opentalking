@@ -28,14 +28,15 @@ def get_adapter(model_type: str) -> ModelAdapter:
     return _ADAPTERS[model_type]()
 
 
-# Model types that bypass the ModelAdapter protocol (remote/special runners)
-_REMOTE_MODELS: set[str] = {"flashtalk"}
+# Model types that bypass the ModelAdapter protocol (remote/special runners).
+_REMOTE_MODELS: set[str] = {"flashtalk", "flashhead"}
 
 
 def list_models(*, include_flashtalk: bool = True) -> list[str]:
     models = set(_ADAPTERS.keys())
+    models |= _REMOTE_MODELS - {"flashtalk"}
     if include_flashtalk:
-        models |= _REMOTE_MODELS
+        models.add("flashtalk")
     return sorted(models)
 
 

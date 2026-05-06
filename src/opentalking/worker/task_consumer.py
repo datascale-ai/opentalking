@@ -89,37 +89,53 @@ def _create_runner(
     avatar_id = str(task["avatar_id"])
     settings = get_settings()
 
-    if model == "flashtalk":
+    if model in {"flashtalk", "flashhead"}:
         from opentalking.worker.flashtalk_runner import FlashTalkRunner
 
-        flashtalk_mode = settings.normalized_flashtalk_mode
         flashtalk_client = None
         flashtalk_ws_url: str | None = None
 
-        if flashtalk_mode == "remote":
-            flashtalk_ws_url = settings.flashtalk_ws_url
-        elif flashtalk_mode == "local":
-            from opentalking.models.flashtalk import FlashTalkLocalClient
+        if model == "flashhead":
+            from opentalking.models.flashhead import FlashHeadWSClient
 
-            flashtalk_config = get_model_config("flashtalk")
-            flashtalk_client = FlashTalkLocalClient(
-                ckpt_dir=settings.flashtalk_ckpt_dir,
-                wav2vec_dir=settings.flashtalk_wav2vec_dir,
-                device=settings.flashtalk_device,
-                world_size=1,
-                frame_num=int(flashtalk_config["frame_num"]),
-                motion_frames_num=int(flashtalk_config["motion_frames_num"]),
-                fps=int(flashtalk_config["tgt_fps"]),
-                height=int(flashtalk_config["height"]),
-                width=int(flashtalk_config["width"]),
-                sample_rate=int(flashtalk_config["sample_rate"]),
+            flashtalk_client = FlashHeadWSClient(
+                ws_url=settings.flashhead_ws_url,
+                model=settings.flashhead_model,
+                config={
+                    "fps": int(settings.flashhead_fps),
+                    "sample_rate": int(settings.flashhead_sample_rate),
+                    "width": int(settings.flashhead_width),
+                    "height": int(settings.flashhead_height),
+                    "frame_num": int(settings.flashhead_frame_num),
+                    "chunk_samples": int(settings.flashhead_chunk_samples),
+                },
             )
         else:
-            raise RuntimeError(
-                "FlashTalk is disabled (OPENTALKING_FLASHTALK_MODE=off). "
-                "Use demo-avatar/wav2lip for the open-source demo path, or switch "
-                "FlashTalk mode to remote/local."
-            )
+            flashtalk_mode = settings.normalized_flashtalk_mode
+            if flashtalk_mode == "remote":
+                flashtalk_ws_url = settings.flashtalk_ws_url
+            elif flashtalk_mode == "local":
+                from opentalking.models.flashtalk import FlashTalkLocalClient
+
+                flashtalk_config = get_model_config("flashtalk")
+                flashtalk_client = FlashTalkLocalClient(
+                    ckpt_dir=settings.flashtalk_ckpt_dir,
+                    wav2vec_dir=settings.flashtalk_wav2vec_dir,
+                    device=settings.flashtalk_device,
+                    world_size=1,
+                    frame_num=int(flashtalk_config["frame_num"]),
+                    motion_frames_num=int(flashtalk_config["motion_frames_num"]),
+                    fps=int(flashtalk_config["tgt_fps"]),
+                    height=int(flashtalk_config["height"]),
+                    width=int(flashtalk_config["width"]),
+                    sample_rate=int(flashtalk_config["sample_rate"]),
+                )
+            else:
+                raise RuntimeError(
+                    "FlashTalk is disabled (OPENTALKING_FLASHTALK_MODE=off). "
+                    "Use demo-avatar/wav2lip for the open-source demo path, or switch "
+                    "FlashTalk mode to remote/local."
+                )
 
         return FlashTalkRunner(
             session_id=sid,
@@ -134,6 +150,7 @@ def _create_runner(
             llm_model=settings.llm_model,
             system_prompt=str(task.get("llm_system_prompt", "") or settings.llm_system_prompt)
             or "你是一个友好的数字人助手，请用简洁的语言回答问题。不要使用表情符号或emoji。",
+            model_type=model,
         )
 
     return SessionRunner(
@@ -328,7 +345,7 @@ async def handle_worker_task(
         if sid in runners:
             return
         model = str(task.get("model", ""))
-        if model == "flashtalk":
+        if model in {"flashtalk", "flashhead"}:
             t = asyncio.create_task(
                 _init_flashtalk_with_queue(task, r, avatars_root, device, runners, sid)
             )

@@ -153,6 +153,10 @@ async def _stream_worker_flashtalk_recording(
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
+def _is_flashtalk_compatible_model(model: str | None) -> bool:
+    return (model or "").strip().lower() in {"flashtalk", "flashhead"}
+
+
 async def _flashtalk_disk_recording_control(
     session_id: str,
     request: Request,
@@ -163,10 +167,10 @@ async def _flashtalk_disk_recording_control(
     s = await session_service.get_session(r, session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
-    if (s.get("model") or "").strip().lower() != "flashtalk":
+    if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="FlashTalk 录制仅支持 flashtalk 模型会话",
+            detail="FlashTalk 录制仅支持 flashtalk/flashhead 模型会话",
         )
     status = "stopped" if stop else "recording"
 
@@ -287,7 +291,7 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").
-    is_flashtalk = body.model == "flashtalk"
+    is_flashtalk = _is_flashtalk_compatible_model(body.model)
     runners = getattr(request.app.state, "session_runners", None)
     if runners is not None:
         settings = request.app.state.settings
@@ -587,16 +591,16 @@ async def speak_flashtalk_audio(
 ) -> dict[str, str]:
     """上传音频 → 解码为 16kHz mono PCM → 直接驱动 FlashTalk（不经语音识别、LLM、TTS）。
 
-    要求会话 ``model`` 为 ``flashtalk``；``pcm_path`` 写入本机临时目录，需与 Worker 共享文件系统。
+    要求会话 ``model`` 为 ``flashtalk`` 或 ``flashhead``；``pcm_path`` 写入本机临时目录，需与 Worker 共享文件系统。
     """
     r: redis.Redis = request.app.state.redis
     s = await session_service.get_session(r, session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
-    if (s.get("model") or "").strip().lower() != "flashtalk":
+    if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="仅 flashtalk 会话可使用本接口（上传音频直驱口型）",
+            detail="仅 flashtalk/flashhead 会话可使用本接口（上传音频直驱口型）",
         )
 
     body = await file.read()
@@ -847,17 +851,17 @@ async def flashtalk_offline_bundle_enqueue(
 ) -> dict[str, str]:
     """上传音频 → 入队离线推理；完成后音视频对齐保存在服务端目录，并可下载。
 
-    需 **flashtalk** 会话且 Worker 已加载该 session；PCM 临时文件须与 Worker 共享文件系统。
+    需 **flashtalk/flashhead** 会话且 Worker 已加载该 session；PCM 临时文件须与 Worker 共享文件系统。
     进度与结果见 ``GET .../flashtalk-offline-bundle/{job_id}``。
     """
     r: redis.Redis = request.app.state.redis
     s = await session_service.get_session(r, session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
-    if (s.get("model") or "").strip().lower() != "flashtalk":
+    if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="仅 flashtalk 会话可使用离线导出",
+            detail="仅 flashtalk/flashhead 会话可使用离线导出",
         )
 
     body = await file.read()
