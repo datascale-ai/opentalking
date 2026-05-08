@@ -363,7 +363,7 @@ async def handle_worker_task(
                 _log_task_exception(_t, _sid)
 
             t.add_done_callback(_done)
-        else:
+        elif model == "quicktalk":
             t = asyncio.create_task(
                 _do_init(task, r, avatars_root, device, runners, sid)
             )
@@ -372,6 +372,8 @@ async def handle_worker_task(
                 _log_task_exception(_t, _sid)
 
             t.add_done_callback(_done)
+        else:
+            await _do_init(task, r, avatars_root, device, runners, sid)
         return
     runner = runners.get(sid)
     if not runner:
