@@ -822,6 +822,7 @@ class SessionRunner:
         saw_queue_sentinel = False
 
         while True:
+            item: _SpeechChunkEnvelope | None
             if prefetch is not None:
                 item = prefetch[0]
             elif saw_queue_sentinel:
