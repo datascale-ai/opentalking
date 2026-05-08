@@ -16,7 +16,7 @@ const rightTabs: { id: RightTab; label: string }[] = [
 
 const avatars = [
   { name: "灵眸主播", model: "FlashTalk", status: "已就绪", active: true },
-  { name: "青语助理", model: "Qingyu V3", status: "可切换", active: false },
+  { name: "QuickTalk 助理", model: "QuickTalk", status: "可切换", active: false },
   { name: "MuseTalk Demo", model: "MuseTalk", status: "轻量演示", active: false },
 ];
 
@@ -146,7 +146,7 @@ function ConfigSidebar() {
 
         <Section title="驱动模型">
           <div className="grid grid-cols-2 gap-2 text-xs">
-            {["FlashTalk", "FlashHead", "Qingyu V3", "MuseTalk"].map((model, index) => (
+            {["FlashTalk", "FlashHead", "QuickTalk", "MuseTalk"].map((model, index) => (
               <button
                 key={model}
                 className={`rounded-lg border px-3 py-2 font-medium ${

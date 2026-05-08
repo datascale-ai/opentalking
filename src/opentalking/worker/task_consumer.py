@@ -92,6 +92,7 @@ def _create_runner(
     if model in {"flashtalk", "flashhead"}:
         from opentalking.worker.flashtalk_runner import FlashTalkRunner
 
+        flashtalk_mode = settings.normalized_flashtalk_mode
         flashtalk_client = None
         flashtalk_ws_url: str | None = None
 
@@ -110,32 +111,30 @@ def _create_runner(
                     "chunk_samples": int(settings.flashhead_chunk_samples),
                 },
             )
-        else:
-            flashtalk_mode = settings.normalized_flashtalk_mode
-            if flashtalk_mode == "remote":
-                flashtalk_ws_url = settings.flashtalk_ws_url
-            elif flashtalk_mode == "local":
-                from opentalking.models.flashtalk import FlashTalkLocalClient
+        elif flashtalk_mode == "remote":
+            flashtalk_ws_url = settings.flashtalk_ws_url
+        elif flashtalk_mode == "local":
+            from opentalking.models.flashtalk import FlashTalkLocalClient
 
-                flashtalk_config = get_model_config("flashtalk")
-                flashtalk_client = FlashTalkLocalClient(
-                    ckpt_dir=settings.flashtalk_ckpt_dir,
-                    wav2vec_dir=settings.flashtalk_wav2vec_dir,
-                    device=settings.flashtalk_device,
-                    world_size=1,
-                    frame_num=int(flashtalk_config["frame_num"]),
-                    motion_frames_num=int(flashtalk_config["motion_frames_num"]),
-                    fps=int(flashtalk_config["tgt_fps"]),
-                    height=int(flashtalk_config["height"]),
-                    width=int(flashtalk_config["width"]),
-                    sample_rate=int(flashtalk_config["sample_rate"]),
-                )
-            else:
-                raise RuntimeError(
-                    "FlashTalk is disabled (OPENTALKING_FLASHTALK_MODE=off). "
-                    "Use demo-avatar/wav2lip for the open-source demo path, or switch "
-                    "FlashTalk mode to remote/local."
-                )
+            flashtalk_config = get_model_config("flashtalk")
+            flashtalk_client = FlashTalkLocalClient(
+                ckpt_dir=settings.flashtalk_ckpt_dir,
+                wav2vec_dir=settings.flashtalk_wav2vec_dir,
+                device=settings.flashtalk_device,
+                world_size=1,
+                frame_num=int(flashtalk_config["frame_num"]),
+                motion_frames_num=int(flashtalk_config["motion_frames_num"]),
+                fps=int(flashtalk_config["tgt_fps"]),
+                height=int(flashtalk_config["height"]),
+                width=int(flashtalk_config["width"]),
+                sample_rate=int(flashtalk_config["sample_rate"]),
+            )
+        else:
+            raise RuntimeError(
+                "FlashTalk is disabled (OPENTALKING_FLASHTALK_MODE=off). "
+                "Use demo-avatar/wav2lip for the open-source demo path, or switch "
+                "FlashTalk mode to remote/local."
+            )
 
         return FlashTalkRunner(
             session_id=sid,
@@ -160,6 +159,11 @@ def _create_runner(
         avatars_root=avatars_root,
         redis=r,
         device=device,
+        llm_base_url=settings.llm_base_url,
+        llm_api_key=settings.llm_api_key,
+        llm_model=settings.llm_model,
+        llm_system_prompt=str(task.get("llm_system_prompt", "") or settings.llm_system_prompt)
+        or "你是一个友好的数字人助手，请用简洁的语言回答问题。不要使用表情符号或emoji。",
     )
 
 
@@ -177,6 +181,11 @@ async def _do_init(
     try:
         await runner.prepare()
         await set_session_state(r, sid, "worker_ready")
+        await publish_event(r, sid, "session.queued", {
+            "session_id": sid,
+            "position": 0,
+            "message": "worker_ready",
+        })
     except Exception:
         runners.pop(sid, None)
         await set_session_state(r, sid, "error")
@@ -355,7 +364,14 @@ async def handle_worker_task(
 
             t.add_done_callback(_done)
         else:
-            await _do_init(task, r, avatars_root, device, runners, sid)
+            t = asyncio.create_task(
+                _do_init(task, r, avatars_root, device, runners, sid)
+            )
+
+            def _done(_t: asyncio.Task[None], _sid: str = str(sid)) -> None:
+                _log_task_exception(_t, _sid)
+
+            t.add_done_callback(_done)
         return
     runner = runners.get(sid)
     if not runner:
@@ -386,6 +402,34 @@ async def handle_worker_task(
             )
         runner.create_speak_task(
             text,
+            tts_voice=tts_voice or None,
+            tts_provider=tts_provider or None,
+            tts_model=tts_model or None,
+            enqueue_unix=float(enqueue_unix)
+            if isinstance(enqueue_unix, (int, float))
+            else None,
+        )
+    elif cmd == "chat":
+        prompt = str(task.get("prompt", "") or task.get("text", ""))
+        raw_voice = task.get("tts_voice") or task.get("voice")
+        tts_voice = str(raw_voice).strip() if raw_voice else None
+        tp = task.get("tts_provider")
+        tts_provider = str(tp).strip().lower() if tp else None
+        tm = task.get("tts_model")
+        tts_model = str(tm).strip() if tm else None
+        enqueue_unix = task.get("enqueue_unix")
+        if isinstance(enqueue_unix, (int, float)):
+            log.info(
+                "chat task dequeue from API enqueue: %.0f ms session=%s",
+                (time.time() - float(enqueue_unix)) * 1000.0,
+                sid,
+            )
+        chat_fn = getattr(runner, "create_chat_task", None)
+        if chat_fn is None:
+            log.warning("chat unsupported runner session=%s", sid)
+            return
+        chat_fn(
+            prompt,
             tts_voice=tts_voice or None,
             tts_provider=tts_provider or None,
             tts_model=tts_model or None,

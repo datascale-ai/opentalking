@@ -90,6 +90,50 @@ async def unified_lifespan(app: FastAPI):
         avatars_root,
         device,
     )
+
+    # Optional: warm one or more avatar Workers at startup so the very first
+    # session doesn't pay the 30-120s ``_build_fast_restore_contexts`` cost.
+    # Set ``OPENTALKING_PREWARM_AVATARS=quicktalk-daytime,...`` to a comma
+    # separated list of avatar IDs (under ``avatars_root``). Only models with
+    # an in-process worker cache benefit (currently quicktalk).
+    prewarm_raw = os.environ.get("OPENTALKING_PREWARM_AVATARS", "").strip()
+    if prewarm_raw:
+        prewarm_ids = [s.strip() for s in prewarm_raw.split(",") if s.strip()]
+
+        async def _prewarm() -> None:
+            from opentalking.avatars.loader import load_avatar_bundle
+            from opentalking.models.registry import get_adapter
+
+            for aid in prewarm_ids:
+                try:
+                    bundle = load_avatar_bundle(avatars_root / aid, strict=False)
+                except Exception:  # noqa: BLE001
+                    log.warning("prewarm: avatar %s not found, skipping", aid, exc_info=True)
+                    continue
+                model_type = bundle.manifest.model_type
+                try:
+                    adapter = get_adapter(model_type)
+                except Exception:  # noqa: BLE001
+                    log.warning("prewarm: adapter for %s unavailable", model_type, exc_info=True)
+                    continue
+
+                def _do_prewarm(adapter=adapter, aid=aid, model_type=model_type) -> None:
+                    log.info("prewarm: building worker for avatar=%s model=%s", aid, model_type)
+                    if hasattr(adapter, "load_model"):
+                        adapter.load_model(device)
+                    state = adapter.load_avatar(str(avatars_root / aid))
+                    if hasattr(adapter, "warmup"):
+                        adapter.warmup()
+                    log.info("prewarm: ready avatar=%s fps=%s", aid, getattr(state, "fps", None))
+
+                loop = asyncio.get_running_loop()
+                try:
+                    await loop.run_in_executor(None, _do_prewarm)
+                except Exception:  # noqa: BLE001
+                    log.warning("prewarm failed for avatar=%s", aid, exc_info=True)
+
+        asyncio.create_task(_prewarm())
+
     yield
     consumer.cancel()
     try:

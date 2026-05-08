@@ -15,6 +15,7 @@ def test_list_models() -> None:
     assert "musetalk" in opentalking.models.list_models()
     assert "flashtalk" in opentalking.models.list_models()
     assert "flashhead" in opentalking.models.list_models()
+    assert "quicktalk" in opentalking.models.list_models()
 
 
 def test_list_available_models_hides_flashtalk_when_off() -> None:

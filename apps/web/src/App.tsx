@@ -153,10 +153,10 @@ function pickInitialAvatar(
 ): AvatarSummary | null {
   if (!avatars.length) return null;
   const available = new Set(registeredModels);
-  // Prefer Qingyu V3 for the OpenTalking V3 demo, then fall back to the other demos.
+  // Prefer QuickTalk for the OpenTalking V3 demo, then fall back to the other demos.
   return (
-    avatars.find((a) => a.id === "qingyu-v3-daytime" && available.has("qingyu_v3")) ??
-    avatars.find((a) => a.model_type === "qingyu_v3" && available.has("qingyu_v3")) ??
+    avatars.find((a) => a.id === "quicktalk-daytime" && available.has("quicktalk")) ??
+    avatars.find((a) => a.model_type === "quicktalk" && available.has("quicktalk")) ??
     avatars.find((a) => a.model_type === "flashhead" && available.has("flashhead")) ??
     avatars.find((a) => a.model_type === "flashtalk" && available.has("flashtalk")) ??
     avatars.find((a) => a.model_type === "musetalk" && available.has("musetalk")) ??
@@ -177,7 +177,7 @@ const MODEL_LABELS_FOR_STAGE: Record<string, string> = {
   flashhead: "FlashHead",
   flashtalk: "FlashTalk",
   musetalk: "MuseTalk",
-  qingyu_v3: "Qingyu V3",
+  quicktalk: "QuickTalk",
   wav2lip: "Wav2Lip",
 };
 
@@ -954,7 +954,7 @@ export default function App() {
       if (isSpeaking) {
         void apiPost(`/sessions/${sessionId}/interrupt`, {}).catch(() => {});
       }
-      const useChat = model === "qingyu_v3";
+      const useChat = model === "quicktalk";
       const endpoint = useChat ? "chat" : "speak";
       const payload = useChat
         ? {

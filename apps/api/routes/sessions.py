@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from opentalking.avatars.loader import load_avatar_bundle
 from apps.api.schemas.session import (
+    ChatRequest,
     CreateSessionRequest,
     CreateSessionResponse,
     SpeakRequest,
@@ -59,6 +60,10 @@ def _effective_tts_provider(requested: str | None) -> str:
 
 
 _BAILIAN_TTS = BAILIAN_TTS_PROVIDERS
+
+
+def _is_flashtalk_compatible_model(model: str | None) -> bool:
+    return (model or "").strip().lower() in {"flashtalk", "flashhead"}
 
 
 async def _await_result(value: Awaitable[Any] | Any) -> Any:
@@ -153,10 +158,6 @@ async def _stream_worker_flashtalk_recording(
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-def _is_flashtalk_compatible_model(model: str | None) -> bool:
-    return (model or "").strip().lower() in {"flashtalk", "flashhead"}
-
-
 async def _flashtalk_disk_recording_control(
     session_id: str,
     request: Request,
@@ -170,7 +171,7 @@ async def _flashtalk_disk_recording_control(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="FlashTalk 录制仅支持 flashtalk/flashhead 模型会话",
+            detail="FlashTalk 兼容录制仅支持 flashtalk/flashhead 模型会话",
         )
     status = "stopped" if stop else "recording"
 
@@ -316,6 +317,9 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
                 else:
                     raise HTTPException(status_code=503, detail="FlashTalk init timed out.")
                 return CreateSessionResponse(session_id=sid, status="created")
+
+        if body.model == "quicktalk":
+            return CreateSessionResponse(session_id=sid, status="initializing")
 
         # Non-FlashTalk: wait synchronously until runner is ready (fast, local model).
         max_wait_sec = 90
@@ -478,6 +482,38 @@ async def speak(session_id: str, body: SpeakRequest, request: Request) -> dict[s
         r,
         session_id,
         body.text,
+        voice=voice,
+        tts_provider=eff_prov,
+        tts_model=tm,
+    )
+    return {"session_id": session_id, "status": "queued"}
+
+
+@router.post("/{session_id}/chat")
+async def chat(session_id: str, body: ChatRequest, request: Request) -> dict[str, str]:
+    """LLM 流式 → 句级 TTS → 数字人渲染。当前仅 quicktalk 已对接。"""
+    r: redis.Redis = request.app.state.redis
+    s = await session_service.get_session(r, session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="session not found")
+    model = (s.get("model") or "").strip()
+    if model != "quicktalk":
+        raise HTTPException(
+            status_code=400,
+            detail=f"/chat 仅支持 quicktalk 会话，当前 model={model or 'unknown'}",
+        )
+    prompt = (body.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is empty")
+    voice, eff_prov, tm = _normalize_voice_for_speak(
+        voice=body.voice,
+        tts_provider=body.tts_provider,
+        tts_model=body.tts_model,
+    )
+    await session_service.chat(
+        r,
+        session_id,
+        prompt,
         voice=voice,
         tts_provider=eff_prov,
         tts_model=tm,

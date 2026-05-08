@@ -149,6 +149,33 @@ async def speak(
     await _push_task(r, task)
 
 
+async def chat(
+    r: redis.Redis,
+    sid: str,
+    prompt: str,
+    *,
+    voice: str | None = None,
+    tts_provider: str | None = None,
+    tts_model: str | None = None,
+) -> None:
+    """LLM 流式 → 句级 TTS → 数字人渲染（仅 quicktalk 已对接）。"""
+    await interrupt(r, sid)
+    task: dict[str, Any] = {
+        "cmd": "chat",
+        "session_id": sid,
+        "prompt": prompt,
+        "enqueue_unix": time.time(),
+    }
+    if voice:
+        task["voice"] = voice
+        task["tts_voice"] = voice
+    if tts_provider:
+        task["tts_provider"] = tts_provider.strip().lower()
+    if tts_model:
+        task["tts_model"] = tts_model.strip()
+    await _push_task(r, task)
+
+
 async def interrupt(r: redis.Redis, sid: str) -> None:
     await _push_task(r, {"cmd": "interrupt", "session_id": sid})
 

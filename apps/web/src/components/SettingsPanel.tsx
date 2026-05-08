@@ -10,7 +10,7 @@ const MODEL_LABELS: Record<string, string> = {
   flashhead: "FlashHead",
   flashtalk: "FlashTalk",
   musetalk: "MuseTalk",
-  qingyu_v3: "Qingyu V3",
+  quicktalk: "QuickTalk",
   wav2lip: "Wav2Lip",
 };
 
