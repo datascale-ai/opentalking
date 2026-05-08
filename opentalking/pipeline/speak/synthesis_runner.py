@@ -6,6 +6,7 @@ FlashTalkSessionRunner – drives the full conversation pipeline:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -260,6 +261,59 @@ class FlashTalkRunner:
         #: Background dynamic idle cache (closes main WS briefly); speak() must await this.
         self._dynamic_idle_prepare_task: asyncio.Task[None] | None = None
 
+    def _wav2lip_mouth_metadata(self) -> dict[str, Any] | None:
+        if self.model_type != "wav2lip":
+            return None
+        manifest_path = self.avatar_path() / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            log.warning("Failed to read wav2lip avatar metadata: %s", manifest_path, exc_info=True)
+            return None
+        metadata = raw.get("metadata")
+        if not isinstance(metadata, dict):
+            return None
+        animation = metadata.get("animation")
+        if not isinstance(animation, dict):
+            return None
+        return {
+            "source_image_hash": metadata.get("source_image_hash"),
+            "source_image_path": metadata.get("source_image_path"),
+            "face_box": metadata.get("face_box"),
+            "animation": animation,
+        }
+
+    def _wav2lip_enhanced_postprocessing_enabled(self) -> bool | None:
+        if self.model_type != "wav2lip":
+            return None
+        raw = os.environ.get("OPENTALKING_WAV2LIP_ENABLE_ENHANCED_POSTPROCESSING")
+        if raw is None:
+            return None
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    def _wav2lip_video_config(self) -> dict[str, int] | None:
+        if self.model_type != "wav2lip":
+            return None
+        manifest_path = self.avatar_path() / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            log.warning("Failed to read wav2lip avatar video config: %s", manifest_path, exc_info=True)
+            return None
+        out: dict[str, int] = {}
+        for key in ("width", "height", "fps"):
+            try:
+                value = int(raw.get(key) or 0)
+            except (TypeError, ValueError):
+                value = 0
+            if value > 0:
+                out[key] = value
+        return out or None
+
     def avatar_path(self) -> Path:
         return (self.avatars_root / self.avatar_id).resolve()
 
@@ -317,7 +371,12 @@ class FlashTalkRunner:
 
         # Connect and init FlashTalk session
         await self.flashtalk.connect()
-        await self.flashtalk.init_session(ref_image=ref_image_path)
+        await self.flashtalk.init_session(
+            ref_image=ref_image_path,
+            enable_enhanced_postprocessing=self._wav2lip_enhanced_postprocessing_enabled(),
+            mouth_metadata=self._wav2lip_mouth_metadata(),
+            video_config=self._wav2lip_video_config(),
+        )
 
         # Create WebRTC session matching FlashTalk output
         self.webrtc = WebRTCSession(
@@ -340,21 +399,12 @@ class FlashTalkRunner:
         # Load reference image as initial idle frame
         try:
             from PIL import Image
-            from PIL import ImageOps
+            from opentalking.media.frame_avatar import resize_reference_image_to_video
 
             pil_img = Image.open(ref_image_path).convert("RGB")
             target_w = int(getattr(self.flashtalk, "width", 0) or 0)
             target_h = int(getattr(self.flashtalk, "height", 0) or 0)
-            if target_w > 0 and target_h > 0 and pil_img.size != (target_w, target_h):
-                fitted = ImageOps.contain(
-                    pil_img,
-                    (target_w, target_h),
-                    method=Image.Resampling.LANCZOS,
-                )
-                canvas = Image.new("RGB", (target_w, target_h), (0, 0, 0))
-                offset = ((target_w - fitted.width) // 2, (target_h - fitted.height) // 2)
-                canvas.paste(fitted, offset)
-                pil_img = canvas
+            pil_img = resize_reference_image_to_video(pil_img, width=target_w, height=target_h)
             img = np.asarray(pil_img)
             # Convert RGB to BGR for WebRTC.
             self._reference_frame = img[:, :, ::-1].copy()
@@ -664,7 +714,12 @@ class FlashTalkRunner:
     async def _reset_flashtalk_session(self, ref_image_path: Path) -> None:
         await self.flashtalk.close()
         await self.flashtalk.connect()
-        await self.flashtalk.init_session(ref_image=ref_image_path)
+        await self.flashtalk.init_session(
+            ref_image=ref_image_path,
+            enable_enhanced_postprocessing=self._wav2lip_enhanced_postprocessing_enabled(),
+            mouth_metadata=self._wav2lip_mouth_metadata(),
+            video_config=self._wav2lip_video_config(),
+        )
 
     async def _build_idle_frames(self) -> list[np.ndarray]:
         idle_chunks = max(1, _env_int("FLASHTALK_IDLE_CACHE_CHUNKS", 4))
@@ -682,7 +737,12 @@ class FlashTalkRunner:
             ref_image_path = self.avatar_path() / "reference.png"
             if not ref_image_path.exists():
                 ref_image_path = self.avatar_path() / "reference.jpg"
-            await temp_client.init_session(ref_image=ref_image_path)
+            await temp_client.init_session(
+                ref_image=ref_image_path,
+                enable_enhanced_postprocessing=self._wav2lip_enhanced_postprocessing_enabled(),
+                mouth_metadata=self._wav2lip_mouth_metadata(),
+                video_config=self._wav2lip_video_config(),
+            )
 
             chunk_samples = int(temp_client.audio_chunk_samples)
             if chunk_samples <= 0:

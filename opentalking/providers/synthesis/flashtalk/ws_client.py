@@ -9,6 +9,7 @@ import os
 import struct
 import time
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -110,6 +111,10 @@ class FlashTalkWSClient:
         ref_image: bytes | str | Path,
         prompt: str = "A person is talking. Only the foreground characters are moving, the background remains static.",
         seed: int = 9999,
+        *,
+        enable_enhanced_postprocessing: bool | None = None,
+        mouth_metadata: dict[str, Any] | None = None,
+        video_config: dict[str, Any] | None = None,
     ) -> dict:
         """Initialise a generation session with a reference face image.
 
@@ -124,12 +129,23 @@ class FlashTalkWSClient:
         if isinstance(ref_image, (str, Path)):
             ref_image = Path(ref_image).read_bytes()
 
-        msg = json.dumps({
+        payload: dict[str, Any] = {
             "type": "init",
             "ref_image": base64.b64encode(ref_image).decode(),
             "prompt": prompt,
             "seed": seed,
-        })
+        }
+        if enable_enhanced_postprocessing is not None:
+            payload["enable_enhanced_postprocessing"] = enable_enhanced_postprocessing
+        if mouth_metadata:
+            payload["mouth_metadata"] = mouth_metadata
+        if video_config:
+            for key in ("width", "height", "fps", "frame_num", "motion_frames_num", "slice_len"):
+                value = video_config.get(key)
+                if value is not None:
+                    payload[key] = value
+
+        msg = json.dumps(payload)
         await self._ws.send(msg)
         resp = json.loads(await self._ws.recv())
 

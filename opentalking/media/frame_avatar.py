@@ -18,6 +18,13 @@ def _resize_to_manifest(img: Image.Image, manifest: AvatarManifest) -> Image.Ima
     return img.resize(target, Image.Resampling.LANCZOS)
 
 
+def resize_reference_image_to_video(img: Image.Image, *, width: int, height: int) -> Image.Image:
+    target = (int(width), int(height))
+    if target[0] <= 0 or target[1] <= 0 or img.size == target:
+        return img
+    return img.resize(target, Image.Resampling.LANCZOS)
+
+
 def _load_images_from_dir(d: Path, manifest: AvatarManifest) -> list[np.ndarray]:
     paths = sorted(
         p for p in d.iterdir() if p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")

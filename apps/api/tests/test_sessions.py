@@ -121,7 +121,7 @@ def unified_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         yield client
 
 
-def test_create_session_avatar_model_decoupled_within_supported() -> None:
+def test_create_session_avatar_model_decoupled_within_supported(unified_client: TestClient) -> None:
     """Avatar and model are decoupled — any (avatar, supported_model) is accepted.
 
     SUPPORTED_MODELS lives in opentalking/providers/synthesis/__init__.py.
@@ -133,22 +133,22 @@ def test_create_session_avatar_model_decoupled_within_supported() -> None:
         ("flashhead-demo", "mock"),
         ("demo-musetalk", "mock"),
         ("flashtalk-demo", "mock"),
+        ("flashtalk-demo", "wav2lip"),
     ]
-    with TestClient(unified_main.create_app()) as client:
-        for avatar_id, model in pairs:
-            response = client.post(
-                "/sessions",
-                json={"avatar_id": avatar_id, "model": model},
-            )
-            assert response.status_code != 400, (
-                f"avatar={avatar_id} + model={model} returned 400: {response.json()}"
-            )
+    for avatar_id, model in pairs:
+        response = unified_client.post(
+            "/sessions",
+            json={"avatar_id": avatar_id, "model": model},
+        )
+        assert response.status_code != 400, (
+            f"avatar={avatar_id} + model={model} returned 400: {response.json()}"
+        )
 
 
 def test_create_session_rejects_unsupported_model() -> None:
     """Picking a model not in SUPPORTED_MODELS yields 400 with a clear hint."""
     with TestClient(unified_main.create_app()) as client:
-        for unsupported in ("musetalk", "wav2lip"):
+        for unsupported in ("musetalk",):
             response = client.post(
                 "/sessions",
                 json={"avatar_id": "flashtalk-demo", "model": unsupported},

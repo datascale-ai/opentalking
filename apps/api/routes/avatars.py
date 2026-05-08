@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from datetime import datetime
@@ -11,6 +12,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
 
+from opentalking.avatar import mouth_metadata
 from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.avatar.validator import list_avatar_dirs
 from apps.api.schemas.avatar import AvatarSummary
@@ -87,6 +89,32 @@ def _write_custom_avatar_manifest(base_manifest_path: Path, target_manifest_path
     target_manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _custom_avatar_max_size() -> tuple[int, int]:
+    width = int(os.environ.get("OPENTALKING_CUSTOM_AVATAR_MAX_WIDTH", "720"))
+    height = int(os.environ.get("OPENTALKING_CUSTOM_AVATAR_MAX_HEIGHT", "1280"))
+    return max(1, width), max(1, height)
+
+
+def _resize_uploaded_avatar_image(image: Image.Image, *, max_width: int, max_height: int) -> Image.Image:
+    if image.width <= max_width and image.height <= max_height:
+        return image.copy()
+    fitted = image.copy()
+    fitted.thumbnail((int(max_width), int(max_height)), Image.Resampling.LANCZOS)
+    return fitted
+
+
+def _update_manifest_dimensions(manifest_path: Path, image: Image.Image) -> None:
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw["width"] = int(image.width)
+    raw["height"] = int(image.height)
+    manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _model_type_from_manifest(manifest_path: Path) -> str:
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return str(raw.get("model_type") or "")
+
+
 @router.get("", response_model=list[AvatarSummary])
 async def list_avatars(request: Request) -> list[AvatarSummary]:
     root = _avatars_root(request)
@@ -135,8 +163,21 @@ async def create_custom_avatar(
             avatar_id=avatar_id,
             name=display_name,
         )
-        image_rgb.save(target_dir / "preview.png", format="PNG")
-        image_rgb.save(target_dir / "reference.png", format="PNG")
+        max_w, max_h = _custom_avatar_max_size()
+        fitted_image = _resize_uploaded_avatar_image(image_rgb, max_width=max_w, max_height=max_h)
+        _update_manifest_dimensions(target_dir / "manifest.json", fitted_image)
+        fitted_image.save(target_dir / "preview.png", format="PNG")
+        fitted_image.save(target_dir / "reference.png", format="PNG")
+        mouth_metadata.update_manifest_mouth_metadata(
+            target_dir / "manifest.json",
+            target_dir / "reference.png",
+            force=True,
+        )
+        if _model_type_from_manifest(target_dir / "manifest.json") == "wav2lip":
+            frames_dir = target_dir / "frames"
+            frames_dir.mkdir(parents=True, exist_ok=True)
+            frame_path = frames_dir / "frame_00000.png"
+            fitted_image.save(frame_path, format="PNG")
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(target_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"failed to create custom avatar: {exc}") from exc

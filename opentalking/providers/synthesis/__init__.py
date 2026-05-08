@@ -29,12 +29,9 @@ register("synthesis", "flashhead")(FlashHeadWSClient)
 SYNTHESIS_PROVIDERS = ("mock", "flashtalk", "musetalk", "wav2lip", "flashhead")
 
 # What the upstream backend can actually serve TODAY.
-# `mock` is in-process and always works; `flashtalk` covers the SoulX FlashTalk
-# WS service (OmniRT path-based dispatch is not live yet, so musetalk/wav2lip
-# would silently render in FlashTalk style if not gated here).
-# Once OmniRT routes by `/v1/avatar/{model}` and rejects unknown paths itself,
-# this constant can be widened or removed.
-SUPPORTED_MODELS = frozenset({"mock", "flashtalk"})
+# `mock` is in-process and always works. OmniRT now exposes model-specific
+# FlashTalk-compatible routes for FlashTalk and Wav2Lip.
+SUPPORTED_MODELS = frozenset({"mock", "flashtalk", "wav2lip"})
 
 
 def list_available_synthesis() -> list[str]:
