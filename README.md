@@ -37,6 +37,7 @@ OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地�
 
 - **快速体验**：`mock / 无驱动模式`，不需要独立模型服务，适合第一次验证 API、TTS、WebRTC 和前端。
 - **轻量适配验证**：通过 [OmniRT](https://github.com/datascale-ai/omnirt) 启动 `wav2lip`，用于验证 Avatar 资产格式、模型适配器和端到端编排。
+- **QuickTalk 实时路径**：`quicktalk` 本地适配器，支持流式 LLM → 句级 TTS → 实时口型渲染，并可通过 Worker 缓存降低首轮等待。
 - **高质量部署**：通过 OmniRT 接入 `flashtalk` 等高质量模型，面向 GPU/NPU 私有化推理服务。
 
 ## 当前能力
@@ -47,6 +48,7 @@ OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地�
 - **基础打断能力**：当前说话轮次已有打断基础，后续会升级为全链路取消。
 - **OpenAI 兼容 LLM**：支持 DashScope、Ollama、vLLM、DeepSeek 等 OpenAI-compatible endpoint。
 - **多部署形态**：支持单进程 demo、API/Worker 分布式模式和 Docker Compose。
+- **QuickTalk 适配器**：内置 `quicktalk` 模型注册、Avatar 校验、实时渲染队列、音画同步和 benchmark CLI。
 
 ## 交流与联系
 

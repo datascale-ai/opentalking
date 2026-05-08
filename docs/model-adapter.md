@@ -16,6 +16,13 @@
 | `compose_frame(avatar_state, frame_idx, prediction)` | 输出一帧 `VideoFrameData` |
 | `idle_frame(avatar_state, frame_idx)` | 静默/待机动画帧 |
 
+## 已接入适配器
+
+- `wav2lip`：轻量口型同步 demo / fallback。
+- `musetalk`：轻量 talking-head 适配验证。
+- `quicktalk`：本地实时 talking-head 适配器，支持流式渲染、Worker 缓存和 `/chat` 对话链路。
+- `flashtalk` / `flashhead`：FlashTalk 兼容远端或本地服务路径。
+
 ## 接入真实 MuseTalk / Wav2Lip
 
 当前实现包含 **占位推理** 与 **帧循环回退**，便于联调。接入完整网络时：
