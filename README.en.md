@@ -37,11 +37,13 @@ OpenTalking focuses on the **pipeline orchestration layer** and supports both ex
 
 - **Quick experience**: `demo-avatar / wav2lip`, no standalone model service required, ideal for validating the API, TTS, WebRTC, and frontend.
 - **Lightweight adapter validation**: `wav2lip / musetalk`, useful for Avatar assets, model adapters, and end-to-end orchestration checks.
+- **QuickTalk realtime path**: the local `quicktalk` adapter supports streaming LLM → sentence-level TTS → realtime lip rendering, with Worker caching to reduce first-turn startup cost.
 - **High-quality deployment**: FlashTalk-compatible WebSocket via [OmniRT](https://github.com/datascale-ai/omnirt), targeting consumer GPUs and enterprise private inference services.
 
 ## Capabilities
 
 - **Real-time digital-human dialogue**: LLM reply, streaming TTS, subtitle events, status events, and WebRTC playback all happen in one pipeline.
+- **QuickTalk adapter**: built-in `quicktalk` model registration, Avatar validation, realtime render queue, audio-video sync, and benchmark CLI.
 - **FlashTalk-compatible path**: speaks the FlashTalk WebSocket protocol, with either local or remote inference servers behind it as the high-quality renderer.
 - **Lightweight demo path**: the API, TTS, WebRTC, and frontend can be exercised without first downloading the full FlashTalk weights.
 - **Basic barge-in**: current speaking turns can already be interrupted; full pipeline cancellation is on the roadmap.
@@ -202,6 +204,7 @@ Requirements: Python ≥ 3.9, Node.js ≥ 18, FFmpeg; distributed mode also requ
 | --- | --- | --- | --- |
 | Quick experience | First run, general users | `.env.example`, `OPENTALKING_FLASHTALK_MODE=off`, `OPENTALKING_DEFAULT_MODEL=wav2lip` | No standalone model service; defaults to `demo-avatar / wav2lip` |
 | Lightweight adapter validation | Model / Avatar adapter development | `wav2lip` or `musetalk` | MuseTalk is currently best treated as adapter validation and prepared-asset experience |
+| QuickTalk realtime path | Local realtime digital-human demos, LLM dialogue | `OPENTALKING_DEFAULT_MODEL=quicktalk`, Avatar `model_type=quicktalk` | Avatar manifests need `metadata.asset_root` and `metadata.template_video`; use `opentalking-quicktalk-bench` for local benchmarks |
 | High-quality deployment | Private deployment, production validation, high-quality digital humans | `.env.flashtalk.example`, FlashTalk + OmniRT | See [FlashTalk + OmniRT deployment](docs/flashtalk-omnirt.en.md) |
 
 ### Supported models
@@ -210,6 +213,7 @@ Requirements: Python ≥ 3.9, Node.js ≥ 18, FFmpeg; distributed mode also requ
 | --- | --- | --- |
 | `wav2lip` (default quickstart) | frames + audio | Lightweight lip-sync demo / fallback; no standalone model service required |
 | `musetalk` | full frames + audio | Lightweight talking-head adapter validation |
+| `quicktalk` | template video + audio | Local realtime talking-head adapter with Worker caching, streaming rendering, and the `/chat` dialogue pipeline |
 | `soulx-flashtalk-14b` | portrait + audio | OmniRT FlashTalk WebSocket; enable with `.env.flashtalk.example` |
 | `soulx-flashhead-1.3b` | portrait + audio | OmniRT currently exposes only HTTP `/v1/generate`; OpenTalking WebSocket adapter is planned |
 | `soulx-liveact-14b` | portrait + audio | same as above |
