@@ -341,6 +341,65 @@ class FlashTalkRunner:
                 out[key] = value
         return out or None
 
+    def _wav2lip_manifest_metadata(self) -> dict[str, Any]:
+        if self.model_type != "wav2lip":
+            return {}
+        manifest_path = self.avatar_path() / "manifest.json"
+        if not manifest_path.exists():
+            return {}
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            log.warning("Failed to read wav2lip avatar manifest: %s", manifest_path, exc_info=True)
+            return {}
+        metadata = raw.get("metadata")
+        return metadata if isinstance(metadata, dict) else {}
+
+    def _wav2lip_reference_mode(self) -> str | None:
+        metadata = self._wav2lip_manifest_metadata()
+        mode = str(metadata.get("reference_mode") or "").strip().lower()
+        return mode if mode in {"frames"} else None
+
+    def _wav2lip_reference_frame_dir(self) -> Path | None:
+        if self._wav2lip_reference_mode() != "frames":
+            return None
+        metadata = self._wav2lip_manifest_metadata()
+        raw = str(metadata.get("frame_dir") or "frames").strip() or "frames"
+        frame_dir = (self.avatar_path() / raw).resolve()
+        try:
+            frame_dir.relative_to(self.avatar_path())
+        except ValueError:
+            log.warning("Ignoring wav2lip frame_dir outside avatar directory: %s", frame_dir)
+            return None
+        if not frame_dir.is_dir():
+            log.warning("Ignoring missing wav2lip frame_dir: %s", frame_dir)
+            return None
+        return frame_dir
+
+    def _wav2lip_reference_frame_metadata_path(self) -> Path | None:
+        if self._wav2lip_reference_mode() != "frames":
+            return None
+        metadata = self._wav2lip_manifest_metadata()
+        raw = str(metadata.get("frame_metadata") or "").strip()
+        if not raw:
+            return None
+        path = (self.avatar_path() / raw).resolve()
+        try:
+            path.relative_to(self.avatar_path())
+        except ValueError:
+            log.warning("Ignoring wav2lip frame_metadata outside avatar directory: %s", path)
+            return None
+        if not path.is_file():
+            log.warning("Ignoring missing wav2lip frame_metadata: %s", path)
+            return None
+        return path
+
+    def _wav2lip_preprocessed(self) -> bool:
+        if self._wav2lip_reference_mode() != "frames":
+            return False
+        metadata = self._wav2lip_manifest_metadata()
+        return bool(metadata.get("preprocessed"))
+
     def avatar_path(self) -> Path:
         return (self.avatars_root / self.avatar_id).resolve()
 
@@ -398,12 +457,7 @@ class FlashTalkRunner:
 
         # Connect and init FlashTalk session
         await self.flashtalk.connect()
-        await self.flashtalk.init_session(
-            ref_image=ref_image_path,
-            enable_enhanced_postprocessing=self._wav2lip_enhanced_postprocessing_enabled(),
-            mouth_metadata=self._wav2lip_mouth_metadata(),
-            video_config=self._wav2lip_video_config(),
-        )
+        await self._init_flashtalk_session(ref_image_path)
 
         # Create WebRTC session matching FlashTalk output
         self.webrtc = WebRTCSession(
@@ -440,6 +494,16 @@ class FlashTalkRunner:
             log.exception("Failed to load reference frame for idle preview: %s", ref_image_path)
             self._reference_frame = None
             self._last_frame = None
+
+        if self.model_type == "wav2lip" and self._wav2lip_reference_mode() == "frames":
+            idle_frames = self._load_wav2lip_reference_idle_frames()
+            if idle_frames:
+                self._set_idle_frames(idle_frames)
+                log.info(
+                    "Loaded wav2lip reference frames for idle playback: avatar=%s frames=%d",
+                    self.avatar_id,
+                    len(idle_frames),
+                )
 
         # Start idle loop after init; it replays local cached frames when WebRTC is live.
         if self._idle_task is None:
@@ -670,6 +734,37 @@ class FlashTalkRunner:
         )
         return frames
 
+    def _load_wav2lip_reference_idle_frames(self) -> list[np.ndarray] | None:
+        frame_dir = self._wav2lip_reference_frame_dir()
+        if frame_dir is None:
+            return None
+        frame_paths = sorted(
+            path
+            for path in frame_dir.iterdir()
+            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+        )
+        max_frames = max(1, _env_int("OPENTALKING_WAV2LIP_IDLE_MAX_FRAMES", 125))
+        frame_paths = frame_paths[:max_frames]
+        if not frame_paths:
+            return None
+
+        from PIL import Image
+        from opentalking.media.frame_avatar import resize_reference_image_to_video
+
+        target_w = int(getattr(self.flashtalk, "width", 0) or 0)
+        target_h = int(getattr(self.flashtalk, "height", 0) or 0)
+        frames: list[np.ndarray] = []
+        for path in frame_paths:
+            try:
+                pil_img = Image.open(path).convert("RGB")
+                pil_img = resize_reference_image_to_video(pil_img, width=target_w, height=target_h)
+                img = np.asarray(pil_img)
+                frames.append(np.ascontiguousarray(img[:, :, ::-1]))
+            except Exception:
+                log.warning("Skipping unreadable wav2lip idle frame: %s", path, exc_info=True)
+                continue
+        return frames or None
+
     def _set_idle_frames(self, frames: list[np.ndarray]) -> None:
         self._idle_frames = frames
         playback_mode = os.environ.get("FLASHTALK_IDLE_CACHE_PLAYBACK", "pingpong").strip().lower()
@@ -741,11 +836,18 @@ class FlashTalkRunner:
     async def _reset_flashtalk_session(self, ref_image_path: Path) -> None:
         await self.flashtalk.close()
         await self.flashtalk.connect()
+        await self._init_flashtalk_session(ref_image_path)
+
+    async def _init_flashtalk_session(self, ref_image_path: Path) -> None:
         await self.flashtalk.init_session(
             ref_image=ref_image_path,
             enable_enhanced_postprocessing=self._wav2lip_enhanced_postprocessing_enabled(),
             mouth_metadata=self._wav2lip_mouth_metadata(),
             video_config=self._wav2lip_video_config(),
+            reference_mode=self._wav2lip_reference_mode(),
+            ref_frame_dir=self._wav2lip_reference_frame_dir(),
+            ref_frame_metadata_path=self._wav2lip_reference_frame_metadata_path(),
+            preprocessed=self._wav2lip_preprocessed(),
         )
 
     async def _build_idle_frames(self) -> list[np.ndarray]:

@@ -20,6 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apps.api.core.config import get_settings
 from apps.api.routes import avatars, events, health, models, sessions, tts_preview, voices
 from opentalking.voice.store import init_voice_store
+from opentalking.avatar.wav2lip_preload import preload_wav2lip_assets
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.pipeline.session.runner import SessionRunner
 from opentalking.runtime.task_consumer import consume_task_queue
@@ -65,6 +66,13 @@ def _unified_uvicorn_workers() -> int:
     return 1
 
 
+def _env_bool(name: str, *, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @asynccontextmanager
 async def unified_lifespan(app: FastAPI):
     init_voice_store()
@@ -85,6 +93,16 @@ async def unified_lifespan(app: FastAPI):
     consumer = asyncio.create_task(
         consume_task_queue(mem, avatars_root, device, runners)
     )
+    preload_task: asyncio.Task[None] | None = None
+    omnirt_endpoint = (settings.omnirt_endpoint or "").strip()
+    if omnirt_endpoint:
+        preload_task = asyncio.create_task(
+            preload_wav2lip_assets(
+                avatars_root,
+                omnirt_endpoint=omnirt_endpoint,
+                enhanced=_env_bool("OPENTALKING_WAV2LIP_ENABLE_ENHANCED_POSTPROCESSING"),
+            )
+        )
     log.info(
         "OpenTalking unified mode: in-memory broker, avatars=%s device=%s",
         avatars_root,
@@ -96,6 +114,12 @@ async def unified_lifespan(app: FastAPI):
         await consumer
     except asyncio.CancelledError:
         pass
+    if preload_task is not None and not preload_task.done():
+        preload_task.cancel()
+        try:
+            await preload_task
+        except asyncio.CancelledError:
+            pass
     for s in list(runners.values()):
         await s.close()
     runners.clear()

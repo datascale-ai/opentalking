@@ -115,6 +115,10 @@ class FlashTalkWSClient:
         enable_enhanced_postprocessing: bool | None = None,
         mouth_metadata: dict[str, Any] | None = None,
         video_config: dict[str, Any] | None = None,
+        reference_mode: str | None = None,
+        ref_frame_dir: str | Path | None = None,
+        ref_frame_metadata_path: str | Path | None = None,
+        preprocessed: bool | None = None,
     ) -> dict:
         """Initialise a generation session with a reference face image.
 
@@ -139,6 +143,14 @@ class FlashTalkWSClient:
             payload["enable_enhanced_postprocessing"] = enable_enhanced_postprocessing
         if mouth_metadata:
             payload["mouth_metadata"] = mouth_metadata
+        if reference_mode:
+            payload["reference_mode"] = reference_mode
+        if ref_frame_dir is not None:
+            payload["ref_frame_dir"] = str(ref_frame_dir)
+        if ref_frame_metadata_path is not None:
+            payload["ref_frame_metadata_path"] = str(ref_frame_metadata_path)
+        if preprocessed is not None:
+            payload["preprocessed"] = bool(preprocessed)
         if video_config:
             for key in ("width", "height", "fps", "frame_num", "motion_frames_num", "slice_len"):
                 value = video_config.get(key)

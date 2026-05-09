@@ -57,3 +57,63 @@ async def test_init_session_sends_wav2lip_enhanced_postprocessing_metadata(tmp_p
     assert sent["width"] == 608
     assert sent["height"] == 594
     assert sent["fps"] == 25
+
+
+@pytest.mark.asyncio
+async def test_init_session_sends_wav2lip_frame_reference_dir(tmp_path: Path) -> None:
+    ref = tmp_path / "reference.png"
+    ref.write_bytes(b"image-bytes")
+    frame_dir = tmp_path / "frames"
+    frame_dir.mkdir()
+    client = FlashTalkWSClient("ws://example.test/v1/avatar/wav2lip")
+    ws = FakeWebSocket()
+    client._ws = ws
+
+    await client.init_session(
+        ref_image=ref,
+        reference_mode="frames",
+        ref_frame_dir=frame_dir,
+    )
+
+    sent = json.loads(ws.sent[0])
+    assert sent["type"] == "init"
+    assert sent["ref_image"] == base64.b64encode(b"image-bytes").decode()
+    assert sent["reference_mode"] == "frames"
+    assert sent["ref_frame_dir"] == str(frame_dir)
+
+
+@pytest.mark.asyncio
+async def test_init_session_sends_wav2lip_frame_metadata_path(tmp_path: Path) -> None:
+    ref = tmp_path / "reference.png"
+    ref.write_bytes(b"image-bytes")
+    metadata = tmp_path / "mouth_metadata.json"
+    metadata.write_text("{}", encoding="utf-8")
+    client = FlashTalkWSClient("ws://example.test/v1/avatar/wav2lip")
+    ws = FakeWebSocket()
+    client._ws = ws
+
+    await client.init_session(
+        ref_image=ref,
+        ref_frame_metadata_path=metadata,
+    )
+
+    sent = json.loads(ws.sent[0])
+    assert sent["ref_frame_metadata_path"] == str(metadata)
+
+
+@pytest.mark.asyncio
+async def test_init_session_sends_wav2lip_preprocessed_flag(tmp_path: Path) -> None:
+    ref = tmp_path / "reference.png"
+    ref.write_bytes(b"image-bytes")
+    client = FlashTalkWSClient("ws://example.test/v1/avatar/wav2lip")
+    ws = FakeWebSocket()
+    client._ws = ws
+
+    await client.init_session(
+        ref_image=ref,
+        reference_mode="frames",
+        preprocessed=True,
+    )
+
+    sent = json.loads(ws.sent[0])
+    assert sent["preprocessed"] is True
