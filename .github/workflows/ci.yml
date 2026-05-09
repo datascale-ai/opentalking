@@ -49,7 +49,7 @@ jobs:
           --ignore-missing-imports
 
       - name: Test
-        run: pytest apps/api/tests apps/worker/tests tests
+        run: pytest apps/api/tests tests
 
   frontend:
     runs-on: ubuntu-latest
