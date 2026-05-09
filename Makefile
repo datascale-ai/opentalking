@@ -4,7 +4,7 @@ test:
 	pytest tests -v
 
 lint:
-	ruff check src apps tests
+	ruff check opentalking/core opentalking/events opentalking/avatar apps tests
 
 build-web:
 	cd apps/web && npm run build

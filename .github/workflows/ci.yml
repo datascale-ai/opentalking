@@ -29,14 +29,9 @@ jobs:
       - name: Lint
         run: >
           ruff check
-          src/opentalking/core
-          src/opentalking/server
-          src/opentalking/worker
-          src/opentalking/llm
-          src/opentalking/tts
-          src/opentalking/avatars
-          src/opentalking/events
-          src/opentalking/rtc
+          opentalking/core
+          opentalking/events
+          opentalking/avatar
           apps/api
           apps/unified
           apps/cli
@@ -45,14 +40,9 @@ jobs:
       - name: Type Check
         run: >
           mypy
-          src/opentalking/core
-          src/opentalking/server
-          src/opentalking/worker
-          src/opentalking/llm
-          src/opentalking/tts
-          src/opentalking/avatars
-          src/opentalking/events
-          src/opentalking/rtc
+          opentalking/core
+          opentalking/events
+          opentalking/avatar
           apps/api
           apps/unified
           apps/cli

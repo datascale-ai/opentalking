@@ -246,7 +246,7 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
     if not avatar_dir.is_dir():
         raise HTTPException(status_code=404, detail="avatar not found")
     try:
-        bundle = load_avatar_bundle(avatar_dir, strict=False)
+        load_avatar_bundle(avatar_dir, strict=False)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"invalid avatar: {exc}") from exc
     # Avatar / model decoupling: every avatar bundle has a reference image, and
