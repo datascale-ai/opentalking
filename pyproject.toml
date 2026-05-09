@@ -16,7 +16,7 @@ dependencies = [
   "pydantic>=2",
   "pydantic-settings>=2",
   "redis>=5",
-  "numpy>=1.24",
+  "numpy>=1.24,<2",
   "httpx>=0.26",
   "edge-tts>=6.1",
   "dashscope>=1.25.11",
@@ -27,7 +27,8 @@ dependencies = [
   "websockets>=13",
   "loguru>=0.7",
   "PyYAML>=6",
-  "opencv-python>=4.13.0.92",
+  "opencv-python>=4.8,<4.12",
+  "mediapipe==0.10.21; python_version < '3.13'",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +39,7 @@ engine = [
   "diffusers>=0.34",
   "transformers>=4.46",
   "accelerate>=1.0",
-  "opencv-python>=4.8",
+  "opencv-python>=4.8,<4.12",
   "xfuser>=0.4",
   "librosa>=0.10",
   "pyloudnorm>=0.1.1",
@@ -56,7 +57,7 @@ models = [
   "torch>=2.0",
   "torchaudio>=2.0",
   "torchvision>=0.15",
-  "opencv-python>=4.8",
+  "opencv-python>=4.8,<4.12",
   "onnxruntime>=1.16",
   "diffusers>=0.34",
   "openai-whisper>=20240930",
@@ -66,7 +67,7 @@ demo = ["gradio>=5.0"]
 dev = [
   "pytest>=7.4",
   "pytest-asyncio>=0.23",
-  "opencv-python-headless>=4.8",
+  "opencv-python-headless>=4.8,<4.12",
   "ruff>=0.4",
   "mypy>=1.8",
   "types-PyYAML>=6",

@@ -152,22 +152,35 @@ def update_manifest_mouth_metadata(
     if not force and metadata.get("source_image_hash") == image_hash and has_polygon:
         return MouthMetadataUpdate(updated=False, image_hash=image_hash, landmarks=None)
 
-    frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-    if frame is None:
-        return MouthMetadataUpdate(updated=False, image_hash=image_hash, landmarks=None)
-    landmarks = detect_mouth_landmarks(frame)
-    if landmarks is None:
-        return MouthMetadataUpdate(updated=False, image_hash=image_hash, landmarks=None)
-
-    height, width = frame.shape[:2]
     metadata["source_image_hash"] = image_hash
     try:
         metadata["source_image_path"] = str(image_path.resolve().relative_to(manifest_path.parent.resolve()))
     except ValueError:
         metadata["source_image_path"] = str(image_path)
+
+    frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    if frame is None:
+        _clear_mouth_metadata(metadata)
+        raw["metadata"] = metadata
+        manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return MouthMetadataUpdate(updated=True, image_hash=image_hash, landmarks=None)
+    landmarks = detect_mouth_landmarks(frame)
+    if landmarks is None:
+        _clear_mouth_metadata(metadata)
+        raw["metadata"] = metadata
+        manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return MouthMetadataUpdate(updated=True, image_hash=image_hash, landmarks=None)
+
+    height, width = frame.shape[:2]
     metadata["mouth_polygon_source"] = "mediapipe"
     metadata["face_box"] = _normalized_face_box(landmarks, width=width, height=height)
     metadata["animation"] = _animation_from_landmarks(landmarks, width=width, height=height)
     raw["metadata"] = metadata
     manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return MouthMetadataUpdate(updated=True, image_hash=image_hash, landmarks=landmarks)
+
+
+def _clear_mouth_metadata(metadata: dict[str, Any]) -> None:
+    metadata.pop("animation", None)
+    metadata.pop("face_box", None)
+    metadata["mouth_polygon_source"] = "unavailable"

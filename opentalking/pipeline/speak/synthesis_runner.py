@@ -278,12 +278,39 @@ class FlashTalkRunner:
         animation = metadata.get("animation")
         if not isinstance(animation, dict):
             return None
+        source_image_hash = metadata.get("source_image_hash")
+        if source_image_hash:
+            try:
+                from opentalking.avatar.mouth_metadata import image_file_sha256
+
+                reference_path = self._wav2lip_reference_image_path()
+                if reference_path is None or image_file_sha256(reference_path) != source_image_hash:
+                    log.warning("Ignoring stale wav2lip mouth metadata: %s", manifest_path)
+                    return None
+            except Exception:
+                log.warning("Failed to validate wav2lip mouth metadata hash: %s", manifest_path, exc_info=True)
+                return None
         return {
-            "source_image_hash": metadata.get("source_image_hash"),
+            "source_image_hash": source_image_hash,
             "source_image_path": metadata.get("source_image_path"),
             "face_box": metadata.get("face_box"),
             "animation": animation,
         }
+
+    def _wav2lip_reference_image_path(self) -> Path | None:
+        custom = getattr(self, "_custom_ref_image_path", "")
+        if custom:
+            path = Path(custom).expanduser().resolve()
+            return path if path.exists() else None
+        cached = getattr(self, "_ref_image_path", None)
+        if isinstance(cached, Path) and cached.exists():
+            return cached
+        avatar_dir = self.avatar_path()
+        for name in ("reference.png", "reference.jpg", "reference.jpeg", "reference.webp"):
+            path = avatar_dir / name
+            if path.exists():
+                return path
+        return None
 
     def _wav2lip_enhanced_postprocessing_enabled(self) -> bool | None:
         if self.model_type != "wav2lip":

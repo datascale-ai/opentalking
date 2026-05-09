@@ -301,6 +301,56 @@ def test_customize_reference_updates_mouth_metadata_for_uploaded_image(tmp_path,
     assert metadata["animation"]["outer_lip"] == [[0.25, 0.625], [0.5, 0.5], [0.75, 0.625], [0.5, 0.75]]
 
 
+def test_customize_reference_clears_stale_mouth_metadata_when_detection_fails(tmp_path, monkeypatch):
+    base = tmp_path / "demo-avatar"
+    base.mkdir()
+    (base / "preview.png").write_bytes(_png_bytes())
+    (base / "reference.png").write_bytes(_png_bytes())
+    (base / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "demo-avatar",
+                "name": "Demo",
+                "model_type": "wav2lip",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 416,
+                "height": 704,
+                "version": "1.0",
+                "metadata": {
+                    "source_image_hash": "old",
+                    "source_image_path": "old.png",
+                    "mouth_polygon_source": "mediapipe",
+                    "face_box": [0.1, 0.2, 0.8, 0.9],
+                    "animation": {"outer_lip": [[0.1, 0.1], [0.2, 0.1], [0.15, 0.2]]},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(avatars.mouth_metadata, "detect_mouth_landmarks", lambda frame: None)
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(avatars_dir=str(tmp_path))
+    app.include_router(sessions.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/sessions/customize/reference",
+        data={"avatar_id": "demo-avatar"},
+        files={"reference_image": ("avatar.png", _png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    manifest = json.loads((base / "manifest.json").read_text(encoding="utf-8"))
+    metadata = manifest["metadata"]
+    assert metadata["source_image_hash"] != "old"
+    assert metadata["source_image_path"] == "reference_custom.png"
+    assert metadata["mouth_polygon_source"] == "unavailable"
+    assert "animation" not in metadata
+    assert "face_box" not in metadata
+
+
 def test_delete_custom_avatar_removes_directory(tmp_path):
     base = tmp_path / "base-avatar"
     base.mkdir()
