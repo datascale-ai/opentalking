@@ -28,7 +28,7 @@ def test_models_route_lists_all_models_with_connection_status_without_omnirt() -
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["models"] == ["mock", "flashtalk", "musetalk", "wav2lip", "flashhead"]
+    assert payload["models"] == ["mock", "flashtalk", "musetalk", "wav2lip", "flashhead", "quicktalk"]
     statuses = {item["id"]: item for item in payload["statuses"]}
     assert statuses["mock"]["connected"] is True
     assert statuses["mock"]["reason"] == "local_self_test"
@@ -36,6 +36,8 @@ def test_models_route_lists_all_models_with_connection_status_without_omnirt() -
     assert statuses["musetalk"]["connected"] is False
     assert statuses["wav2lip"]["connected"] is False
     assert statuses["flashhead"]["connected"] is False
+    assert statuses["quicktalk"]["connected"] is True
+    assert statuses["quicktalk"]["reason"] == "local_runtime"
 
 
 def test_models_route_marks_legacy_flashtalk_connected_when_explicitly_configured() -> None:
