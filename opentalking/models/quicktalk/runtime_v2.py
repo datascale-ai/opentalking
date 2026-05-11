@@ -735,9 +735,10 @@ class QuickTalkRebuild:
 
             h, w = frames[0].shape[:2]
             temp_video = workdir / "video_temp.avi"
+            video_writer_fourcc = getattr(cv2, "VideoWriter_fourcc")
             writer = cv2.VideoWriter(
                 str(temp_video),
-                cv2.VideoWriter_fourcc(*"DIVX"),
+                video_writer_fourcc(*"DIVX"),
                 fps,
                 (w, h),
             )

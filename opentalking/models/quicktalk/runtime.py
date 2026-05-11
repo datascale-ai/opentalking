@@ -418,7 +418,8 @@ class RealtimeV3Worker:
         stats = RealtimeStats(audio_feature_seconds=feature_seconds)
         with tempfile.TemporaryDirectory(prefix="openstudio_v3_") as tmpdir:
             temp_video = Path(tmpdir) / "realtime_frames.mp4"
-            writer = cv2.VideoWriter(str(temp_video), cv2.VideoWriter_fourcc(*codec), self.fps, (w, h))
+            video_writer_fourcc = getattr(cv2, "VideoWriter_fourcc")
+            writer = cv2.VideoWriter(str(temp_video), video_writer_fourcc(*codec), self.fps, (w, h))
             if not writer.isOpened():
                 raise RuntimeError(f"Failed to open VideoWriter: {temp_video}")
             start = time.perf_counter()
