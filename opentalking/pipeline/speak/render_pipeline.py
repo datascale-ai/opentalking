@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import time
+from collections.abc import Iterable
 from typing import Any, Protocol
 
 import numpy as np
@@ -32,6 +33,16 @@ class RenderedChunkData:
 
 def reset_avatar_speech_state(avatar_state: Any) -> None:
     """Reset per-utterance streaming state so live and offline renders stay reproducible."""
+    # quicktalk keeps its LSTM hidden state + template cycle in
+    # ``avatar_state.session_state``; reset it so consecutive utterances
+    # don't carry over hidden state from the previous one.
+    session_state = getattr(avatar_state, "session_state", None)
+    if session_state is not None and hasattr(session_state, "reset"):
+        try:
+            session_state.reset()
+        except Exception:  # noqa: BLE001
+            pass
+
     extra = getattr(avatar_state, "extra", None)
     if not isinstance(extra, dict):
         return
@@ -165,12 +176,14 @@ def prepare_rendered_chunk_sync(
             chunk,
             streaming=streaming,
         )
-        predictions = _infer_predictions(
-            adapter,
-            avatar_state,
-            features,
-            frame_index_start=frame_index_start,
-            infer_batch_frames=infer_batch_frames,
+        predictions = list(
+            _infer_predictions(
+                adapter,
+                avatar_state,
+                features,
+                frame_index_start=frame_index_start,
+                infer_batch_frames=infer_batch_frames,
+            )
         )
         predictions = _apply_prediction_overlap(avatar_state, predictions)
 
@@ -188,6 +201,47 @@ def prepare_rendered_chunk_sync(
     finally:
         if isinstance(extra, dict):
             extra["rendering_speech"] = False
+
+
+def iter_rendered_frames_sync(
+    adapter: ModelAdapter,
+    avatar_state: Any,
+    chunk: AudioChunk,
+    *,
+    frame_index_start: int,
+    speech_frame_index_start: int,
+    streaming: bool = True,
+) -> tuple[int, Any, Iterable[VideoFrameData]]:
+    """Return a lazy frame iterable for adapters that can stream predictions."""
+    extra = getattr(avatar_state, "extra", None)
+    if isinstance(extra, dict):
+        extra["frame_index_start"] = frame_index_start
+        extra["speech_frame_index_start"] = speech_frame_index_start
+        extra["rendering_speech"] = True
+
+    features = _extract_chunk_features(
+        adapter,
+        avatar_state,
+        chunk,
+        streaming=streaming,
+    )
+    predictions = adapter.infer(features, avatar_state)
+
+    def _frames() -> Iterable[VideoFrameData]:
+        idx = frame_index_start
+        try:
+            for pred in predictions:
+                yield adapter.compose_frame(avatar_state, idx, pred)
+                idx += 1
+        finally:
+            if isinstance(extra, dict):
+                extra["rendering_speech"] = False
+
+    frame_count = getattr(features, "frame_count", None)
+    if frame_count is None:
+        frame_count = len(getattr(features, "reps", []) or [])
+    next_frame_idx = frame_index_start + int(frame_count or 0)
+    return next_frame_idx, features, _frames()
 
 
 def render_audio_chunk_sync(

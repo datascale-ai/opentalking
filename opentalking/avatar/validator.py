@@ -44,6 +44,12 @@ def validate_avatar_dir(avatar_dir: Path) -> list[str]:
                 errors.append("wav2lip frames/ is empty")
         elif not (avatar_dir / "reference.png").is_file() and not (avatar_dir / "reference.jpg").is_file():
             errors.append("wav2lip image avatar should have reference.png or reference.jpg")
+    elif m.model_type == "quicktalk":
+        metadata = m.metadata or {}
+        if not metadata.get("template_video"):
+            errors.append("quicktalk avatar should define metadata.template_video")
+        if not metadata.get("asset_root"):
+            errors.append("quicktalk avatar should define metadata.asset_root")
 
     return errors
 

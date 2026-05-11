@@ -107,6 +107,9 @@ async def resolve_model_statuses(settings) -> list[ModelStatus]:
         elif model == "flashhead":
             connected = _explicit_env_enabled("OPENTALKING_FLASHHEAD_ENABLED")
             reason = "explicit_enabled" if connected else "not_configured"
+        elif model == "quicktalk":
+            connected = True
+            reason = "local_runtime"
         statuses.append(ModelStatus(id=model, connected=connected, reason=reason))
     return statuses
 

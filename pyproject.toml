@@ -59,6 +59,8 @@ models = [
   "torchvision>=0.15",
   "opencv-python>=4.8,<4.12",
   "onnxruntime>=1.16",
+  "kornia>=0.7",
+  "insightface>=0.7",
   "diffusers>=0.34",
   "openai-whisper>=20240930",
 ]
@@ -80,6 +82,7 @@ opentalking-worker = "opentalking.runtime.main:main"
 opentalking-unified = "apps.unified.main:main"
 opentalking-download = "apps.cli.download_models:main"
 opentalking-doctor = "apps.cli.doctor:main"
+opentalking-quicktalk-bench = "apps.cli.quicktalk_bench:main"
 
 [tool.setuptools]
 include-package-data = true

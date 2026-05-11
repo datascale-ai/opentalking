@@ -13,7 +13,7 @@ const MODEL_LABELS: Record<string, string> = {
   flashtalk: "FlashTalk",
   mock: "无驱动模式",
   musetalk: "MuseTalk",
-  qingyu_v3: "Qingyu V3",
+  quicktalk: "QuickTalk",
   wav2lip: "Wav2Lip",
 };
 

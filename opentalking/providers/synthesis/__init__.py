@@ -26,7 +26,7 @@ from opentalking.providers.synthesis.flashhead.ws_client import FlashHeadWSClien
 register("synthesis", "flashhead")(FlashHeadWSClient)
 
 # Every model the registry recognises.
-SYNTHESIS_PROVIDERS = ("mock", "flashtalk", "musetalk", "wav2lip", "flashhead")
+SYNTHESIS_PROVIDERS = ("mock", "flashtalk", "musetalk", "wav2lip", "flashhead", "quicktalk")
 
 # What the upstream backend can actually serve TODAY.
 # `mock` is in-process and always works. OmniRT now exposes model-specific
