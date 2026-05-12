@@ -14,24 +14,41 @@ fi
 usage() {
   cat <<'USAGE'
 Usage:
-  bash scripts/quickstart/start_frontend.sh [--host HOST] [--port PORT]
+  bash scripts/quickstart/start_frontend.sh [--host HOST] [--web-port PORT] [--api-port PORT]
 
 Defaults:
   HOST = OPENTALKING_WEB_HOST or 0.0.0.0
-  PORT = OPENTALKING_WEB_PORT or 5173
+  WEB PORT = OPENTALKING_WEB_PORT or 5173
+  API PORT = VITE_BACKEND_PORT, OPENTALKING_API_PORT, OPENTALKING_UNIFIED_PORT, or 8000
+
+--port stays available as a compatibility alias for --web-port.
+--web_port and --api_port are also accepted.
 USAGE
 }
 
 web_host="${OPENTALKING_WEB_HOST:-0.0.0.0}"
 web_port="${OPENTALKING_WEB_PORT:-5173}"
+backend_port="${VITE_BACKEND_PORT:-${OPENTALKING_API_PORT:-${OPENTALKING_UNIFIED_PORT:-8000}}}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --host)
       web_host="$2"
       shift 2
       ;;
-    --port)
+    --port|--web-port|--web_port)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        exit 2
+      fi
       web_port="$2"
+      shift 2
+      ;;
+    --api-port|--api_port)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        exit 2
+      fi
+      backend_port="$2"
       shift 2
       ;;
     --help|-h)
@@ -50,8 +67,8 @@ export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
 
 run_dir="$DIGITAL_HUMAN_HOME/run"
 log_dir="$DIGITAL_HUMAN_HOME/logs"
-pid_file="$run_dir/opentalking-web.pid"
-log_file="$log_dir/opentalking-web.log"
+pid_file="$run_dir/opentalking-web-$web_port.pid"
+log_file="$log_dir/opentalking-web-$web_port.log"
 web_dir="$repo_root/apps/web"
 
 mkdir -p "$run_dir" "$log_dir"
@@ -75,10 +92,12 @@ echo "Starting OpenTalking frontend"
 echo "  web:  $web_dir"
 echo "  url:  http://127.0.0.1:$web_port"
 echo "  log:  $log_file"
+echo "  api:  http://127.0.0.1:$backend_port"
 
 (
   cd "$web_dir"
-  exec npm run dev -- --host "$web_host" --port "$web_port"
+  export VITE_BACKEND_PORT="$backend_port"
+  exec ./node_modules/.bin/vite --host "$web_host" --port "$web_port"
 ) >"$log_file" 2>&1 &
 
 pid="$!"

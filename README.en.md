@@ -36,9 +36,9 @@ OpenTalking is an open-source real-time digital-human framework. The goal is to 
 OpenTalking focuses on the **pipeline orchestration layer** and supports both external API providers and locally deployed models. The default entrypoint is optimized for getting a first working loop quickly, then upgrading model quality as needed:
 
 - **Quick experience**: `mock / no-driver mode`, no standalone model service required, ideal for validating the API, TTS, WebRTC, and frontend.
-- **Lightweight adapter validation**: `wav2lip / musetalk`, useful for Avatar assets, model adapters, and end-to-end orchestration checks.
+- **Lightweight adapter validation**: start `wav2lip` through [OmniRT](https://github.com/datascale-ai/omnirt), useful for validating Avatar asset format, model adapters, and end-to-end orchestration.
 - **QuickTalk realtime path**: the local `quicktalk` adapter supports streaming LLM → sentence-level TTS → realtime lip rendering, with Worker caching to reduce first-turn startup cost.
-- **High-quality deployment**: FlashTalk-compatible WebSocket via [OmniRT](https://github.com/datascale-ai/omnirt), targeting consumer GPUs and enterprise private inference services.
+- **High-quality deployment**: connect `flashtalk` and other high-quality models through OmniRT for GPU / NPU private inference services.
 
 ## Capabilities
 
@@ -61,6 +61,12 @@ Join our QQ group to discuss real-time digital humans, FlashTalk, OmniRT, model 
 <p align="center">
   <b>AI Digital Human QQ group</b> · ID: <code>1103327938</code>
 </p>
+
+## Digital-human service interface
+
+OpenTalking includes a Web service interface for managing the digital-human dialogue pipeline. You can select or create avatars, configure voices, LLM, TTS, STT, and avatar driver models, check model connection status, and verify realtime dialogue, subtitles, and audio/video playback from one page.
+
+![OpenTalking WebUI](docs/assets/images/WebUI.png)
 
 ## Demo videos
 
@@ -157,64 +163,101 @@ Requirements: Python ≥ 3.10, Node.js ≥ 18, FFmpeg.
 
 ### Path 1: Quick experience (recommended for first-run)
 
-**Goal**: see the digital human chat in your browser within 5 minutes — **no GPU, no model service required**.
-**How**: synthesis goes through the built-in Mock; LLM/STT/TTS use cloud APIs.
+**Goal**: validate the frontend, API, LLM, TTS, STT, WebRTC, and browser path without downloading model weights or starting OmniRT.
+**How**: synthesis goes through the built-in Mock; LLM / STT / TTS use the providers configured in `.env`.
 
-In `.env` you only need two things:
+Configure at least LLM / STT / TTS in `.env`:
 
 ```env
-# Enable Mock synthesis (uses the avatar reference image as static frames)
-OPENTALKING_INFERENCE_MOCK=1
-
 # LLM: DashScope / Bailian / any OpenAI-compatible endpoint
 OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 OPENTALKING_LLM_API_KEY=sk-your-key
 OPENTALKING_LLM_MODEL=qwen-flash
 
-# STT: reuses the same DashScope key
+# Voice synthesis / voice cloning when using DashScope-backed providers
 DASHSCOPE_API_KEY=sk-your-key
 
-# TTS: defaults to Edge TTS, no key (nothing to change)
+# Other TTS options
+OPENTALKING_TTS_PROVIDER=edge
+OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
-Two terminals:
+Start the mock quickstart helper:
 
 ```bash
-# Terminal 1: backend (single process, in-memory bus, no Redis)
-opentalking-unified
-
-# Terminal 2: frontend
-cd apps/web && npm ci && npm run dev -- --host 0.0.0.0
+bash scripts/quickstart/start_mock.sh
 ```
 
-Open `http://localhost:5173` and pick a built-in avatar. Frames are static (reference image)—**LLM reply, streaming TTS, subtitle events, and WebRTC delivery are real**; only lip-sync is faked.
+To use custom ports, pass them directly to the helper:
+
+```bash
+bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180
+```
+
+The default frontend URL is `http://localhost:5173`; with the custom-port example above, open `http://localhost:5180`. Replace localhost with your server IP for remote deployment. Pick a built-in avatar. Frames are static (reference image)—**LLM reply, streaming TTS, subtitle events, and WebRTC delivery are real**; only lip-sync is faked.
+
+Stop the helper-managed services with:
+
+```bash
+bash scripts/quickstart/stop_all.sh
+```
+
+Without port arguments, `stop_all.sh` stops all OpenTalking API / frontend instances managed by the quickstart scripts. You can also pass ports to stop only a specific instance:
+
+```bash
+bash scripts/quickstart/stop_all.sh --api-port 8010 --web-port 5180
+```
 
 ### Path 2: Lightweight adapter validation
 
 **Goal**: iterate on Avatar assets, validate model adapters, run real wav2lip / musetalk / flashtalk models.
 **How**: run an [OmniRT](https://github.com/datascale-ai/omnirt) inference service locally or remotely; OpenTalking routes every audio2video model through one `OMNIRT_ENDPOINT`.
 
-Start a backend:
+For a quick real-model smoke test, start Wav2Lip OmniRT first:
 
 ```bash
-# Local container (default cuda; for CPU set OMNIRT_BACKEND=cpu)
-bash scripts/run_omnirt.sh
-
-# Or remote: deploy OmniRT on a GPU host and expose its port
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/start_omnirt_wav2lip.sh --device cuda
 ```
 
-In `.env` drop the mock and point at OmniRT:
+If OmniRT is on a remote GPU / NPU host, expose its `9000` port and use that host in `--omnirt`.
 
-```env
-# OPENTALKING_INFERENCE_MOCK=0          # remove or comment out
-OMNIRT_ENDPOINT=http://localhost:9000   # or http://<gpu-host>:9000
+OpenTalking derives each audio2video WebSocket route from the OmniRT endpoint. For example, `--omnirt http://omnirt:9000` + `model=wav2lip` becomes `ws://omnirt:9000/v1/audio2video/wav2lip`; `flashtalk`, `musetalk`, and `wav2lip` share this rule.
 
-OPENTALKING_DEFAULT_MODEL=flashtalk      # or musetalk / wav2lip
+Start OpenTalking and point it at OmniRT:
+
+```bash
+bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
 ```
 
-OpenTalking routes per model by the audio2video path: `OMNIRT_ENDPOINT=http://omnirt:9000` + `model=musetalk` becomes `ws://omnirt:9000/v1/audio2video/musetalk`. All three audio2video models (flashtalk / musetalk / wav2lip) share this rule — no per-model URL configs needed.
+For custom OpenTalking ports:
 
-Start exactly the same way as Path 1 (`opentalking-unified` + frontend). Avatar asset format: see [docs/avatar-format.md](docs/avatar-format.md).
+```bash
+bash scripts/quickstart/start_all.sh \
+  --omnirt http://127.0.0.1:9000 \
+  --api-port 8010 \
+  --web-port 5180
+```
+
+If OmniRT runs on a remote machine:
+
+```bash
+bash scripts/quickstart/start_all.sh \
+  --omnirt http://<gpu-or-npu-server-ip>:9000 \
+  --api-port 8010 \
+  --web-port 5180
+```
+
+The default API models endpoint is `http://127.0.0.1:8000/models`; with `--api-port 8010`, use port `8010`. The default frontend is `http://localhost:5173`; with `--web-port 5180`, use port `5180`.
+
+For helper-managed services, use the same custom port arguments when checking status. Without port arguments, `stop_all.sh` stops all OpenTalking API / frontend instances managed by the quickstart scripts; pass ports to stop only a specific instance:
+
+```bash
+bash scripts/quickstart/status.sh --api-port 8010 --web-port 5180
+bash scripts/quickstart/stop_all.sh --api-port 8010 --web-port 5180
+```
+
+Avatar asset format: see [docs/avatar-format.md](docs/avatar-format.md).
 
 ### Path 3: High-quality deployment
 

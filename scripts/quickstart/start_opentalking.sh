@@ -14,12 +14,13 @@ fi
 usage() {
   cat <<'USAGE'
 Usage:
-  bash scripts/quickstart/start_opentalking.sh [--mock] [--omnirt URL]
+  bash scripts/quickstart/start_opentalking.sh [--mock] [--omnirt URL] [--api-port PORT]
 
 Options:
-  --mock        Force mock/self-test mode by clearing OmniRT endpoint variables.
-  --omnirt URL Set OMNIRT_ENDPOINT for this process, for example http://127.0.0.1:9000.
-  --help       Show this help.
+  --mock          Force mock/self-test mode by clearing OmniRT endpoint variables.
+  --omnirt URL    Set OMNIRT_ENDPOINT for this process, for example http://127.0.0.1:9000.
+  --api-port PORT Set the unified API port. --api_port is also accepted.
+  --help          Show this help.
 USAGE
 }
 
@@ -36,6 +37,14 @@ while [[ $# -gt 0 ]]; do
         exit 2
       fi
       export OMNIRT_ENDPOINT="$2"
+      shift 2
+      ;;
+    --api-port|--api_port)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        exit 2
+      fi
+      export OPENTALKING_API_PORT="$2"
       shift 2
       ;;
     --help|-h)
@@ -58,11 +67,16 @@ if [[ "$mock_mode" == "1" ]]; then
   export OPENTALKING_OMNIRT_ENDPOINT=""
 fi
 
-api_port="${OPENTALKING_API_PORT:-8000}"
+api_host="${OPENTALKING_API_HOST:-${OPENTALKING_UNIFIED_HOST:-0.0.0.0}}"
+api_port="${OPENTALKING_API_PORT:-${OPENTALKING_UNIFIED_PORT:-8000}}"
+export OPENTALKING_API_HOST="$api_host"
+export OPENTALKING_API_PORT="$api_port"
+export OPENTALKING_UNIFIED_HOST="$api_host"
+export OPENTALKING_UNIFIED_PORT="$api_port"
 run_dir="$DIGITAL_HUMAN_HOME/run"
 log_dir="$DIGITAL_HUMAN_HOME/logs"
-pid_file="$run_dir/opentalking-api.pid"
-log_file="$log_dir/opentalking-api.log"
+pid_file="$run_dir/opentalking-api-$api_port.pid"
+log_file="$log_dir/opentalking-api-$api_port.log"
 
 mkdir -p "$run_dir" "$log_dir"
 
@@ -74,6 +88,13 @@ if [[ -f "$pid_file" ]]; then
     exit 0
   fi
   rm -f "$pid_file"
+fi
+
+if ss -ltn "sport = :$api_port" 2>/dev/null | grep -q LISTEN; then
+  echo "OpenTalking API port $api_port is already in use." >&2
+  echo "Stop the existing service first, or choose another --api-port." >&2
+  ss -ltnp "sport = :$api_port" >&2 || true
+  exit 1
 fi
 
 if [[ ! -f "$repo_root/.venv/bin/activate" ]]; then
@@ -90,6 +111,7 @@ fi
 echo "Starting OpenTalking API"
 echo "  repo:    $repo_root"
 echo "  home:    $DIGITAL_HUMAN_HOME"
+echo "  host:    $api_host"
 echo "  port:    $api_port"
 echo "  log:     $log_file"
 if [[ -n "${OMNIRT_ENDPOINT:-}" ]]; then

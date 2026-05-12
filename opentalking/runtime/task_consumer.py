@@ -100,7 +100,7 @@ def _create_runner(
     if mock_mode or model in OMNIRT_MODELS or model == "flashhead":
         from opentalking.pipeline.speak.synthesis_runner import FlashTalkRunner
 
-        flashtalk_mode = settings.normalized_flashtalk_mode
+        flashtalk_mode = None
         flashtalk_client = None
         flashtalk_ws_url: str | None = None
 
