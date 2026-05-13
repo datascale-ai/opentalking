@@ -1,9 +1,9 @@
-# Model Deployment
+# Talking-Head Models
 
-This guide turns the backend abstraction into runnable model paths. It covers
-where weights belong, how to download them from international and China-friendly
-sources, how to start each backend, and how to verify that OpenTalking can create
-a session.
+This page turns the talking-head backend abstraction into runnable model paths.
+It covers where weights belong, how to download them from international and
+China-friendly sources, how to start each backend, and how to verify that
+OpenTalking can create a session.
 
 OpenTalking is the orchestration layer. Model execution is selected per model:
 

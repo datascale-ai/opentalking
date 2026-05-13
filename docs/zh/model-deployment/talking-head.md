@@ -1,7 +1,7 @@
-# 模型端到端部署
+# Talking-head 模型
 
-本指南把 backend 解耦后的模型路径写成可执行流程：权重放哪里、如何从国际和国内源下载、
-如何启动各个 backend，以及如何验证 OpenTalking 能成功创建会话。
+本页把 talking-head backend 解耦后的模型路径写成可执行流程：权重放哪里、
+如何从国际和国内源下载、如何启动各个 backend，以及如何验证 OpenTalking 能成功创建会话。
 
 OpenTalking 是编排层，模型执行按模型选择：
 

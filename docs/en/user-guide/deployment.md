@@ -123,7 +123,7 @@ Prerequisites:
 - Model checkpoints present under `$DIGITAL_HUMAN_HOME/models/`.
 
 For exact weight downloads and model-specific startup commands, see
-[Model Deployment](model-deployment.md).
+[Model Deployment](../model-deployment/index.md).
 
 Verify the deployment:
 

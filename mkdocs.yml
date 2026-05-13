@@ -77,6 +77,10 @@ plugins:
             Docker Compose: Docker Compose 部署
             Configuration: 配置
             Model Deployment: 模型端到端部署
+            LLM and STT: LLM 与 STT
+            Text-to-Speech: 语音合成
+            Avatar Assets: Avatar 资产
+            Talking-Head Models: Talking-head 模型
             Deployment: 部署
             Avatar Format: Avatar 资产格式
             Render Pipeline: 渲染管线
@@ -134,14 +138,19 @@ nav:
           - From source: user-guide/install-from-source.md
           - Docker Compose: user-guide/install-with-docker.md
       - Configuration: user-guide/configuration.md
-      - Model Deployment: user-guide/model-deployment.md
-      - Deployment: user-guide/deployment.md
-      - Avatar Format: user-guide/avatar-format.md
-      - Render Pipeline: user-guide/render-pipeline.md
+  - Model Deployment:
+      - Overview: model-deployment/index.md
+      - LLM and STT: model-deployment/llm-stt.md
+      - Text-to-Speech: model-deployment/tts.md
+      - Avatar Assets: model-deployment/avatar.md
+      - Talking-Head Models: model-deployment/talking-head.md
+  - Deployment: user-guide/deployment.md
   - Developer Guide:
       - Architecture: developer-guide/architecture.md
       - Developing: developer-guide/developing.md
       - Model Adapter: developer-guide/model-adapter.md
+      - Avatar Format: user-guide/avatar-format.md
+      - Render Pipeline: user-guide/render-pipeline.md
       - Contributing: developer-guide/contributing.md
   - API Reference:
       - Overview: api-reference/index.md

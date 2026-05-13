@@ -75,7 +75,7 @@ mock 后端为每个音频片段返回固定占位图，便于在接入真实模
 ## 5. 启用 talking-head 模型
 
 mock 路径验证通过后，可切换至真实 talking-head 模型。各模型的权重下载、国内源入口、
-启动命令和验证流程见 [模型端到端部署](model-deployment.md)。最短路径如下：
+启动命令和验证流程见 [模型端到端部署](../model-deployment/index.md)。最短路径如下：
 
 === "wav2lip"
 
@@ -95,7 +95,7 @@ mock 路径验证通过后，可切换至真实 talking-head 模型。各模型�
     ```
 
     重启 `start_all.sh`，在模型选择器中切换至 `wav2lip`。国内下载入口与完整权重目录见
-    [模型端到端部署 → Wav2Lip](model-deployment.md#wav2lip)。
+    [模型端到端部署 → Wav2Lip](../model-deployment/talking-head.md#wav2lip)。
 
 === "FlashTalk"
 
@@ -112,7 +112,7 @@ mock 路径验证通过后，可切换至真实 talking-head 模型。各模型�
     ```
 
     在模型选择器中选择 `flashtalk`。FlashTalk 权重目录、CUDA/Ascend 启动与国内镜像
-    入口见 [模型端到端部署 → FlashTalk](model-deployment.md#flashtalk)。
+    入口见 [模型端到端部署 → FlashTalk](../model-deployment/talking-head.md#flashtalk)。
 
 === "昇腾 910B"
 
@@ -148,7 +148,7 @@ bash scripts/quickstart/stop_all.sh
 ## 下一步
 
 - [配置](configuration.md) —— 所有环境变量与 YAML 字段的参考。
-- [模型端到端部署](model-deployment.md) —— 每个模型 backend 的权重下载、启动与验证。
+- [模型端到端部署](../model-deployment/index.md) —— 每个模型 backend 的权重下载、启动与验证。
 - [部署](deployment.md) —— 多进程部署、Docker Compose 与生产建议。
 - [架构](../developer-guide/architecture.md) —— 系统内部结构与事件总线 schema。
 - [API 参考](../api-reference/index.md) —— 完整的 HTTP 与 WebSocket 端点文档。

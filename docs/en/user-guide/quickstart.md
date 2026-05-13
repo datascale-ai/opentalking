@@ -84,7 +84,7 @@ validation of the pipeline before a real model is integrated.
 
 Once the mock path has been verified, the system may be reconfigured to use a real
 talking-head model. The complete per-model weight download and startup procedures are
-documented in [Model Deployment](model-deployment.md). The shortest paths are:
+documented in [Model Deployment](../model-deployment/index.md). The shortest paths are:
 
 === "wav2lip"
 
@@ -106,7 +106,7 @@ documented in [Model Deployment](model-deployment.md). The shortest paths are:
 
     Restart `start_all.sh` and select `wav2lip` in the model selector. For
     China-friendly download alternatives, see
-    [Model Deployment → Wav2Lip](model-deployment.md#wav2lip).
+    [Model Deployment → Wav2Lip](../model-deployment/talking-head.md#wav2lip).
 
 === "FlashTalk"
 
@@ -125,7 +125,7 @@ documented in [Model Deployment](model-deployment.md). The shortest paths are:
 
     Select `flashtalk` in the model selector. For FlashTalk weight directories,
     CUDA/Ascend startup, and domestic mirror links, see
-    [Model Deployment → FlashTalk](model-deployment.md#flashtalk).
+    [Model Deployment → FlashTalk](../model-deployment/talking-head.md#flashtalk).
 
 === "Ascend 910B"
 
@@ -162,7 +162,7 @@ The following table lists common installation issues and their resolutions.
 ## Next steps
 
 - [Configuration](configuration.md) — reference for all environment variables and YAML fields.
-- [Model Deployment](model-deployment.md) — end-to-end setup for each supported model backend.
+- [Model Deployment](../model-deployment/index.md) — end-to-end setup for each supported model backend.
 - [Deployment](deployment.md) — multi-process deployment, Docker Compose, and production guidance.
 - [Architecture](../developer-guide/architecture.md) — system internals and event bus schema.
 - [API Reference](../api-reference/index.md) — complete HTTP and WebSocket endpoint documentation.

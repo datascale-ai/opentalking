@@ -147,7 +147,7 @@ opentalking/
 
 ## Quickstart
 
-OpenTalking's **orchestration layer** (API + Worker + frontend) and the selected **synthesis backend** (`mock`, `local`, `direct_ws`, or [OmniRT](https://github.com/datascale-ai/omnirt)) deploy independently. The three paths below are organised by *what you want to do*. For Docker, see [Deployment](docs/en/user-guide/deployment.md), and for per-model weight downloads and startup commands see [Model Deployment](docs/en/user-guide/model-deployment.md).
+OpenTalking's **orchestration layer** (API + Worker + frontend) and the selected **synthesis backend** (`mock`, `local`, `direct_ws`, or [OmniRT](https://github.com/datascale-ai/omnirt)) deploy independently. The three paths below are organised by *what you want to do*. For Docker, see [Deployment](docs/en/user-guide/deployment.md), and for per-model weight downloads and startup commands see [Model Deployment](docs/en/model-deployment/index.md).
 
 ### Step 0 (shared): install the orchestration layer
 
@@ -287,7 +287,7 @@ cd apps/web && npm ci && npm run build
 
 Avatar manifest, inference endpoint mapping, and hardware profiles: see
 [Configuration](docs/en/user-guide/configuration.md) and
-[Model Deployment](docs/en/user-guide/model-deployment.md).
+[Model Deployment](docs/en/model-deployment/index.md).
 
 ### Three paths at a glance
 
@@ -339,7 +339,7 @@ Avatar manifest, inference endpoint mapping, and hardware profiles: see
 ## Documentation
 
 - [Quickstart](docs/en/user-guide/quickstart.md)
-- [Model deployment](docs/en/user-guide/model-deployment.md) (weights, domestic mirrors, startup, verification)
+- [Model deployment](docs/en/model-deployment/index.md) (weights, domestic mirrors, startup, verification)
 - [Architecture](docs/en/developer-guide/architecture.md)
 - [Configuration](docs/en/user-guide/configuration.md)
 - [Deployment](docs/en/user-guide/deployment.md) (Docker Compose, distributed deployment)
