@@ -114,7 +114,7 @@ OpenTalking 提供 Web 服务界面，用于管理数字人对话链路：可以
 
 ## 系统架构
 
-![OpenTalking Architecture](docs/assets/images/opentalking_architecture.png)
+![OpenTalking 当前代码架构图](docs/assets/images/opentalking_architecture_zh.png)
 
 ## 项目结构
 

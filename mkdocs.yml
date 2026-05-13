@@ -15,7 +15,7 @@ exclude_docs: |
 
 theme:
   name: material
-  language: en
+  language: zh
   logo: assets/images/logo.png
   favicon: assets/images/logo.png
   features:
@@ -58,12 +58,9 @@ plugins:
   - i18n:
       docs_structure: folder
       languages:
-        - locale: en
-          name: English
-          default: true
-          build: true
         - locale: zh
           name: 中文
+          default: true
           build: true
           nav_translations:
             Home: 首页
@@ -76,6 +73,7 @@ plugins:
             Docker Compose: Docker Compose 部署
             Configuration: 配置
             Models: 模型
+            Support Matrix: 支持矩阵
             LLM and STT: LLM 与 STT
             Text-to-Speech: 语音合成
             Avatar Assets: Avatar 资产
@@ -94,6 +92,9 @@ plugins:
             Sessions: 会话
             TTS and Voices: TTS 与音色
             Events and Streaming: 事件与流式接口
+        - locale: en
+          name: English
+          build: true
 
 markdown_extensions:
   - admonition
@@ -139,6 +140,7 @@ nav:
       - Configuration: user-guide/configuration.md
   - Models:
       - Overview: model-deployment/index.md
+      - Support Matrix: model-deployment/support-matrix.md
       - LLM and STT: model-deployment/llm-stt.md
       - Text-to-Speech: model-deployment/tts.md
       - Avatar Assets: model-deployment/avatar.md

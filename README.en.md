@@ -114,7 +114,7 @@ These demo videos show how the OpenTalking pipeline behaves across different rea
 
 ## Architecture
 
-![OpenTalking Architecture](docs/assets/images/opentalking_architecture.png)
+![OpenTalking Current Code Architecture](docs/assets/images/opentalking_architecture_en.png)
 
 ## Project layout
 

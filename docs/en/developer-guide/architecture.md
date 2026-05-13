@@ -8,6 +8,10 @@ is exposed on top.
 This page describes the system-level architecture: components, deployment topologies,
 session lifecycle, the event bus, and the pluggable synthesis backend boundary.
 
+## Architecture Overview
+
+![OpenTalking Current Code Architecture](../../assets/images/opentalking_architecture_en.png)
+
 ## Components
 
 ```mermaid

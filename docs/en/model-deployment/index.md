@@ -29,11 +29,12 @@ flowchart LR
 ## Setup order
 
 1. Run [Quickstart](../user-guide/quickstart.md) with `mock`.
-2. Configure [LLM and STT](llm-stt.md).
-3. Choose and verify [TTS](tts.md).
-4. Prepare [Avatar assets](avatar.md).
-5. Start a [talking-head model](talking-head.md).
-6. Verify `/models`, create a session, and test through the browser.
+2. Check the [Support Matrix](support-matrix.md) to choose the right path.
+3. Configure [LLM and STT](llm-stt.md).
+4. Choose and verify [TTS](tts.md).
+5. Prepare [Avatar assets](avatar.md).
+6. Start a [talking-head model](talking-head.md).
+7. Verify `/models`, create a session, and test through the browser.
 
 Keep model execution decoupled from OpenTalking itself: lightweight models should use
 `local` or `direct_ws` where possible, while OmniRT remains the recommended backend

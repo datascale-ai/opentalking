@@ -7,6 +7,10 @@ HTTP 与 WebSocket 接口。
 本页说明系统级架构：组件、部署拓扑、会话生命周期、事件总线，以及可插拔合成
 backend 边界。
 
+## 架构总览
+
+![OpenTalking 当前代码架构图](../../assets/images/opentalking_architecture_zh.png)
+
 ## 组件
 
 ```mermaid
