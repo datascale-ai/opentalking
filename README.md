@@ -242,7 +242,7 @@ OPENTALKING_TTS_PROVIDER=edge
 OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
-真实模型模式按每个模型的 `backend` 配置选择推理入口。默认兼容路径中 `wav2lip`、`musetalk`、`flashtalk` 仍可通过 `--omnirt` 指定 OmniRT；轻量模型也可以切到 `local` 或 `direct_ws`。
+真实模型模式按每个模型的 `backend` 配置选择推理入口。`wav2lip` 这类轻量模型的推荐方向是本地或单模型直连 backend；当前默认兼容路径中 `wav2lip`、`musetalk`、`flashtalk` 仍可通过 `--omnirt` 指定 OmniRT，待本地 adapter 补齐后可切到 `local`。
 
 > 注意：`mock / 无驱动模式` 是本地自测模式，不需要 OmniRT；真实模型卡片会根据所选 backend 状态显示 **已连接** 或 **未连接**。`edge` TTS 不需要 key。`DASHSCOPE_API_KEY` 只在使用实时 STT 时需要。
 
@@ -388,7 +388,10 @@ SoulX-FlashTalk 的推理代码不是模型权重。推荐的 Ascend 910B 路径
 - SoulX FlashTalk 14B: https://huggingface.co/Soul-AILab/SoulX-FlashTalk-14B
 - Chinese wav2vec2: https://huggingface.co/TencentGameMate/chinese-wav2vec2-base
 
-### 5. 启动 Wav2Lip OmniRT
+### 5. 启动 Wav2Lip 兼容路径
+
+Wav2Lip 属于轻量模型，推荐部署方向是本地或单模型直连 backend；当前 README 中的命令
+使用 OmniRT 作为可直接跑通的兼容路径，待本地 adapter 补齐后可切换到 `backend: local`。
 
 CUDA GPU:
 

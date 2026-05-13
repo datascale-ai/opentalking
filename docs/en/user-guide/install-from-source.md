@@ -120,7 +120,7 @@ System resources required:
 - No GPU.
 - Network access to the configured language model and TTS endpoints.
 
-## Scenario: single GPU with wav2lip
+## Scenario: single GPU with Wav2Lip {#scenario-single-gpu-with-wav2lip}
 
 For evaluation on a single NVIDIA 3090 or equivalent 24 GB GPU using the lightweight
 `wav2lip` model.

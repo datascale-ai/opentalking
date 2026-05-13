@@ -13,9 +13,10 @@ streamlined first-run procedure, see the [Quickstart](quickstart.md).
 | Use case | Hardware | Recommended method | Detailed guide |
 |----------|----------|-------------------|----------------|
 | Local development, frontend changes, API iteration | Any | Source install + mock synthesis | [From source](install-from-source.md#development-cpu-mock-synthesis) |
-| Continuous integration | CPU | Docker Compose, default profile | [Docker Compose → CPU profile](install-with-docker.md#cpu-profile) |
-| Evaluation on a single GPU machine | NVIDIA 3090 / 4090 / A100 (CUDA 12) | Docker Compose, GPU profile | [Docker Compose → GPU profile](install-with-docker.md#gpu-profile) |
-| Evaluation on Ascend NPU | Huawei 910B (CANN 8.0+) | Source install + OmniRT NPU runtime | [From source → Ascend 910B](install-from-source.md#ascend-910b) |
+| CPU evaluation | CPU | Source install + mock synthesis | [From source](install-from-source.md#development-cpu-mock-synthesis) |
+| Evaluation on a single GPU machine | NVIDIA 3090 / 4090 / A100 (CUDA 12) | Source install + model-specific backend | [From source → single GPU](install-from-source.md#scenario-single-gpu-with-wav2lip) |
+| Evaluation on Ascend NPU | Huawei 910B (CANN 8.0+) | Source install on the host CANN environment | [From source → Ascend 910B](install-from-source.md#ascend-910b) |
+| Continuous integration | CPU | Source install or Docker Compose, depending on reproducibility needs | [From source](install-from-source.md#development-cpu-mock-synthesis) or [Docker Compose → CPU profile](install-with-docker.md#cpu-profile) |
 | Production single-host deployment | Linux + GPU or NPU | Source install or Docker, depending on operations preference | [From source → Production](install-from-source.md#production-deployment) or [Docker Compose](install-with-docker.md) |
 | Production multi-host deployment with horizontal Worker scaling | Linux + GPU or NPU | Source install, API/Worker split, external Redis | [From source → API and Worker split](install-from-source.md#api-and-worker-split) and [Deployment](deployment.md) |
 
@@ -42,6 +43,10 @@ Source-installation additional requirements:
 - ffmpeg for the text-to-speech decoding stage.
 - Optionally Redis 6 or later for the API/Worker split deployment.
 
+Docker Compose is a deployment packaging option, not the lightest evaluation path.
+Use it when repeatable images, containerized service boundaries, or production-like
+operations are more important than first-run simplicity.
+
 Docker-installation additional requirements:
 
 - Docker Engine 20.10 or later and the Compose v2 plugin.
@@ -63,6 +68,6 @@ curl -s http://127.0.0.1:8000/models | jq
 ## Next steps
 
 - [From source](install-from-source.md) — install from a git checkout. Covers development, production, and Ascend variants.
-- [Docker Compose](install-with-docker.md) — install with the packaged Docker stack. Covers CPU, GPU, and Ascend profiles.
+- [Docker Compose](install-with-docker.md) — install with the packaged Docker stack for reproducible deployments.
 - [Configuration](configuration.md) — required environment configuration after installation.
 - [Deployment](deployment.md) — selecting a runtime topology.

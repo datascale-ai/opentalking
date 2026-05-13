@@ -89,6 +89,9 @@ documented in [Model Deployment](model-deployment.md). The shortest paths are:
 === "wav2lip"
 
     Lightweight lip-synchronization model suitable for a single NVIDIA 3090-class GPU.
+    The preferred deployment direction is local or direct single-model backend; the
+    current quickstart uses OmniRT as the runnable compatibility path until the local
+    Wav2Lip adapter is bundled.
 
     ```bash title="terminal"
     # Run from a separate terminal. OmniRT must be checked out next to opentalking/.
@@ -126,7 +129,7 @@ documented in [Model Deployment](model-deployment.md). The shortest paths are:
 
 === "Ascend 910B"
 
-    NPU deployment through OmniRT. See
+    NPU evaluation is best done from source on the host CANN environment. See
     [From source → Ascend 910B](install-from-source.md#ascend-910b).
 
 ## 6. Verify and shut down

@@ -1,6 +1,11 @@
 # 使用 Docker Compose 安装
 
-Docker Compose 安装方式为 OpenTalking 提供打包后的部署栈，运行特征如下：
+Docker Compose 安装方式为 OpenTalking 提供打包后的部署栈，更适合可复现部署和贴近
+生产的验证。若只是 CPU 快速评估、单 GPU 评估或昇腾 NPU 首次拉起，优先使用
+[源码安装](install-from-source.md)，这样驱动、CANN、CUDA、权重路径和模型日志都直接
+暴露在宿主机上，排错更轻。
+
+打包栈运行特征如下：
 
 - 编排服务（API、Worker、前端、Redis）由 `docker/` 下的 Dockerfile 构建。
 - 推理运行时（OmniRT）由 `ghcr.io/datascale-ai/omnirt` 拉取，按 Compose profile 启用。

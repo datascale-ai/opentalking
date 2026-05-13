@@ -115,7 +115,7 @@ npm run dev -- --host 0.0.0.0
 - 无 GPU。
 - 需访问已配置的语言模型与 TTS 端点。
 
-## 场景：单 GPU + wav2lip
+## 场景：单 GPU + Wav2Lip {#scenario-single-gpu-with-wav2lip}
 
 适用于单张 NVIDIA 3090 或同级 24 GB GPU 上使用轻量级 `wav2lip` 模型评估。
 

@@ -79,7 +79,9 @@ mock 路径验证通过后，可切换至真实 talking-head 模型。各模型�
 
 === "wav2lip"
 
-    轻量级唇形同步模型，单张 NVIDIA 3090 级 GPU 即可运行。
+    轻量级唇形同步模型，单张 NVIDIA 3090 级 GPU 即可运行。推荐部署方向是本地或单模型
+    直连 backend；当前 quickstart 先使用 OmniRT 作为可运行兼容路径，直到本地 Wav2Lip
+    adapter 内置完成。
 
     ```bash title="终端"
     # 在独立终端运行；OmniRT 仓库须与 opentalking/ 处于同级目录。
@@ -114,7 +116,7 @@ mock 路径验证通过后，可切换至真实 talking-head 模型。各模型�
 
 === "昇腾 910B"
 
-    通过 OmniRT 部署的 NPU 路径。详见
+    昇腾 NPU 评估建议在宿主机 CANN 环境下源码安装。详见
     [源码安装 → 昇腾 910B](install-from-source.md#ascend-910b)。
 
 ## 6. 验证与停止服务

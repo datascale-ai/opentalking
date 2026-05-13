@@ -214,7 +214,9 @@ bash scripts/quickstart/stop_all.sh --api-port 8010 --web-port 5180
 **Goal**: iterate on Avatar assets, validate model adapters, run real wav2lip / musetalk / flashtalk models.
 **How**: choose a per-model backend. Lightweight models can run locally or behind a direct single-model WebSocket; [OmniRT](https://github.com/datascale-ai/omnirt) remains the compatible default for remote validation.
 
-For a quick real-model smoke test, start Wav2Lip OmniRT first:
+For a quick real-model smoke test today, start the Wav2Lip OmniRT compatibility path
+first. Wav2Lip is a lightweight model, so the recommended deployment direction is a
+local or direct single-model backend once the local adapter is installed:
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
@@ -301,7 +303,7 @@ Avatar manifest, inference endpoint mapping, and hardware profiles: see
 | Model | Input | OpenTalking integration | Recommended path |
 | --- | --- | --- | --- |
 | `mock` | reference image | Built-in static frames | Path 1 |
-| `wav2lip` | frames + audio | Pluggable lightweight lip-sync backend | Path 2 |
+| `wav2lip` | frames + audio | Pluggable lightweight lip-sync backend; local/direct backend preferred, OmniRT kept as compatibility path | Path 2 |
 | `musetalk` | full frames + audio | Pluggable lightweight talking-head backend | Path 2 |
 | `quicktalk` | template video + audio | Local realtime talking-head adapter with Worker caching and `/chat` | QuickTalk realtime path |
 | `soulx-flashtalk-14b` | portrait + audio | OmniRT high-quality FlashTalk | Path 3 |

@@ -7,10 +7,10 @@ a session.
 
 OpenTalking is the orchestration layer. Model execution is selected per model:
 
-| Model | Default backend | Recommended first path | Weight requirement |
-|-------|-----------------|------------------------|--------------------|
+| Model | Backend status | Recommended first path | Weight requirement |
+|-------|----------------|------------------------|--------------------|
 | `mock` | `mock` | Built-in self-test | None |
-| `wav2lip` | `omnirt` | OmniRT on one CUDA GPU or Ascend NPU | Wav2Lip + S3FD checkpoints |
+| `wav2lip` | `omnirt` for compatibility; local-first target | Lightweight local or direct backend; OmniRT is the current runnable compatibility path | Wav2Lip + S3FD checkpoints |
 | `musetalk` | `omnirt` | OmniRT or a future local adapter | MuseTalk 1.5 weights |
 | `quicktalk` | `local` | Local adapter | QuickTalk `hdModule` asset bundle |
 | `flashtalk` | `omnirt` | OmniRT on CUDA or Ascend | SoulX-FlashTalk-14B + wav2vec2 |
@@ -18,7 +18,8 @@ OpenTalking is the orchestration layer. Model execution is selected per model:
 
 ## Shared layout
 
-Use one parent directory for OpenTalking, OmniRT, models, logs, and runtime files:
+Use one parent directory for OpenTalking, optional backend services, models, logs, and
+runtime files. OmniRT is needed only for models configured with `backend: omnirt`.
 
 ```bash title="terminal"
 export DIGITAL_HUMAN_HOME="$HOME/digital-human"
@@ -33,7 +34,7 @@ Expected layout:
 ```text
 $DIGITAL_HUMAN_HOME/
 ├── opentalking/
-├── omnirt/
+├── omnirt/                  # optional, for backend: omnirt
 ├── models/
 │   ├── wav2lip/
 │   ├── SoulX-FlashTalk-14B/
@@ -125,7 +126,10 @@ Expected status:
 ## Wav2Lip
 
 Wav2Lip is the recommended first real model because it is lightweight and easy to
-debug. The compatibility path runs it through OmniRT.
+debug. The product default should be local or a single-model direct backend, not a
+mandatory OmniRT dependency. The current release keeps `backend: omnirt` as a
+compatibility default because the bundled local Wav2Lip adapter is not complete yet;
+the steps below are the runnable compatibility path.
 
 ### 1. Download weights
 
@@ -159,7 +163,29 @@ $OMNIRT_MODEL_ROOT/wav2lip/wav2lip384.pth
 $OMNIRT_MODEL_ROOT/wav2lip/s3fd.pth
 ```
 
-### 2. Prepare OmniRT
+### 2. Choose the backend
+
+Recommended target deployment:
+
+```yaml title="configs/default.yaml"
+models:
+  wav2lip:
+    backend: local      # recommended once a local adapter is installed
+```
+
+Current runnable compatibility path:
+
+```yaml title="configs/default.yaml"
+models:
+  wav2lip:
+    backend: omnirt
+```
+
+If you set `OPENTALKING_WAV2LIP_BACKEND=local` before installing a local adapter,
+`/models` intentionally reports `connected=false` with `reason=local_adapter_missing`.
+This is expected and prevents a silent fallback to OmniRT.
+
+### 3. Prepare OmniRT for the compatibility path
 
 ```bash title="terminal"
 cd "$DIGITAL_HUMAN_HOME"
@@ -168,7 +194,7 @@ cd omnirt
 uv sync --extra server
 ```
 
-### 3. Start Wav2Lip
+### 4. Start Wav2Lip through OmniRT
 
 CUDA:
 
@@ -184,7 +210,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 bash scripts/quickstart/start_omnirt_wav2lip.sh --device npu
 ```
 
-### 4. Start OpenTalking
+### 5. Start OpenTalking
 
 ```bash title="terminal"
 bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000

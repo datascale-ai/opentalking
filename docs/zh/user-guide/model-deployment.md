@@ -5,10 +5,10 @@
 
 OpenTalking 是编排层，模型执行按模型选择：
 
-| 模型 | 默认 backend | 推荐首选路径 | 权重需求 |
+| 模型 | backend 状态 | 推荐首选路径 | 权重需求 |
 |------|--------------|--------------|----------|
 | `mock` | `mock` | 内置自测 | 无 |
-| `wav2lip` | `omnirt` | OmniRT + 单张 CUDA GPU 或 Ascend NPU | Wav2Lip + S3FD checkpoint |
+| `wav2lip` | 兼容默认 `omnirt`；目标是 local-first | 轻量本地或单模型直连 backend；当前可直接跑通的是 OmniRT 兼容路径 | Wav2Lip + S3FD checkpoint |
 | `musetalk` | `omnirt` | OmniRT 或后续本地 adapter | MuseTalk 1.5 权重 |
 | `quicktalk` | `local` | 本地 adapter | QuickTalk `hdModule` 资产包 |
 | `flashtalk` | `omnirt` | OmniRT + CUDA 或 Ascend | SoulX-FlashTalk-14B + wav2vec2 |
@@ -16,7 +16,8 @@ OpenTalking 是编排层，模型执行按模型选择：
 
 ## 统一目录
 
-建议把 OpenTalking、OmniRT、模型、日志和运行时文件放在同一个父目录下：
+建议把 OpenTalking、可选 backend 服务、模型、日志和运行时文件放在同一个父目录下。
+只有 `backend: omnirt` 的模型需要 OmniRT。
 
 ```bash title="终端"
 export DIGITAL_HUMAN_HOME="$HOME/digital-human"
@@ -31,7 +32,7 @@ cd "$DIGITAL_HUMAN_HOME"
 ```text
 $DIGITAL_HUMAN_HOME/
 ├── opentalking/
-├── omnirt/
+├── omnirt/                  # 可选，仅 backend: omnirt 需要
 ├── models/
 │   ├── wav2lip/
 │   ├── SoulX-FlashTalk-14B/
@@ -121,7 +122,10 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="mock")'
 
 ## Wav2Lip
 
-Wav2Lip 是推荐的第一个真实模型：权重小、启动快、便于排错。兼容路径通过 OmniRT 运行。
+Wav2Lip 是推荐的第一个真实模型：权重小、启动快、便于排错。产品默认部署方向应是本地
+或单模型直连 backend，而不是强制依赖 OmniRT。当前版本为了兼容仍保留
+`backend: omnirt` 作为可直接跑通路径，因为仓库内置的本地 Wav2Lip adapter 尚未补齐；
+下述步骤是当前可运行的兼容路径。
 
 ### 1. 下载权重
 
@@ -155,7 +159,28 @@ $OMNIRT_MODEL_ROOT/wav2lip/wav2lip384.pth
 $OMNIRT_MODEL_ROOT/wav2lip/s3fd.pth
 ```
 
-### 2. 准备 OmniRT
+### 2. 选择 backend
+
+推荐目标部署：
+
+```yaml title="configs/default.yaml"
+models:
+  wav2lip:
+    backend: local      # 安装本地 adapter 后推荐
+```
+
+当前可运行兼容路径：
+
+```yaml title="configs/default.yaml"
+models:
+  wav2lip:
+    backend: omnirt
+```
+
+如果在未安装本地 adapter 前设置 `OPENTALKING_WAV2LIP_BACKEND=local`，`/models` 会按预期
+返回 `connected=false` 与 `reason=local_adapter_missing`，不会静默回退 OmniRT。
+
+### 3. 为兼容路径准备 OmniRT
 
 ```bash title="终端"
 cd "$DIGITAL_HUMAN_HOME"
@@ -164,7 +189,7 @@ cd omnirt
 uv sync --extra server
 ```
 
-### 3. 启动 Wav2Lip
+### 4. 通过 OmniRT 启动 Wav2Lip
 
 CUDA：
 
@@ -180,7 +205,7 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 bash scripts/quickstart/start_omnirt_wav2lip.sh --device npu
 ```
 
-### 4. 启动 OpenTalking
+### 5. 启动 OpenTalking
 
 ```bash title="终端"
 bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000

@@ -1,7 +1,12 @@
 # Install with Docker Compose
 
-The Docker Compose installation provides a packaged stack for OpenTalking with the
-following operational characteristics:
+The Docker Compose installation provides a packaged stack for OpenTalking. It is best
+used for repeatable deployments and production-like validation. For quick CPU
+evaluation, single-GPU evaluation, or Ascend NPU bring-up, prefer
+[Install from source](install-from-source.md) first because it keeps driver, CANN,
+CUDA, weight paths, and model logs directly visible on the host.
+
+The packaged stack has the following operational characteristics:
 
 - The orchestrator (API, Worker, frontend, Redis) is built from Dockerfiles in `docker/`.
 - The inference runtime (OmniRT) is pulled from `ghcr.io/datascale-ai/omnirt` and enabled by Compose profiles.
