@@ -117,3 +117,48 @@ async def test_init_session_sends_wav2lip_preprocessed_flag(tmp_path: Path) -> N
 
     sent = json.loads(ws.sent[0])
     assert sent["preprocessed"] is True
+
+
+@pytest.mark.asyncio
+async def test_init_session_sends_quicktalk_template_fields(tmp_path: Path) -> None:
+    ref = tmp_path / "reference.png"
+    ref.write_bytes(b"image-bytes")
+    template_video = tmp_path / "idle.mp4"
+    template_video.write_bytes(b"video-bytes")
+    template_frames = tmp_path / "frames"
+    template_frames.mkdir()
+    client = FlashTalkWSClient("ws://example.test/v1/audio2video/quicktalk")
+    ws = FakeWebSocket()
+    client._ws = ws
+
+    await client.init_session(
+        ref_image=ref,
+        template_mode="video",
+        template_video=template_video,
+        template_frame_dir=template_frames,
+    )
+
+    sent = json.loads(ws.sent[0])
+    assert sent["type"] == "init"
+    assert sent["template_mode"] == "video"
+    assert sent["template_video"] == str(template_video)
+    assert sent["template_frame_dir"] == str(template_frames)
+
+@pytest.mark.asyncio
+async def test_init_session_sends_quicktalk_face_cache(tmp_path: Path) -> None:
+    ref = tmp_path / "reference.png"
+    ref.write_bytes(b"image-bytes")
+    cache = tmp_path / "quicktalk" / "face_cache_v3_900.npz"
+    cache.parent.mkdir()
+    cache.write_bytes(b"cache")
+    client = FlashTalkWSClient("ws://example.test/v1/audio2video/quicktalk")
+    ws = FakeWebSocket()
+    client._ws = ws
+
+    await client.init_session(
+        ref_image=ref,
+        quicktalk_face_cache=cache,
+    )
+
+    sent = json.loads(ws.sent[0])
+    assert sent["quicktalk_face_cache"] == str(cache)

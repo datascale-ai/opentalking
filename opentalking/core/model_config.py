@@ -82,7 +82,7 @@ SUPPORTED_MODEL_BACKENDS = frozenset({"mock", "local", "direct_ws", "omnirt"})
 
 _DEFAULT_MODEL_BACKENDS: dict[str, str] = {
     "mock": "mock",
-    "quicktalk": "local",
+    "quicktalk": "omnirt",
     "flashhead": "direct_ws",
     "flashtalk": "omnirt",
     "musetalk": "omnirt",

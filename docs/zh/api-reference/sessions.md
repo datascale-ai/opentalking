@@ -6,7 +6,7 @@ WebRTC track 以及底层流水线的生命周期状态。
 会话端点分为四类：
 
 - **生命周期** —— 创建、查询、启动、终止。
-- **对话交互** —— `speak`、`chat`、`transcribe`、`interrupt`、人设定制。
+- **对话交互** —— `speak`、`transcribe`、`interrupt`、人设定制。
 - **直接音频输入** —— `speak_audio`、`speak_flashtalk_audio`，以及 [事件与流式接口](events.md) 中说明的 WebSocket 变体。
 - **WebRTC 信令与 FlashTalk 录制** —— SDP 交换、在线录制、离线渲染。
 
@@ -84,7 +84,7 @@ curl -s -X POST http://localhost:8000/sessions \
 
 ### `POST /sessions/{session_id}/start`
 
-将会话标记为 active，使后续 `speak` 与 `chat` 请求生效。每个会话仅可调用一次。
+将会话标记为 active，使后续 `speak` 请求生效。每个会话仅可调用一次。
 
 **响应 — `200 OK`**
 
@@ -117,43 +117,11 @@ curl -s -X POST http://localhost:8000/sessions \
 
 ## 对话交互
 
-### `POST /sessions/{session_id}/chat`
-
-将用户输入送入完整流水线：语音识别结果（或直接的文本）转发给语言模型，模型输出由
-TTS 合成为音频，再驱动合成生成视频帧并通过 WebRTC track 推送。事件经会话的 SSE 频道
-推送，详见 [事件与流式接口](events.md#session-events)。
-
-**请求体 — `application/json`**
-
-`ChatRequest`：
-
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `prompt` | string | 是 | 用户输入文本。 |
-| `voice` | string \| null | 否 | 仅本次请求覆盖会话音色。 |
-| `tts_provider` | string \| null | 否 | 仅本次请求覆盖会话 TTS provider。 |
-| `tts_model` | string \| null | 否 | provider 专属模型标识符。 |
-
-**响应 — `200 OK`**
-
-HTTP 响应体为空；流水线输出经 SSE 事件流与 WebRTC track 推送。
-
-```bash title="curl"
-curl -s -X POST "http://localhost:8000/sessions/$SID/chat" \
-  -H 'content-type: application/json' \
-  -d '{"prompt": "今天天气如何？"}'
-```
-
-**错误响应**
-
-| 状态码 | 条件 |
-|--------|------|
-| `404` | 会话不存在。 |
-| `409` | 上一次 chat 或 speak 请求仍在进行中，须先调用 `/interrupt`。 |
-
 ### `POST /sessions/{session_id}/speak`
 
-合成固定文本，跳过语言模型。适用于脚本化欢迎语、演示场景或预先计算文本的播放。
+将用户文本送入统一口播流水线：后端把文本交给语言模型，TTS 合成回复音频，再驱动
+合成生成视频帧并通过 WebRTC track 推送。事件经会话的 SSE 频道推送，详见
+[事件与流式接口](events.md#session-events)。
 
 **请求体 — `application/json`**
 
@@ -161,7 +129,7 @@ curl -s -X POST "http://localhost:8000/sessions/$SID/chat" \
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `text` | string | 是 | 待合成文本。 |
+| `text` | string | 是 | 用户输入文本。 |
 | `voice` | string \| null | 否 | 音色覆盖。Edge：`zh-CN-*Neural` 短名；DashScope：控制台中的音色名；ElevenLabs：`voice_id`。 |
 | `tts_provider` | string \| null | 否 | `edge`、`dashscope`、`cosyvoice`、`elevenlabs`、`qwen_tts`、`sambert` 之一。 |
 | `tts_model` | string \| null | 否 | provider 专属模型。例：`qwen3-tts-flash-realtime`、`cosyvoice-v3-flash`、`eleven_flash_v2_5`。 |
@@ -171,20 +139,25 @@ curl -s -X POST "http://localhost:8000/sessions/$SID/chat" \
 ```bash title="curl"
 curl -s -X POST "http://localhost:8000/sessions/$SID/speak" \
   -H 'content-type: application/json' \
-  -d '{"text": "欢迎使用 OpenTalking。"}'
+  -d '{"text": "今天天气如何？"}'
 ```
+
+**错误响应**
+
+| 状态码 | 条件 |
+|--------|------|
+| `404` | 会话不存在。 |
+| `409` | 上一次 speak 请求仍在进行中，须先调用 `/interrupt`。 |
 
 ### `POST /sessions/{session_id}/transcribe`
 
-提交 PCM 音频缓冲区进行语音识别，返回识别文本。识别文本可根据请求 flag 选择性
-转发至语言模型，触发类似 chat 的响应。
+提交 PCM 音频缓冲区进行语音识别，返回识别文本。
 
 **请求体 — `multipart/form-data`**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `audio` | file | 是 | PCM 音频，16 位有符号、单声道，采样率与会话配置一致（默认 16000 Hz）。 |
-| `trigger_chat` | boolean | 否 | 为 `true` 时识别结果转发至语言模型。 |
 
 **响应 — `200 OK`**
 
@@ -194,7 +167,7 @@ curl -s -X POST "http://localhost:8000/sessions/$SID/speak" \
 
 ### `POST /sessions/{session_id}/interrupt`
 
-取消进行中的 `chat`、`speak`、`speak_audio` 或 `transcribe` 请求。流水线在下一帧
+取消进行中的 `speak`、`speak_audio` 或 `transcribe` 请求。流水线在下一帧
 边界停止、排空 in-flight 帧并回到 idle 状态。
 
 **响应 — `200 OK`**
@@ -343,6 +316,6 @@ MP4 文件。
 ## 源文件
 
 - `apps/api/routes/sessions.py` —— 端点实现。
-- `apps/api/schemas/session.py` —— `CreateSessionRequest`、`CreateSessionResponse`、`SpeakRequest`、`ChatRequest`、`WebRTCOfferRequest`。
-- `opentalking/worker/` —— 处理 `chat`、`speak`、`transcribe`、`interrupt` 的流水线驱动。
+- `apps/api/schemas/session.py` —— `CreateSessionRequest`、`CreateSessionResponse`、`SpeakRequest`、`WebRTCOfferRequest`。
+- `opentalking/worker/` —— 处理 `speak`、`transcribe`、`interrupt` 的流水线驱动。
 - `opentalking/rtc/` —— `/webrtc/offer` 调用的 WebRTC track 管理。

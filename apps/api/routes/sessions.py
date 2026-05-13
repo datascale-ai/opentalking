@@ -21,7 +21,6 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from opentalking.avatar import mouth_metadata
 from opentalking.avatar.loader import load_avatar_bundle
 from apps.api.schemas.session import (
-    ChatRequest,
     CreateSessionRequest,
     CreateSessionResponse,
     SpeakRequest,
@@ -486,38 +485,6 @@ async def speak(session_id: str, body: SpeakRequest, request: Request) -> dict[s
         r,
         session_id,
         body.text,
-        voice=voice,
-        tts_provider=eff_prov,
-        tts_model=tm,
-    )
-    return {"session_id": session_id, "status": "queued"}
-
-
-@router.post("/{session_id}/chat")
-async def chat(session_id: str, body: ChatRequest, request: Request) -> dict[str, str]:
-    """LLM 流式 → 句级 TTS → 数字人渲染。当前仅 quicktalk 已对接。"""
-    r: redis.Redis = request.app.state.redis
-    s = await session_service.get_session(r, session_id)
-    if not s:
-        raise HTTPException(status_code=404, detail="session not found")
-    model = (s.get("model") or "").strip()
-    if model != "quicktalk":
-        raise HTTPException(
-            status_code=400,
-            detail=f"/chat 仅支持 quicktalk 会话，当前 model={model or 'unknown'}",
-        )
-    prompt = (body.prompt or "").strip()
-    if not prompt:
-        raise HTTPException(status_code=400, detail="prompt is empty")
-    voice, eff_prov, tm = _normalize_voice_for_speak(
-        voice=body.voice,
-        tts_provider=body.tts_provider,
-        tts_model=body.tts_model,
-    )
-    await session_service.chat(
-        r,
-        session_id,
-        prompt,
         voice=voice,
         tts_provider=eff_prov,
         tts_model=tm,

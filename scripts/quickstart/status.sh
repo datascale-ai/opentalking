@@ -152,6 +152,7 @@ if [[ "$legacy_web_pid_file" != "$web_pid_file" ]]; then
   show_pid "OpenTalking frontend legacy pid" "$legacy_web_pid_file"
 fi
 show_pid "OmniRT Wav2Lip" "$run_dir/omnirt-wav2lip.pid"
+show_pid "OmniRT QuickTalk" "$run_dir/omnirt-quicktalk.pid"
 show_pid "OmniRT FlashTalk endpoint" "$run_dir/omnirt-flashtalk.pid"
 show_pid "OmniRT MuseTalk WS backend" "$run_dir/omnirt-musetalk-ws.pid"
 show_pid "OmniRT MuseTalk gateway" "$run_dir/omnirt-musetalk.pid"

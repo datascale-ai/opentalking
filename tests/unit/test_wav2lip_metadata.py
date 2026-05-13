@@ -362,3 +362,194 @@ async def test_wav2lip_reset_session_preserves_frame_reference_args(tmp_path: Pa
     assert fake.kwargs["ref_frame_dir"] == frames_dir.resolve()
     assert fake.kwargs["ref_frame_metadata_path"] == metadata_path.resolve()
     assert fake.kwargs["preprocessed"] is True
+
+
+def test_quicktalk_template_video_comes_from_manifest_metadata(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    template = avatar_dir / "idle.mp4"
+    template.write_bytes(b"video")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar",
+                "model_type": "wav2lip",
+                "metadata": {
+                    "source_video": "idle.mp4",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+
+    assert runner._quicktalk_template_mode() == "video"
+    assert runner._quicktalk_template_video() == template.resolve()
+    assert runner._quicktalk_template_frame_dir() is None
+
+
+def test_quicktalk_template_frames_come_from_manifest_metadata(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    frames_dir = avatar_dir / "frames"
+    frames_dir.mkdir(parents=True)
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar",
+                "model_type": "wav2lip",
+                "metadata": {
+                    "reference_mode": "frames",
+                    "frame_dir": "frames",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+
+    assert runner._quicktalk_template_mode() == "frames"
+    assert runner._quicktalk_template_frame_dir() == frames_dir.resolve()
+    assert runner._quicktalk_template_video() is None
+
+
+def test_quicktalk_template_defaults_to_image_for_static_avatar(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps({"id": "avatar", "model_type": "wav2lip", "metadata": {}}),
+        encoding="utf-8",
+    )
+
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+
+    assert runner._quicktalk_template_mode() == "image"
+    assert runner._quicktalk_template_video() is None
+    assert runner._quicktalk_template_frame_dir() is None
+
+
+@pytest.mark.asyncio
+async def test_quicktalk_init_session_sends_template_args(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    reference = avatar_dir / "reference.png"
+    _write_png(reference, (255, 255, 255))
+    template = avatar_dir / "idle.mp4"
+    template.write_bytes(b"video")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar",
+                "model_type": "quicktalk",
+                "width": 512,
+                "height": 768,
+                "fps": 30,
+                "metadata": {"source_video": "idle.mp4"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeFlashTalk:
+        def __init__(self) -> None:
+            self.kwargs = None
+
+        async def init_session(self, ref_image, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    fake = FakeFlashTalk()
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+    runner.flashtalk = fake
+
+    await runner._init_flashtalk_session(reference)
+
+    assert fake.kwargs["template_mode"] == "video"
+    assert fake.kwargs["template_video"] == template.resolve()
+    assert fake.kwargs["template_frame_dir"] is None
+    assert fake.kwargs["video_config"] == {"width": 512, "height": 768, "fps": 25}
+
+
+@pytest.mark.asyncio
+async def test_quicktalk_init_session_sends_asset_face_cache(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    reference = avatar_dir / "reference.png"
+    _write_png(reference, (255, 255, 255))
+    quicktalk_dir = avatar_dir / "quicktalk"
+    quicktalk_dir.mkdir()
+    cache = quicktalk_dir / "face_cache_v3_900.npz"
+    cache.write_bytes(b"cache")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar",
+                "model_type": "quicktalk",
+                "width": 512,
+                "height": 768,
+                "fps": 25,
+                "metadata": {"quicktalk": {"face_cache": "quicktalk/face_cache_v3_900.npz"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeFlashTalk:
+        def __init__(self) -> None:
+            self.kwargs = None
+
+        async def init_session(self, ref_image, **kwargs) -> None:
+            self.kwargs = kwargs
+
+    fake = FakeFlashTalk()
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+    runner.flashtalk = fake
+
+    await runner._init_flashtalk_session(reference)
+
+    assert fake.kwargs["quicktalk_face_cache"] == cache.resolve()
+
+
+
+def test_quicktalk_template_video_can_come_from_quicktalk_metadata(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    quicktalk_dir = avatar_dir / "quicktalk"
+    quicktalk_dir.mkdir()
+    template = quicktalk_dir / "template_900.mp4"
+    template.write_bytes(b"video")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar",
+                "model_type": "wav2lip",
+                "metadata": {
+                    "quicktalk": {"template_video": "quicktalk/template_900.mp4"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+
+    assert runner._quicktalk_template_mode() == "video"
+    assert runner._quicktalk_template_video() == template.resolve()

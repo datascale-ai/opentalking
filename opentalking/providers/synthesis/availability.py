@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
@@ -94,6 +95,23 @@ def _local_adapter_available(model: str) -> bool:
     return True
 
 
+async def _is_direct_ws_reachable(url: str) -> bool:
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in {"ws", "wss"} or not parts.hostname:
+        return False
+    port = parts.port or (443 if parts.scheme.lower() == "wss" else 80)
+    try:
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            response = await client.get(_endpoint_to_http_url(url, "/"))
+            return response.status_code < 500
+    except Exception:
+        try:
+            with socket.create_connection((parts.hostname, port), timeout=1.0):
+                return True
+        except OSError:
+            return False
+
+
 async def resolve_model_statuses(settings) -> list[ModelStatus]:
     omnirt_models = await _fetch_omnirt_audio2video_models(settings)
     has_omnirt = bool((getattr(settings, "omnirt_endpoint", "") or "").strip())
@@ -119,8 +137,11 @@ async def resolve_model_statuses(settings) -> list[ModelStatus]:
             else:
                 reason = "not_configured"
         elif resolved.backend == "direct_ws":
-            connected = bool(resolved.ws_url)
-            reason = "direct_ws" if connected else "not_configured"
+            if resolved.ws_url:
+                connected = await _is_direct_ws_reachable(resolved.ws_url)
+                reason = "direct_ws" if connected else "direct_ws_unavailable"
+            else:
+                reason = "not_configured"
             if model == "flashhead" and _explicit_env_enabled("OPENTALKING_FLASHHEAD_ENABLED"):
                 connected = True
                 reason = "explicit_enabled"

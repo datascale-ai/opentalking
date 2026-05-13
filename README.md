@@ -569,6 +569,15 @@ bash scripts/quickstart/status.sh
 bash scripts/quickstart/stop_all.sh
 ```
 
+QuickTalk 也走同一套 OmniRT endpoint，只是模型权重目录换成 `$OMNIRT_MODEL_ROOT/quicktalk/`，并通过路径 `/v1/audio2video/quicktalk` 分发。QuickTalk 当前推荐 CUDA，已验证的默认画面参数会由 helper 带上：`OMNIRT_QUICKTALK_MAX_LONG_EDGE=900`、`OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS=1`、`OMNIRT_QUICKTALK_RESOLUTION=256`。
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/start_omnirt_quicktalk.sh --device cuda
+curl http://127.0.0.1:9000/v1/audio2video/models
+bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
+```
+
 ### 路径 3：高质量私有化部署
 
 目标：运行 FlashTalk 14B / FlashHead 等高质量模型，面向私有化或生产环境。仍使用 `OMNIRT_ENDPOINT`，但建议启用 API / Worker 分离、Redis 和独立前端构建。

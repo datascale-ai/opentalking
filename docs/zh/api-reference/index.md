@@ -57,7 +57,6 @@ multipart 上传（`multipart/form-data`）。
 | `GET` | `/sessions/{session_id}` | 会话 |
 | `POST` | `/sessions/{session_id}/start` | 会话 |
 | `POST` | `/sessions/{session_id}/speak` | 会话 |
-| `POST` | `/sessions/{session_id}/chat` | 会话 |
 | `POST` | `/sessions/{session_id}/transcribe` | 会话 |
 | `POST` | `/sessions/{session_id}/speak_audio` | 会话 |
 | `POST` | `/sessions/{session_id}/speak_flashtalk_audio` | 会话 |
@@ -102,7 +101,7 @@ sequenceDiagram
     C->>API: GET /sessions/{id}/events (SSE)
     note over C,API: 流持续保持
 
-    C->>API: POST /sessions/{id}/chat
+    C->>API: POST /sessions/{id}/speak
     API-->>C: 200（事件经 SSE 推送）
 
     C->>API: DELETE /sessions/{id}

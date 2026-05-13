@@ -42,9 +42,9 @@ def test_models_route_lists_all_models_with_connection_status_without_omnirt() -
     assert statuses["wav2lip"]["connected"] is False
     assert statuses["flashhead"]["backend"] == "direct_ws"
     assert statuses["flashhead"]["connected"] is False
-    assert statuses["quicktalk"]["backend"] == "local"
-    assert statuses["quicktalk"]["connected"] is True
-    assert statuses["quicktalk"]["reason"] == "local_runtime"
+    assert statuses["quicktalk"]["backend"] == "omnirt"
+    assert statuses["quicktalk"]["connected"] is False
+    assert statuses["quicktalk"]["reason"] == "not_configured"
 
 
 def test_models_route_marks_legacy_flashtalk_connected_when_explicitly_configured() -> None:
@@ -65,11 +65,14 @@ def test_models_route_marks_legacy_flashtalk_connected_when_explicitly_configure
     assert statuses["flashtalk"]["reason"] == "legacy_ws"
 
 
-def test_default_settings_do_not_enable_legacy_flashtalk(monkeypatch) -> None:
+def test_default_settings_do_not_enable_legacy_flashtalk(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv("OPENTALKING_FLASHTALK_WS_URL", raising=False)
     monkeypatch.delenv("FLASHTALK_WS_URL", raising=False)
     monkeypatch.delenv("OMNIRT_ENDPOINT", raising=False)
     monkeypatch.delenv("OPENTALKING_OMNIRT_ENDPOINT", raising=False)
+    monkeypatch.delenv("OPENTALKING_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("CONFIG_FILE", raising=False)
+    monkeypatch.chdir(tmp_path)
 
     settings = Settings(_env_file=None)
 
@@ -87,6 +90,7 @@ def test_omnirt_endpoint_takes_precedence_over_legacy_flashtalk_url() -> None:
 
     assert resolve_synthesis_ws_url("flashtalk", settings) == "ws://127.0.0.1:9000/v1/audio2video/flashtalk"
     assert resolve_synthesis_ws_url("wav2lip", settings) == "ws://127.0.0.1:9000/v1/audio2video/wav2lip"
+    assert resolve_synthesis_ws_url("quicktalk", settings) == "ws://127.0.0.1:9000/v1/audio2video/quicktalk"
 
 
 def test_omnirt_endpoint_defaults_to_audio2video_routes() -> None:
@@ -101,7 +105,7 @@ def test_omnirt_endpoint_defaults_to_audio2video_routes() -> None:
 
 async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypatch) -> None:
     async def fake_fetch(_settings) -> set[str]:
-        return {"flashtalk", "wav2lip"}
+        return {"flashtalk", "wav2lip", "quicktalk"}
 
     monkeypatch.setattr(
         "opentalking.providers.synthesis.availability._fetch_omnirt_audio2video_models",
@@ -119,6 +123,9 @@ async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypa
     assert statuses["flashtalk"].reason == "omnirt"
     assert statuses["wav2lip"].connected is True
     assert statuses["wav2lip"].reason == "omnirt"
+    assert statuses["quicktalk"].backend == "omnirt"
+    assert statuses["quicktalk"].connected is True
+    assert statuses["quicktalk"].reason == "omnirt"
 
 
 async def test_omnirt_endpoint_only_affects_omnirt_backend(tmp_path, monkeypatch) -> None:
@@ -144,6 +151,13 @@ models:
         "opentalking.providers.synthesis.availability._fetch_omnirt_audio2video_models",
         fake_fetch,
     )
+    async def fake_reachable(_url: str) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        "opentalking.providers.synthesis.availability._is_direct_ws_reachable",
+        fake_reachable,
+    )
     settings = SimpleNamespace(
         omnirt_endpoint="http://127.0.0.1:9000",
         flashtalk_ws_url="",
@@ -162,6 +176,50 @@ models:
     assert statuses["musetalk"].reason == "direct_ws"
 
     clear_model_config_cache()
+
+
+async def test_direct_ws_status_requires_reachable_url(monkeypatch) -> None:
+    async def fake_reachable(_url: str) -> bool:
+        return False
+
+    monkeypatch.setattr(
+        "opentalking.providers.synthesis.availability._is_direct_ws_reachable",
+        fake_reachable,
+    )
+
+    settings = SimpleNamespace(
+        omnirt_endpoint="",
+        flashtalk_ws_url="",
+        flashhead_ws_url="ws://127.0.0.1:8766/v1/avatar/realtime",
+    )
+
+    statuses = {status.id: status for status in await resolve_model_statuses(settings)}
+
+    assert statuses["flashhead"].backend == "direct_ws"
+    assert statuses["flashhead"].connected is False
+    assert statuses["flashhead"].reason == "direct_ws_unavailable"
+
+
+async def test_direct_ws_status_reports_reachable_url(monkeypatch) -> None:
+    async def fake_reachable(_url: str) -> bool:
+        return True
+
+    monkeypatch.setattr(
+        "opentalking.providers.synthesis.availability._is_direct_ws_reachable",
+        fake_reachable,
+    )
+
+    settings = SimpleNamespace(
+        omnirt_endpoint="",
+        flashtalk_ws_url="",
+        flashhead_ws_url="ws://127.0.0.1:8766/v1/avatar/realtime",
+    )
+
+    statuses = {status.id: status for status in await resolve_model_statuses(settings)}
+
+    assert statuses["flashhead"].backend == "direct_ws"
+    assert statuses["flashhead"].connected is True
+    assert statuses["flashhead"].reason == "direct_ws"
 
 
 async def test_omnirt_status_falls_back_to_legacy_avatar_models_path(monkeypatch) -> None:

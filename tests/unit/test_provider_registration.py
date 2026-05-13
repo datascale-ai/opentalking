@@ -11,7 +11,7 @@ def test_bootstrap_registers_all_capability_keys() -> None:
         list_keys("tts")
     )
     assert "openai_compatible" in list_keys("llm")
-    assert {"flashtalk", "musetalk", "wav2lip", "flashhead"} <= set(list_keys("synthesis"))
+    assert {"flashtalk", "musetalk", "wav2lip", "quicktalk", "flashhead"} <= set(list_keys("synthesis"))
 
 
 def test_resolve_returns_class() -> None:
@@ -22,3 +22,6 @@ def test_resolve_returns_class() -> None:
     syn = resolve("synthesis", "musetalk")
     # All audio2video models behind OmniRT speak the FlashTalk-compatible WS protocol.
     assert syn.__name__ == "FlashTalkWSClient"
+
+    quicktalk = resolve("synthesis", "quicktalk")
+    assert quicktalk.__name__ == "FlashTalkWSClient"

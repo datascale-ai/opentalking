@@ -992,31 +992,18 @@ export default function App() {
       if (isSpeaking) {
         void apiPost(`/sessions/${sessionId}/interrupt`, {}).catch(() => {});
       }
-      const useChat = model === "quicktalk";
-      const endpoint = useChat ? "chat" : "speak";
-      const payload = useChat
-        ? {
-            prompt: text,
-            voice:
-              isEdgeTts(ttsProvider)
-                ? edgeVoice
-                : ttsProvider === "sambert"
-                  ? undefined
-                  : qwenVoice,
-            tts_provider: ttsProvider,
-            tts_model: !isEdgeTts(ttsProvider) ? qwenModel : undefined,
-          }
-        : {
-            text,
-            voice:
-              isEdgeTts(ttsProvider)
-                ? edgeVoice
-                : ttsProvider === "sambert"
-                  ? undefined
-                  : qwenVoice,
-            tts_provider: ttsProvider,
-            tts_model: !isEdgeTts(ttsProvider) ? qwenModel : undefined,
-          };
+      const endpoint = "speak";
+      const payload = {
+        text,
+        voice:
+          isEdgeTts(ttsProvider)
+            ? edgeVoice
+            : ttsProvider === "sambert"
+              ? undefined
+              : qwenVoice,
+        tts_provider: ttsProvider,
+        tts_model: !isEdgeTts(ttsProvider) ? qwenModel : undefined,
+      };
       void apiPost(`/sessions/${sessionId}/${endpoint}`, payload).catch((err) => {
         console.warn(`${endpoint} failed`, err);
         if (pendingAssistantMsgIdRef.current === pendingId) {

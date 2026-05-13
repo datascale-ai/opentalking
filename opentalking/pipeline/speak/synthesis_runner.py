@@ -332,8 +332,8 @@ class FlashTalkRunner:
             default=default,
         )
 
-    def _wav2lip_video_config(self) -> dict[str, int] | None:
-        if self.model_type != "wav2lip":
+    def _manifest_video_config(self, *, model_type: str) -> dict[str, int] | None:
+        if self.model_type != model_type:
             return None
         manifest_path = self.avatar_path() / "manifest.json"
         if not manifest_path.exists():
@@ -341,7 +341,7 @@ class FlashTalkRunner:
         try:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
         except Exception:
-            log.warning("Failed to read wav2lip avatar video config: %s", manifest_path, exc_info=True)
+            log.warning("Failed to read %s avatar video config: %s", model_type, manifest_path, exc_info=True)
             return None
         out: dict[str, int] = {}
         for key in ("width", "height", "fps"):
@@ -353,9 +353,22 @@ class FlashTalkRunner:
                 out[key] = value
         return out or None
 
+    def _wav2lip_video_config(self) -> dict[str, int] | None:
+        return self._manifest_video_config(model_type="wav2lip")
+
+    def _quicktalk_video_config(self) -> dict[str, int] | None:
+        config = self._manifest_video_config(model_type="quicktalk")
+        if config is None:
+            config = {}
+        config["fps"] = 25
+        return config
+
     def _wav2lip_manifest_metadata(self) -> dict[str, Any]:
         if self.model_type != "wav2lip":
             return {}
+        return self._avatar_manifest_metadata()
+
+    def _avatar_manifest_metadata(self) -> dict[str, Any]:
         manifest_path = self.avatar_path() / "manifest.json"
         if not manifest_path.exists():
             return {}
@@ -366,6 +379,77 @@ class FlashTalkRunner:
             return {}
         metadata = raw.get("metadata")
         return metadata if isinstance(metadata, dict) else {}
+
+    def _quicktalk_manifest_metadata(self) -> dict[str, Any]:
+        if self.model_type != "quicktalk":
+            return {}
+        return self._avatar_manifest_metadata()
+
+    def _resolve_avatar_relative_path(self, raw: str) -> Path | None:
+        raw = raw.strip()
+        if not raw:
+            return None
+        path = (self.avatar_path() / raw).resolve()
+        try:
+            path.relative_to(self.avatar_path())
+        except ValueError:
+            log.warning("Ignoring avatar path outside avatar directory: %s", path)
+            return None
+        return path
+
+    def _quicktalk_manifest_section(self) -> dict[str, Any]:
+        metadata = self._quicktalk_manifest_metadata()
+        quicktalk = metadata.get("quicktalk")
+        return quicktalk if isinstance(quicktalk, dict) else {}
+
+    def _quicktalk_face_cache(self) -> Path | None:
+        if self.model_type != "quicktalk":
+            return None
+        quicktalk = self._quicktalk_manifest_section()
+        path = self._resolve_avatar_relative_path(str(quicktalk.get("face_cache") or ""))
+        if path is not None and path.is_file():
+            return path
+        if path is not None:
+            log.warning("Ignoring missing quicktalk face_cache: %s", path)
+        return None
+
+    def _quicktalk_template_video(self) -> Path | None:
+        metadata = self._quicktalk_manifest_metadata()
+        quicktalk = self._quicktalk_manifest_section()
+        for source in (quicktalk, metadata):
+            for key in ("template_video", "source_video"):
+                path = self._resolve_avatar_relative_path(str(source.get(key) or ""))
+                if path is not None and path.is_file():
+                    return path
+                if path is not None:
+                    log.warning("Ignoring missing quicktalk template video: %s", path)
+        for name in ("idle.mp4", "idle.mov", "idle.webm", "idle.avi", "source.mp4"):
+            path = self.avatar_path() / name
+            if path.is_file():
+                return path.resolve()
+        return None
+
+    def _quicktalk_template_frame_dir(self) -> Path | None:
+        metadata = self._quicktalk_manifest_metadata()
+        if str(metadata.get("reference_mode") or "").strip().lower() != "frames":
+            return None
+        raw = str(metadata.get("frame_dir") or "frames").strip() or "frames"
+        frame_dir = self._resolve_avatar_relative_path(raw)
+        if frame_dir is None:
+            return None
+        if not frame_dir.is_dir():
+            log.warning("Ignoring missing quicktalk template frame_dir: %s", frame_dir)
+            return None
+        return frame_dir
+
+    def _quicktalk_template_mode(self) -> str | None:
+        if self.model_type != "quicktalk":
+            return None
+        if self._quicktalk_template_video() is not None:
+            return "video"
+        if self._quicktalk_template_frame_dir() is not None:
+            return "frames"
+        return "image"
 
     def _wav2lip_reference_mode(self) -> str | None:
         metadata = self._wav2lip_manifest_metadata()
@@ -855,11 +939,15 @@ class FlashTalkRunner:
             ref_image=ref_image_path,
             wav2lip_postprocess_mode=self._wav2lip_postprocess_mode(),
             mouth_metadata=self._wav2lip_mouth_metadata(),
-            video_config=self._wav2lip_video_config(),
+            video_config=self._wav2lip_video_config() or self._quicktalk_video_config(),
             reference_mode=self._wav2lip_reference_mode(),
             ref_frame_dir=self._wav2lip_reference_frame_dir(),
             ref_frame_metadata_path=self._wav2lip_reference_frame_metadata_path(),
             preprocessed=self._wav2lip_preprocessed(),
+            template_mode=self._quicktalk_template_mode(),
+            template_video=self._quicktalk_template_video(),
+            template_frame_dir=self._quicktalk_template_frame_dir(),
+            quicktalk_face_cache=self._quicktalk_face_cache(),
         )
 
     async def _build_idle_frames(self) -> list[np.ndarray]:

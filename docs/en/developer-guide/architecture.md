@@ -93,8 +93,8 @@ sequenceDiagram
     API->>Worker: SDP exchange
     Worker-->>Browser: WebRTC track established
 
-    Browser->>API: POST /sessions/{id}/chat
-    API->>Redis: publish chat.request
+    Browser->>API: POST /sessions/{id}/speak
+    API->>Redis: publish speak.request
     Worker->>LLM: stream tokens
     LLM-->>Worker: token deltas
     Worker->>TTS: synthesize each sentence
@@ -119,7 +119,7 @@ are JSON-encoded; schemas are defined in `opentalking/core/types/events.py` and
 | Event | Producer | Consumer |
 |-------|----------|----------|
 | `session.created` / `session.terminated` | API | Worker |
-| `chat.request` / `speak.request` | API | Worker |
+| `speak.request` | API | Worker |
 | `cancel` | API | Worker |
 | `transcript` | Worker | API → SSE |
 | `llm` (token deltas) | Worker | API → SSE |

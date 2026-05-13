@@ -7,7 +7,7 @@ model, the WebRTC track, and the lifecycle state of the underlying pipeline.
 The session endpoints fall into four categories:
 
 - **Lifecycle** — create, query, start, terminate.
-- **Conversational interaction** — `speak`, `chat`, `transcribe`, `interrupt`, customization.
+- **Conversational interaction** — `speak`, `transcribe`, `interrupt`, customization.
 - **Direct audio input** — `speak_audio`, `speak_flashtalk_audio`, plus the WebSocket variant documented in [Events and Streaming](events.md).
 - **WebRTC signaling and FlashTalk recording** — SDP exchange, on-line recording, deferred rendering.
 
@@ -85,8 +85,8 @@ state (`created`, `running`, `paused`, `terminated`).
 
 ### `POST /sessions/{session_id}/start`
 
-Marks the session as active so that subsequent `speak` and `chat` requests are
-honored. May be invoked once per session.
+Marks the session as active so that subsequent `speak` requests are honored.
+May be invoked once per session.
 
 **Response — `200 OK`**
 
@@ -120,47 +120,12 @@ removes session state from Redis.
 
 ## Conversational interaction
 
-### `POST /sessions/{session_id}/chat`
-
-Sends a user prompt through the full pipeline: speech recognition output (or direct
-text) is forwarded to the language model, model output is synthesized to speech,
-audio is rendered to video, and frames are delivered over the WebRTC track. Events
-are published on the session's SSE channel; see
-[Events and Streaming](events.md#session-event-stream).
-
-**Request body — `application/json`**
-
-`ChatRequest`:
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `prompt` | string | Yes | User input text. |
-| `voice` | string \| null | No | Overrides the session's voice for this request only. |
-| `tts_provider` | string \| null | No | Overrides the session's TTS provider for this request only. |
-| `tts_model` | string \| null | No | Provider-specific model identifier. |
-
-**Response — `200 OK`**
-
-The HTTP response is empty; pipeline output is delivered through the SSE event
-stream and the WebRTC track.
-
-```bash title="curl"
-curl -s -X POST "http://localhost:8000/sessions/$SID/chat" \
-  -H 'content-type: application/json' \
-  -d '{"prompt": "What is the weather today?"}'
-```
-
-**Error responses**
-
-| Code | Condition |
-|------|-----------|
-| `404` | Session not found. |
-| `409` | A previous chat or speak request is still in flight; call `/interrupt` first. |
-
 ### `POST /sessions/{session_id}/speak`
 
-Synthesizes a fixed string. Bypasses the language model; useful for scripted greetings,
-demonstrations, or playback of pre-computed text.
+Sends user text through the unified talk pipeline. The backend forwards the text to
+the language model, synthesizes the response with TTS, renders audio-driven video,
+and delivers frames over the WebRTC track. Events are published on the session's
+SSE channel; see [Events and Streaming](events.md#session-event-stream).
 
 **Request body — `application/json`**
 
@@ -168,7 +133,7 @@ demonstrations, or playback of pre-computed text.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `text` | string | Yes | Text to synthesize. |
+| `text` | string | Yes | User input text. |
 | `voice` | string \| null | No | Voice override. For Edge, a `zh-CN-*Neural` short name. For DashScope, a voice name from the console. For ElevenLabs, a `voice_id`. |
 | `tts_provider` | string \| null | No | One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`, `qwen_tts`, `sambert`. |
 | `tts_model` | string \| null | No | Provider-specific model. Examples: `qwen3-tts-flash-realtime`, `cosyvoice-v3-flash`, `eleven_flash_v2_5`. |
@@ -179,21 +144,25 @@ WebRTC.
 ```bash title="curl"
 curl -s -X POST "http://localhost:8000/sessions/$SID/speak" \
   -H 'content-type: application/json' \
-  -d '{"text": "Welcome to OpenTalking."}'
+  -d '{"text": "What is the weather today?"}'
 ```
+
+**Error responses**
+
+| Code | Condition |
+|------|-----------|
+| `404` | Session not found. |
+| `409` | A previous speak request is still in flight; call `/interrupt` first. |
 
 ### `POST /sessions/{session_id}/transcribe`
 
-Submits a PCM audio buffer for speech recognition. Returns the recognized text. The
-recognized text may optionally be forwarded to the language model and trigger a
-`chat`-style response, depending on the request flags.
+Submits a PCM audio buffer for speech recognition and returns the recognized text.
 
 **Request body — `multipart/form-data`**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `audio` | file | Yes | PCM audio, 16-bit signed, mono, at the sample rate configured for the session (default 16000 Hz). |
-| `trigger_chat` | boolean | No | When `true`, the recognized text is forwarded to the language model. |
 
 **Response — `200 OK`**
 
@@ -203,7 +172,7 @@ recognized text may optionally be forwarded to the language model and trigger a
 
 ### `POST /sessions/{session_id}/interrupt`
 
-Cancels any in-flight `chat`, `speak`, `speak_audio`, or `transcribe` request. The
+Cancels any in-flight `speak`, `speak_audio`, or `transcribe` request. The
 pipeline halts at the next frame boundary, drains in-flight frames, and returns to
 the idle state.
 
@@ -362,6 +331,6 @@ Downloads the rendered MP4 once `status=complete`. Response Content-Type is
 ## Source files
 
 - `apps/api/routes/sessions.py` — endpoint implementations.
-- `apps/api/schemas/session.py` — `CreateSessionRequest`, `CreateSessionResponse`, `SpeakRequest`, `ChatRequest`, `WebRTCOfferRequest`.
-- `opentalking/worker/` — the pipeline driver that handles `chat`, `speak`, `transcribe`, and `interrupt`.
+- `apps/api/schemas/session.py` — `CreateSessionRequest`, `CreateSessionResponse`, `SpeakRequest`, `WebRTCOfferRequest`.
+- `opentalking/worker/` — the pipeline driver that handles `speak`, `transcribe`, and `interrupt`.
 - `opentalking/rtc/` — WebRTC track management invoked by `/webrtc/offer`.

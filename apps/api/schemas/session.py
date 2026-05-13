@@ -39,13 +39,6 @@ class SpeakRequest(BaseModel):
     )
 
 
-class ChatRequest(BaseModel):
-    prompt: str
-    voice: str | None = None
-    tts_provider: str | None = None
-    tts_model: str | None = None
-
-
 class WebRTCOfferRequest(BaseModel):
     sdp: str
     type: str

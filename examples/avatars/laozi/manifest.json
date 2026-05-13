@@ -196,6 +196,13 @@
         ]
       ]
     },
-    "preferred_wav2lip_postprocess_mode": "opentalking_improved"
+    "preferred_wav2lip_postprocess_mode": "opentalking_improved",
+    "quicktalk": {
+      "preprocessed": true,
+      "max_long_edge": 900,
+      "resolution": 256,
+      "template_video": "quicktalk/template_900.mp4",
+      "face_cache": "quicktalk/face_cache_v3_900.npz"
+    }
   }
 }

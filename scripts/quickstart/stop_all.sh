@@ -191,6 +191,7 @@ fi
 stop_pid_file "OpenTalking API legacy pid" "$run_dir/opentalking-api.pid"
 stop_pid_file "OpenTalking frontend legacy pid" "$run_dir/opentalking-web.pid"
 stop_pid_file "OmniRT Wav2Lip" "$run_dir/omnirt-wav2lip.pid"
+stop_pid_file "OmniRT QuickTalk" "$run_dir/omnirt-quicktalk.pid"
 stop_pid_file "OmniRT FlashTalk endpoint" "$DIGITAL_HUMAN_HOME/omnirt/outputs/omnirt-flashtalk-ws.pid"
 stop_pid_file "OmniRT FlashTalk avatar gateway" "$run_dir/omnirt-flashtalk.pid"
 stop_pid_file "OmniRT MuseTalk WS backend" "$run_dir/omnirt-musetalk-ws.pid"

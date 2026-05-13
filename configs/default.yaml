@@ -65,4 +65,4 @@ models:
   flashhead:
     backend: direct_ws
   quicktalk:
-    backend: local
+    backend: omnirt

@@ -16,6 +16,7 @@ def _clear_model_config(monkeypatch: pytest.MonkeyPatch):
         "FLASHTALK_FRAME_NUM",
         "OPENTALKING_FLASHTALK_FRAME_NUM",
         "OPENTALKING_WAV2LIP_BACKEND",
+        "OPENTALKING_QUICKTALK_BACKEND",
     ):
         monkeypatch.delenv(name, raising=False)
     clear_model_config_cache()
@@ -115,7 +116,7 @@ def test_get_model_backend_uses_builtin_compat_defaults(
     clear_model_config_cache()
 
     assert get_model_backend("mock") == "mock"
-    assert get_model_backend("quicktalk") == "local"
+    assert get_model_backend("quicktalk") == "omnirt"
     assert get_model_backend("flashhead") == "direct_ws"
     assert get_model_backend("wav2lip") == "omnirt"
     assert get_model_backend("musetalk") == "omnirt"

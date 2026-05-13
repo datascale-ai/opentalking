@@ -92,8 +92,8 @@ sequenceDiagram
     API->>Worker: SDP 交换
     Worker-->>Browser: WebRTC track 建立
 
-    Browser->>API: POST /sessions/{id}/chat
-    API->>Redis: 发布 chat.request
+    Browser->>API: POST /sessions/{id}/speak
+    API->>Redis: 发布 speak.request
     Worker->>LLM: 流式获取 token
     LLM-->>Worker: token delta
     Worker->>TTS: 按句合成
@@ -117,7 +117,7 @@ sequenceDiagram
 | 事件 | 生产者 | 消费者 |
 |------|--------|--------|
 | `session.created` / `session.terminated` | API | Worker |
-| `chat.request` / `speak.request` | API | Worker |
+| `speak.request` | API | Worker |
 | `cancel` | API | Worker |
 | `transcript` | Worker | API → SSE |
 | `llm`（token delta） | Worker | API → SSE |

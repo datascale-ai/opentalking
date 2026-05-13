@@ -19,6 +19,7 @@ from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClien
 register("synthesis", "flashtalk")(FlashTalkWSClient)
 register("synthesis", "musetalk")(FlashTalkWSClient)
 register("synthesis", "wav2lip")(FlashTalkWSClient)
+register("synthesis", "quicktalk")(FlashTalkWSClient)
 
 # FlashHead has its own dedicated WS protocol (kept separate, not via omnirt yet).
 from opentalking.providers.synthesis.flashhead.ws_client import FlashHeadWSClient  # noqa: E402
@@ -30,8 +31,8 @@ SYNTHESIS_PROVIDERS = ("mock", "flashtalk", "musetalk", "wav2lip", "flashhead", 
 
 # What the upstream backend can actually serve TODAY.
 # `mock` is in-process and always works. OmniRT now exposes model-specific
-# FlashTalk-compatible routes for FlashTalk, MuseTalk and Wav2Lip.
-SUPPORTED_MODELS = frozenset({"mock", "flashtalk", "musetalk", "wav2lip"})
+# FlashTalk-compatible routes for FlashTalk, MuseTalk, Wav2Lip, and QuickTalk.
+SUPPORTED_MODELS = frozenset({"mock", "flashtalk", "musetalk", "wav2lip", "quicktalk"})
 
 
 def list_available_synthesis() -> list[str]:

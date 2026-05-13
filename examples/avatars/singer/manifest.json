@@ -202,6 +202,13 @@
     "frame_metadata_count": 125,
     "frame_metadata_missing_count": 0,
     "preprocessed": true,
-    "preprocess_version": 1
+    "preprocess_version": 1,
+    "quicktalk": {
+      "preprocessed": true,
+      "max_long_edge": 900,
+      "resolution": 256,
+      "template_video": "quicktalk/template_900.mp4",
+      "face_cache": "quicktalk/face_cache_v3_900.npz"
+    }
   }
 }

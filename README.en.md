@@ -506,7 +506,9 @@ bash scripts/quickstart/start_all.sh \
 
 The default frontend is `http://localhost:5173`; if you use `--web-port 5180`, open `http://localhost:5180`.
 
-Choose `wav2lip`, `musetalk`, or `flashtalk`. Real-model cards should show **Connected**; `mock / driverless mode` shows **No connection required**.
+Choose `wav2lip`, `musetalk`, `quicktalk`, or `flashtalk`. Real-model cards should show **Connected**; `mock / driverless mode` shows **No connection required**.
+
+QuickTalk uses the same OmniRT endpoint and is routed by `/v1/audio2video/quicktalk`. For weights, dependency layout, CUDA startup, and performance data, see [Models → Talking-Head Models](docs/en/model-deployment/talking-head.md#quicktalk).
 
 Check or stop helper-managed services:
 

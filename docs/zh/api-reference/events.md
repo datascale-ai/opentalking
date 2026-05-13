@@ -50,7 +50,7 @@ location ~ ^/sessions/[^/]+/events$ {
 | `transcript` | `{ "text": string, "is_final": boolean }` | 语音识别产出部分或最终结果。 |
 | `llm` | `{ "delta": string }` | 语言模型 token delta。完整回复为下一个 `status` 边界之前所有 `llm.delta` 字符串的拼接。 |
 | `tts` | `{ "stage": string, "ms_elapsed": integer, "sentence_index": integer? }` | TTS 生命周期标记。`stage` 取值：`start`、`first_audio`、`complete`。 |
-| `frame` | `{ "frame_idx": integer, "pts_ms": integer }` | 一帧合成视频已入队。`pts_ms` 为相对于 speak/chat 回合开始的 presentation timestamp。 |
+| `frame` | `{ "frame_idx": integer, "pts_ms": integer }` | 一帧合成视频已入队。`pts_ms` 为相对于 speak 回合开始的 presentation timestamp。 |
 | `status` | `{ "stage": string, "message": string? }` | 流水线高层状态变更。`stage` 取值：`listening`、`thinking`、`speaking`、`idle`、`interrupted`、`error`。 |
 | `error` | `{ "code": string, "message": string }` | 可恢复或不可恢复的错误。可恢复错误后会有 `status: idle` 事件；不可恢复错误后会有 `session.terminated`。 |
 | `session.terminated` | `{}` | 会话已终止，流即将关闭。 |
@@ -230,7 +230,7 @@ async def stream_audio(session_id: str, pcm_chunks):
 
 ## 事件顺序与背压
 
-- 在单次 speak 或 chat 回合内，事件按因果顺序产出：`transcript` → `status:thinking` → `llm.delta`* → `tts:start` → `tts:first_audio` → `frame`* → `status:idle`。
+- 在单次 speak 回合内，事件按因果顺序产出：`transcript` → `status:thinking` → `llm.delta`* → `tts:start` → `tts:first_audio` → `frame`* → `status:idle`。
 - `frame` 事件 `frame_idx` 单调递增。WebRTC track 上的帧推送不依赖对应 SSE 事件是否已被消费。
 - 服务端**不**对慢速 SSE 消费者施加背压。落后超过约 5 秒的消费者可能被断开。
 - WebSocket 音频输入存在背压：发送速率快于合成流水线处理能力时，客户端从底层传输收到流控信号。

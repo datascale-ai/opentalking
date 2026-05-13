@@ -420,34 +420,6 @@ async def handle_worker_task(
             if isinstance(enqueue_unix, (int, float))
             else None,
         )
-    elif cmd == "chat":
-        prompt = str(task.get("prompt", "") or task.get("text", ""))
-        raw_voice = task.get("tts_voice") or task.get("voice")
-        tts_voice = str(raw_voice).strip() if raw_voice else None
-        tp = task.get("tts_provider")
-        tts_provider = str(tp).strip().lower() if tp else None
-        tm = task.get("tts_model")
-        tts_model = str(tm).strip() if tm else None
-        enqueue_unix = task.get("enqueue_unix")
-        if isinstance(enqueue_unix, (int, float)):
-            log.info(
-                "chat task dequeue from API enqueue: %.0f ms session=%s",
-                (time.time() - float(enqueue_unix)) * 1000.0,
-                sid,
-            )
-        chat_fn = getattr(runner, "create_chat_task", None)
-        if chat_fn is None:
-            log.warning("chat unsupported runner session=%s", sid)
-            return
-        chat_fn(
-            prompt,
-            tts_voice=tts_voice or None,
-            tts_provider=tts_provider or None,
-            tts_model=tts_model or None,
-            enqueue_unix=float(enqueue_unix)
-            if isinstance(enqueue_unix, (int, float))
-            else None,
-        )
     elif cmd == "speak_flashtalk_audio":
         pcm_path = task.get("pcm_path")
         pcm_key = task.get("pcm_key")

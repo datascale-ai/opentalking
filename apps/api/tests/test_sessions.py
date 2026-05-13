@@ -108,7 +108,7 @@ def _wait_until(predicate, timeout: float = 2.0) -> None:
 
 
 @pytest.fixture
-def unified_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def unified_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     created_runners: dict[str, FakeRunner] = {}
 
     def fake_create_runner(task, redis, avatars_root: Path, device: str) -> FakeRunner:
@@ -117,6 +117,13 @@ def unified_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         return runner
 
     monkeypatch.setattr(task_consumer, "_create_runner", fake_create_runner)
+    monkeypatch.delenv("OMNIRT_ENDPOINT", raising=False)
+    monkeypatch.delenv("OPENTALKING_OMNIRT_ENDPOINT", raising=False)
+    monkeypatch.delenv("OPENTALKING_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("CONFIG_FILE", raising=False)
+    monkeypatch.chdir(tmp_path)
+    avatars_dir = Path(__file__).resolve().parents[3] / "examples" / "avatars"
+    monkeypatch.setenv("OPENTALKING_AVATARS_DIR", str(avatars_dir))
     monkeypatch.setenv("OPENTALKING_FLASHTALK_WS_URL", "ws://127.0.0.1:8765")
     unified_main.get_settings.cache_clear()
     try:
@@ -197,6 +204,15 @@ models:
     assert "wav2lip" in detail
     assert "not yet supported" in detail
     clear_model_config_cache()
+
+
+def test_chat_endpoint_removed_from_unified_sessions() -> None:
+    route_paths = {
+        getattr(route, "path", None)
+        for route in sessions_routes.router.routes
+    }
+
+    assert "/sessions/{session_id}/chat" not in route_paths
 
 
 @pytest.mark.parametrize("tts_provider", ["dashscope", "cosyvoice", "sambert"])

@@ -183,6 +183,13 @@
           0.55078
         ]
       ]
+    },
+    "quicktalk": {
+      "preprocessed": true,
+      "max_long_edge": 900,
+      "resolution": 256,
+      "template_video": "quicktalk/template_900.mp4",
+      "face_cache": "quicktalk/face_cache_v3_900.npz"
     }
   }
 }

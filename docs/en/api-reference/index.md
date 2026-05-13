@@ -59,7 +59,6 @@ Identifier formats:
 | `GET` | `/sessions/{session_id}` | Sessions |
 | `POST` | `/sessions/{session_id}/start` | Sessions |
 | `POST` | `/sessions/{session_id}/speak` | Sessions |
-| `POST` | `/sessions/{session_id}/chat` | Sessions |
 | `POST` | `/sessions/{session_id}/transcribe` | Sessions |
 | `POST` | `/sessions/{session_id}/speak_audio` | Sessions |
 | `POST` | `/sessions/{session_id}/speak_flashtalk_audio` | Sessions |
@@ -104,7 +103,7 @@ sequenceDiagram
     C->>API: GET /sessions/{id}/events (SSE)
     note over C,API: stream remains open
 
-    C->>API: POST /sessions/{id}/chat
+    C->>API: POST /sessions/{id}/speak
     API-->>C: 200 (events delivered via SSE)
 
     C->>API: DELETE /sessions/{id}

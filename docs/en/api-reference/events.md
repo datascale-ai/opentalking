@@ -53,14 +53,14 @@ location ~ ^/sessions/[^/]+/events$ {
 | `transcript` | `{ "text": string, "is_final": boolean }` | Speech recognition produces a partial or final transcript. |
 | `llm` | `{ "delta": string }` | The language model emits a token delta. The full response is the concatenation of all `llm.delta` strings until the next `status` boundary. |
 | `tts` | `{ "stage": string, "ms_elapsed": integer, "sentence_index": integer? }` | A text-to-speech lifecycle marker is reached. `stage` values: `start`, `first_audio`, `complete`. |
-| `frame` | `{ "frame_idx": integer, "pts_ms": integer }` | A synthesized video frame is queued for delivery. `pts_ms` is the presentation timestamp relative to the start of the speak/chat turn. |
+| `frame` | `{ "frame_idx": integer, "pts_ms": integer }` | A synthesized video frame is queued for delivery. `pts_ms` is the presentation timestamp relative to the start of the speak turn. |
 | `status` | `{ "stage": string, "message": string? }` | A high-level pipeline state change. `stage` values: `listening`, `thinking`, `speaking`, `idle`, `interrupted`, `error`. |
 | `error` | `{ "code": string, "message": string }` | A recoverable or unrecoverable error. Recoverable errors emit a subsequent `status: idle` event; unrecoverable errors are followed by `session.terminated`. |
 | `session.terminated` | `{}` | The session has been terminated and the stream is about to close. |
 
 ### Example stream
 
-The following sequence corresponds to one user utterance, followed by one chat
+The following sequence corresponds to one user utterance, followed by one spoken
 response:
 
 ```text
@@ -236,7 +236,7 @@ async def stream_audio(session_id: str, pcm_chunks):
 
 ## Event ordering and back-pressure
 
-- Within a single speak or chat turn, events are emitted in causal order: `transcript` → `status:thinking` → `llm.delta`* → `tts:start` → `tts:first_audio` → `frame`* → `status:idle`.
+- Within a single speak turn, events are emitted in causal order: `transcript` → `status:thinking` → `llm.delta`* → `tts:start` → `tts:first_audio` → `frame`* → `status:idle`.
 - `frame` events are emitted in monotonically increasing `frame_idx`. Frame delivery on the WebRTC track is not gated on the corresponding SSE event being consumed.
 - The server applies no back-pressure on slow SSE consumers. A consumer that falls more than ~5 seconds behind may be disconnected.
 - The WebSocket audio input does apply back-pressure: clients that send faster than the synthesis pipeline can absorb receive flow-control signals from the underlying transport.

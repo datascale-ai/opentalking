@@ -131,6 +131,10 @@ class FlashTalkWSClient:
         ref_frame_dir: str | Path | None = None,
         ref_frame_metadata_path: str | Path | None = None,
         preprocessed: bool | None = None,
+        template_mode: str | None = None,
+        template_video: str | Path | None = None,
+        template_frame_dir: str | Path | None = None,
+        quicktalk_face_cache: str | Path | None = None,
     ) -> dict:
         """Initialise a generation session with a reference face image.
 
@@ -163,6 +167,14 @@ class FlashTalkWSClient:
             payload["ref_frame_metadata_path"] = str(ref_frame_metadata_path)
         if preprocessed is not None:
             payload["preprocessed"] = bool(preprocessed)
+        if template_mode:
+            payload["template_mode"] = template_mode
+        if template_video is not None:
+            payload["template_video"] = str(template_video)
+        if template_frame_dir is not None:
+            payload["template_frame_dir"] = str(template_frame_dir)
+        if quicktalk_face_cache is not None:
+            payload["quicktalk_face_cache"] = str(quicktalk_face_cache)
         if video_config:
             for key in ("width", "height", "fps", "frame_num", "motion_frames_num", "slice_len"):
                 value = video_config.get(key)
