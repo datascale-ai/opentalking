@@ -1,0 +1,154 @@
+site_name: OpenTalking
+site_description: Open-source real-time digital-human orchestration layer with pluggable model backends, LLM, TTS, WebRTC, and character voices.
+site_url: https://datascale-ai.github.io/opentalking/
+repo_url: https://github.com/datascale-ai/opentalking
+repo_name: datascale-ai/opentalking
+edit_uri: edit/main/docs/
+
+exclude_docs: |
+  superpowers/
+  requirements.txt
+  */design/architecture-review.md
+  */design/realtime-digital-human-research.md
+  */design/wav2lip-v2-integration.md
+  */roadmap/
+
+theme:
+  name: material
+  language: en
+  logo: assets/images/logo.png
+  favicon: assets/images/logo.png
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/datascale-ai/opentalking
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: folder
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: zh
+          name: 中文
+          build: true
+          nav_translations:
+            Home: 首页
+            User Guide: 用户指南
+            Developer Guide: 开发者指南
+            API Reference: API 参考
+            About: 关于
+            Quickstart: 快速上手
+            Installation: 安装
+            From source: 源码安装
+            Docker Compose: Docker Compose 部署
+            Configuration: 配置
+            Model Deployment: 模型端到端部署
+            Deployment: 部署
+            Avatar Format: Avatar 资产格式
+            Render Pipeline: 渲染管线
+            Architecture: 架构
+            Developing: 开发流程
+            Model Adapter: 模型适配器
+            Contributing: 贡献指南
+            Community: 社区
+            Overview: 概览
+            Health and Models: 健康检查与模型
+            Avatars: 数字人形象
+            Sessions: 会话
+            TTS and Voices: TTS 与音色
+            Events and Streaming: 事件与流式接口
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - def_list
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.keys
+  - pymdownx.caret
+  - pymdownx.tilde
+  - pymdownx.mark
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - User Guide:
+      - Quickstart: user-guide/quickstart.md
+      - Installation:
+          - Overview: user-guide/installation.md
+          - From source: user-guide/install-from-source.md
+          - Docker Compose: user-guide/install-with-docker.md
+      - Configuration: user-guide/configuration.md
+      - Model Deployment: user-guide/model-deployment.md
+      - Deployment: user-guide/deployment.md
+      - Avatar Format: user-guide/avatar-format.md
+      - Render Pipeline: user-guide/render-pipeline.md
+  - Developer Guide:
+      - Architecture: developer-guide/architecture.md
+      - Developing: developer-guide/developing.md
+      - Model Adapter: developer-guide/model-adapter.md
+      - Contributing: developer-guide/contributing.md
+  - API Reference:
+      - Overview: api-reference/index.md
+      - Health and Models: api-reference/health.md
+      - Avatars: api-reference/avatars.md
+      - Sessions: api-reference/sessions.md
+      - TTS and Voices: api-reference/tts-and-voices.md
+      - Events and Streaming: api-reference/events.md
+  - About:
+      - Community: about/community.md

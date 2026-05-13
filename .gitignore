@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 .venv/
+.docs-venv/
 venv/
 .env
 .deploy.env
@@ -72,3 +73,6 @@ machine.md
 
 # Internal dev specs (not for public repo)
 docs/superpowers/
+
+# MkDocs build output
+site/

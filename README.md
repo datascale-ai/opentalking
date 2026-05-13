@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="./README.en.md">English</a> ·
+  <a href="https://datascale-ai.github.io/opentalking/">📖 文档站</a> ·
   <a href="https://github.com/datascale-ai/opentalking">GitHub</a>
 </p>
 
@@ -584,13 +585,12 @@ export OMNIRT_WAV2LIP_MAX_LONG_EDGE=832
 
 ## 文档
 
-- [快速开始](docs/quickstart.md)
-- [FlashTalk + OmniRT 部署](docs/flashtalk-omnirt.md)
-- [架构说明](docs/architecture.md)
-- [配置说明](docs/configuration.md)
-- [部署文档](docs/deployment.md)（Docker Compose、分布式部署）
-- [硬件指南](docs/hardware.md)
-- [模型适配](docs/model-adapter.md)
+- [快速开始](docs/zh/user-guide/quickstart.md)
+- [模型端到端部署](docs/zh/user-guide/model-deployment.md)（权重下载、国内源、启动、验证）
+- [架构说明](docs/zh/developer-guide/architecture.md)
+- [配置说明](docs/zh/user-guide/configuration.md)
+- [部署文档](docs/zh/user-guide/deployment.md)（Docker Compose、分布式部署）
+- [模型适配](docs/zh/developer-guide/model-adapter.md)
 - [贡献指南](CONTRIBUTING.md)（开发环境、CLI 工具、ruff / mypy / pytest）
 
 ## 致谢
