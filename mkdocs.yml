@@ -70,7 +70,6 @@ plugins:
             User Guide: 用户指南
             Developer Guide: 开发者指南
             API Reference: API 参考
-            About: 关于
             Quickstart: 快速上手
             Installation: 安装
             From source: 源码安装
@@ -159,5 +158,4 @@ nav:
       - Sessions: api-reference/sessions.md
       - TTS and Voices: api-reference/tts-and-voices.md
       - Events and Streaming: api-reference/events.md
-  - About:
-      - Community: about/community.md
+  - Community: about/community.md

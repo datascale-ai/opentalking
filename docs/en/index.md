@@ -36,62 +36,33 @@ or a mock path for tests.
 
 ## Key capabilities
 
-### Model-agnostic synthesis
+<div class="grid cards" markdown>
 
-The synthesis backend is **selected per session**, not per deployment. The same
-running OpenTalking server can serve `mock`, `wav2lip`, `musetalk`, `flashtalk`,
-`flashhead`, and `quicktalk` sessions concurrently. New synthesis backends are
-integrated by implementing a single Python protocol; see
-[Model Adapter](developer-guide/model-adapter.md).
+-   :material-account-voice: **Realtime conversation pipeline**
 
-### Provider-agnostic language model and TTS
+    ASR, LLM, TTS, talking-head rendering, and WebRTC delivery in one interruptible session loop.
 
-OpenTalking accepts any **OpenAI-compatible** chat completion endpoint, including
-DashScope, OpenAI, vLLM, Ollama, and DeepSeek. Text-to-speech can be served by Edge,
-DashScope (Qwen realtime), CosyVoice, or ElevenLabs. Provider switching is a
-configuration change; no client-side code is affected.
+-   :material-puzzle: **Pluggable model backends**
 
-### Real-time pipeline as a contract
+    Resolve synthesis by `model + backend`: `mock`, `local`, `direct_ws`, or `omnirt`.
 
-The pipeline is designed around a real-time contract, not retrofitted onto a batch
-system. Streaming partial transcripts feed a streaming language model, which feeds
-a sentence-level text-to-speech pipeline, which feeds the talking-head adapter,
-which feeds a WebRTC track. The interruption mechanism (`POST /sessions/{id}/interrupt`)
-propagates a single cancellation flag through every stage and reaches the idle
-state within approximately 200 ms. End-to-end latency from end-of-speech to first
-avatar frame is typically 700–1500 ms; see [Render Pipeline](user-guide/render-pipeline.md)
-for the latency budget.
+-   :material-api: **Unified API**
 
-### Pluggable inference boundary
+    REST, SSE, WebSocket, and WebRTC signaling are exposed through one FastAPI service.
 
-OpenTalking resolves the synthesis path from `model + backend`. `mock` runs locally
-for self-tests, `local` loads an in-process adapter such as QuickTalk, `direct_ws`
-connects to a model-specific WebSocket service such as FlashHead, and `omnirt` routes
-to `ws://<host>:9000/v1/audio2video/{model}`. OmniRT remains the recommended backend
-for heavyweight, multi-card, GPU/NPU, and remote inference, but it is no longer the
-only real-model entry point.
+-   :material-tune: **Replaceable providers**
 
-### Production deployment topologies
+    Use OpenAI-compatible LLM endpoints and switch TTS across Edge, DashScope, CosyVoice, or ElevenLabs.
 
-The same codebase supports three operational shapes:
+-   :material-account-convert: **Avatar and voice assets**
 
-- **Single-process** — all components in one Python process with an in-memory event bus. Suitable for development and demonstrations.
-- **API and Worker split** — the API and one or more Worker processes communicate through Redis. Workers scale independently from the API.
-- **Docker Compose** — packaged CPU and GPU variants.
+    Manage avatar bundles, custom portraits, voice catalog entries, and cloned voices.
 
-Ascend 910B deployment is supported through a dedicated profile.
+-   :material-server-network: **Flexible deployment**
 
-### Built-in voice cloning
+    Run `unified`, split API/Worker, Docker Compose, or remote GPU/NPU model services.
 
-The voice catalog (SQLite-backed) supports cloning through DashScope Qwen and
-CosyVoice. Once cloned, voices are addressable by `voice_id` from any `speak` or
-`chat` request.
-
-### Bilingual documentation
-
-The documentation site is maintained in English and Chinese. Both versions are
-treated as first-class; configuration field names, error messages, and code samples
-remain identical across languages.
+</div>
 
 ## Pick your starting point
 

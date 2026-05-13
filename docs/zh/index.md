@@ -31,53 +31,33 @@ REST 与 WebSocket 接口，并按会话所选模型把合成委托给对应 bac
 
 ## 关键能力
 
-### 模型无关的合成层
+<div class="grid cards" markdown>
 
-合成后端**按会话**选择，而非按部署选择。同一个 OpenTalking 服务可同时承载
-`mock`、`wav2lip`、`musetalk`、`flashtalk`、`flashhead`、`quicktalk` 等多种会话。
-新增合成后端只需实现一个 Python Protocol，详见
-[模型适配器](developer-guide/model-adapter.md)。
+-   :material-account-voice: **实时对话流水线**
 
-### Provider 无关的 LLM 与 TTS
+    ASR、LLM、TTS、talking-head 渲染与 WebRTC 推送串成一个可打断的会话链路。
 
-OpenTalking 接受任意 **OpenAI 兼容**的对话补全端点，包括 DashScope、OpenAI、
-vLLM、Ollama、DeepSeek。语音合成可使用 Edge、DashScope（Qwen realtime）、
-CosyVoice、ElevenLabs。切换 provider 仅需修改配置，客户端代码不受影响。
+-   :material-puzzle: **可插拔模型 backend**
 
-### 实时流水线契约
+    按 `model + backend` 选择 `mock`、`local`、`direct_ws` 或 `omnirt`，轻重模型不绑死同一平台。
 
-流水线围绕实时契约设计，而非后续在批处理系统上拼接。流式部分识别结果交给流式语言
-模型，模型输出送入句级语音合成，合成结果驱动 talking-head 适配器，最终经 WebRTC
-track 推送。打断机制（`POST /sessions/{id}/interrupt`）在每个阶段传播单一取消标志，
-约 200 ms 内回到 idle 状态。语音结束到首个 avatar 帧的端到端时延通常为
-700–1500 ms。完整时延预算见 [渲染管线](user-guide/render-pipeline.md)。
+-   :material-api: **统一 API**
 
-### 可插拔推理边界
+    REST、SSE、WebSocket 与 WebRTC 信令统一收敛到 FastAPI 服务，前端和业务侧只对接一套接口。
 
-OpenTalking 根据 `model + backend` 解析合成路径。`mock` 用于本地自测，`local`
-加载进程内 adapter（如 QuickTalk），`direct_ws` 连接模型专属 WebSocket 服务（如
-FlashHead），`omnirt` 路由到 `ws://<host>:9000/v1/audio2video/{model}`。OmniRT
-仍是重模型、多卡、GPU/NPU 与远端推理的推荐 backend，但不再是唯一真实模型入口。
+-   :material-tune: **Provider 可替换**
 
-### 多种部署拓扑
+    LLM 支持 OpenAI-compatible endpoint；TTS 可切换 Edge、DashScope、CosyVoice、ElevenLabs。
 
-同一代码库支持三种部署形态：
+-   :material-account-convert: **Avatar 与音色管理**
 
-- **单进程** —— 全部组件运行于一个 Python 进程，配进程内事件总线，适合开发与演示。
-- **API 与 Worker 分离** —— API 与一个或多个 Worker 进程通过 Redis 通信，Worker 可独立扩容。
-- **Docker Compose** —— 打包后的 CPU 与 GPU 部署变种。
+    内置 avatar bundle、上传自定义形象、音色目录与声音复刻，适合做可配置数字人。
 
-通过专用 profile 支持昇腾 910B 部署。
+-   :material-server-network: **多部署形态**
 
-### 内置音色复刻
+    支持 `unified`、API/Worker 分离、Docker Compose，以及远端 OmniRT、GPU/NPU 模型服务。
 
-音色目录（SQLite 持久化）支持通过 DashScope Qwen 与 CosyVoice 复刻。复刻完成后，
-任意 `speak` 或 `chat` 请求均可通过 `voice_id` 引用该音色。
-
-### 中英文文档
-
-文档站维护中英两个语种，均为一等公民；配置字段名、错误信息、代码示例在两种语言下
-保持一致。
+</div>
 
 ## 选择起点
 
