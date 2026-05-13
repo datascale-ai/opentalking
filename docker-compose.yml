@@ -68,5 +68,5 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
-    ports: ["5173:5173"]
+    ports: ["5173:80"]
     depends_on: [api]
