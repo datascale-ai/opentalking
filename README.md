@@ -589,7 +589,7 @@ export OMNIRT_WAV2LIP_MAX_LONG_EDGE=832
 ## 文档
 
 - [快速开始](docs/zh/user-guide/quickstart.md)
-- [模型端到端部署](docs/zh/model-deployment/index.md)（权重下载、国内源、启动、验证）
+- [模型](docs/zh/model-deployment/index.md)（权重下载、国内源、启动、验证）
 - [架构说明](docs/zh/developer-guide/architecture.md)
 - [配置说明](docs/zh/user-guide/configuration.md)
 - [部署文档](docs/zh/user-guide/deployment.md)（Docker Compose、分布式部署）

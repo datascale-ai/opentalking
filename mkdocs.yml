@@ -33,7 +33,7 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue grey
+      primary: white
       accent: teal
       toggle:
         icon: material/brightness-7
@@ -76,7 +76,7 @@ plugins:
             From source: 源码安装
             Docker Compose: Docker Compose 部署
             Configuration: 配置
-            Model Deployment: 模型端到端部署
+            Models: 模型
             LLM and STT: LLM 与 STT
             Text-to-Speech: 语音合成
             Avatar Assets: Avatar 资产
@@ -138,7 +138,7 @@ nav:
           - From source: user-guide/install-from-source.md
           - Docker Compose: user-guide/install-with-docker.md
       - Configuration: user-guide/configuration.md
-  - Model Deployment:
+  - Models:
       - Overview: model-deployment/index.md
       - LLM and STT: model-deployment/llm-stt.md
       - Text-to-Speech: model-deployment/tts.md

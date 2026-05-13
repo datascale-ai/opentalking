@@ -61,7 +61,7 @@ Configuration for DashScope realtime TTS and ElevenLabs is documented in
 The variables in this section are consulted only when the client selects `wav2lip`,
 `musetalk`, `flashtalk`, or `flashhead`. The `mock` backend ignores all entries here.
 For weight downloads and model-specific startup commands, see
-[Model Deployment](../model-deployment/index.md).
+[Models](../model-deployment/index.md).
 
 OpenTalking selects the inference entry point per model through `backend`; it is not
 tied to one inference platform. Recommended defaults:

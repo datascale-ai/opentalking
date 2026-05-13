@@ -117,7 +117,7 @@ bash scripts/deploy_ascend_910b.sh
 - OmniRT 仓库与 OpenTalking 仓库处于同级目录。
 - 模型检查点位于 `$DIGITAL_HUMAN_HOME/models/`。
 
-具体权重下载与模型启动命令见 [模型端到端部署](../model-deployment/index.md)。
+具体权重下载与模型启动命令见 [模型](../model-deployment/index.md)。
 
 验证部署：
 

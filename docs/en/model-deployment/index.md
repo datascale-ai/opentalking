@@ -1,4 +1,4 @@
-# Model Deployment
+# Models
 
 This module explains how to make the full OpenTalking model chain runnable, not only
 the talking-head backend. A usable digital-human session depends on five parts:

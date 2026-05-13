@@ -55,7 +55,7 @@ OpenTalking 从两个来源加载配置，按优先级从高到低：
 
 本节变量仅在客户端选择 `wav2lip`、`musetalk`、`flashtalk` 或 `flashhead` 时生效。
 `mock` 后端忽略本节全部条目。
-各模型权重下载与启动命令见 [模型端到端部署](../model-deployment/index.md)。
+各模型权重下载与启动命令见 [模型](../model-deployment/index.md)。
 
 OpenTalking 通过每个模型的 `backend` 字段选择推理入口，不绑定单一平台。推荐默认值如下：
 

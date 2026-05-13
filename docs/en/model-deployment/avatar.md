@@ -40,7 +40,7 @@ session model:
 Use the existing avatar guide for the complete schema and preparation scripts:
 
 - [Avatar Format](../user-guide/avatar-format.md)
-- [Model Deployment → Talking-Head Models](talking-head.md)
+- [Models → Talking-Head Models](talking-head.md)
 
 Verify the server sees the avatar:
 
