@@ -80,6 +80,7 @@ esac
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
 export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+quickstart_configure_uv_default_index
 
 omnirt_dir="$DIGITAL_HUMAN_HOME/omnirt"
 run_dir="$DIGITAL_HUMAN_HOME/run"
@@ -128,6 +129,7 @@ echo "  device:        $device"
 echo "  hubert device: $hubert_device"
 echo "  max edge:      ${OMNIRT_QUICKTALK_MAX_LONG_EDGE:-900}"
 echo "  template sec:  ${OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS:-1}"
+echo "  uv index:      $(quickstart_describe_uv_default_index)"
 echo "  port:          $port"
 echo "  log:           $log_file"
 

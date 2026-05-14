@@ -24,7 +24,7 @@ flowchart LR
 | STT | DashScope Paraformer realtime | 需要接入其它实时 ASR provider 时替换。 |
 | TTS | Edge TTS | 生产音色、声音复刻或更高质量语音时切换 DashScope、CosyVoice、ElevenLabs。 |
 | Avatar 资产 | 内置 examples | 选择 Wav2Lip、QuickTalk、FlashHead、FlashTalk 前准备模型匹配资产。 |
-| Talking-head backend | 先用 `mock`，再跑 Wav2Lip 兼容路径 | 需要本地 QuickTalk、FlashHead direct WS 或重模型 OmniRT 时替换。 |
+| Talking-head backend | 先用 `mock`，再跑 Wav2Lip 兼容路径 | 需要 QuickTalk / FlashTalk OmniRT、FlashHead direct WS 或其它模型服务时替换。 |
 
 ## 推荐顺序
 

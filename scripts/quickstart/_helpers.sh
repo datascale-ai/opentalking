@@ -38,6 +38,16 @@ quickstart_require_uv() {
   return 1
 }
 
+quickstart_configure_uv_default_index() {
+  if [[ -z "${UV_DEFAULT_INDEX:-}" && -z "${UV_INDEX_URL:-}" ]]; then
+    export UV_DEFAULT_INDEX="https://pypi.tuna.tsinghua.edu.cn/simple"
+  fi
+}
+
+quickstart_describe_uv_default_index() {
+  printf '%s\n' "${UV_DEFAULT_INDEX:-${UV_INDEX_URL:-default}}"
+}
+
 quickstart_port_in_use() {
   local port="$1"
 

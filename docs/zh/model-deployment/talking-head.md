@@ -10,7 +10,7 @@ OpenTalking 是编排层，模型执行按模型选择：
 | `mock` | `mock` | 内置自测 | 无 |
 | `wav2lip` | 兼容默认 `omnirt`；目标是 local-first | 轻量本地或单模型直连 backend；当前可直接跑通的是 OmniRT 兼容路径 | Wav2Lip + S3FD checkpoint |
 | `musetalk` | `omnirt` | OmniRT 或后续本地 adapter | MuseTalk 1.5 权重 |
-| `quicktalk` | `local` | 本地 adapter | QuickTalk `hdModule` 资产包 |
+| `quicktalk` | `omnirt` | OmniRT `/v1/audio2video/quicktalk` | QuickTalk checkpoint + repair 参数 |
 | `flashtalk` | `omnirt` | OmniRT + CUDA 或 Ascend | SoulX-FlashTalk-14B + wav2vec2 |
 | `flashhead` | `direct_ws` | 外部 FlashHead WebSocket 服务 | 由 FlashHead 服务自行管理 |
 
@@ -64,8 +64,14 @@ DASHSCOPE_API_KEY=<dashscope-api-key>
 国际网络环境可直接使用 Hugging Face：
 
 ```bash title="终端"
-uv pip install -U "huggingface_hub[cli]"
+uv pip install -U huggingface_hub
 hf auth login  # 可选，私有或 gated 模型需要登录
+```
+
+如果服务器访问 Hugging Face 不稳定，可先配置镜像端点：
+
+```bash title="终端"
+export HF_ENDPOINT=https://hf-mirror.com
 ```
 
 国内环境可优先使用 ModelScope 中已经同步的模型：
@@ -398,64 +404,143 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="musetalk")
 
 ## QuickTalk
 
-QuickTalk 是本地 adapter 参考实现，不依赖 OmniRT。Adapter 从
-`opentalking/models/quicktalk/` import，并在运行时加载 QuickTalk 资产包。
+QuickTalk 通过 OmniRT 作为 `audio2video` 模型服务部署，OpenTalking 只连接统一
+`OMNIRT_ENDPOINT`，并按 `/v1/audio2video/quicktalk` 路径分发请求。OpenTalking 不直接
+加载 QuickTalk 权重。
 
-所需资产结构：
+### 1. 下载 QuickTalk 权重
+
+QuickTalk 自有模型文件位于 Hugging Face：
+
+- [datascale-ai/quicktalk](https://huggingface.co/datascale-ai/quicktalk)
+
+```bash title="终端"
+mkdir -p "$OMNIRT_MODEL_ROOT/quicktalk"
+
+hf download datascale-ai/quicktalk \
+  quicktalk.pth \
+  repair.npy \
+  --local-dir "$OMNIRT_MODEL_ROOT/quicktalk"
+```
+
+`repair.npy` 是 QuickTalk runtime 后处理阶段需要的修正参数，必须和 `quicktalk.pth`
+放在同一个目录下。它不是独立神经网络 checkpoint。
+
+如果部署机器不能直接访问 Hugging Face，也可以先在可联网机器或内部镜像准备好
+QuickTalk 自有权重，再同步到同一个目录：
+
+```bash title="终端"
+export QUICKTALK_MODEL_BUNDLE=/path/to/quicktalk-model-bundle
+mkdir -p "$OMNIRT_MODEL_ROOT/quicktalk"
+rsync -a \
+  "$QUICKTALK_MODEL_BUNDLE/quicktalk.pth" \
+  "$QUICKTALK_MODEL_BUNDLE/repair.npy" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/"
+```
+
+### 2. 准备第三方依赖
+
+QuickTalk runtime 还需要 HuBERT 与 InsightFace `buffalo_l` 依赖权重。它们不包含在
+`datascale-ai/quicktalk` 中，需要按各自来源和许可单独下载，并放到同一个 QuickTalk
+模型根目录下：
 
 ```text
-$OMNIRT_MODEL_ROOT/quicktalk/hdModule/
-└── checkpoints/
-    ├── 256.onnx
-    ├── repair.npy
-    ├── chinese-hubert-large/
-    └── auxiliary_min/ 或 auxiliary/
+$OMNIRT_MODEL_ROOT/quicktalk/
+  quicktalk.pth
+  repair.npy
+  chinese-hubert-large/
+    config.json
+    preprocessor_config.json
+    pytorch_model.bin
+  auxiliary/models/buffalo_l/
+    <InsightFace model files>
 ```
 
-Avatar metadata 需要指向 QuickTalk 资产根目录与模板视频：
-
-```json title="examples/avatars/quicktalk-demo/manifest.json"
-{
-  "id": "quicktalk-demo",
-  "name": "QuickTalk Demo",
-  "model_type": "quicktalk",
-  "fps": 25,
-  "sample_rate": 16000,
-  "width": 512,
-  "height": 512,
-  "metadata": {
-    "asset_root": "/absolute/path/to/models/quicktalk/hdModule",
-    "template_video": "/absolute/path/to/template.mp4"
-  }
-}
-```
-
-运行时环境：
-
-```env title=".env"
-OPENTALKING_QUICKTALK_ASSET_ROOT=/absolute/path/to/models/quicktalk/hdModule
-OPENTALKING_QUICKTALK_TEMPLATE_VIDEO=/absolute/path/to/template.mp4
-OPENTALKING_QUICKTALK_WORKER_CACHE=1
-OPENTALKING_TORCH_DEVICE=cuda:0
-```
-
-启动：
+如果你的第三方资产来自 QuickTalk 原始资产目录，且文件位于 `checkpoints/` 下，可按下面
+方式整理成 OpenTalking quickstart 使用的目录结构：
 
 ```bash title="终端"
-OPENTALKING_QUICKTALK_BACKEND=local bash scripts/quickstart/start_all.sh
+export QUICKTALK_ASSET_SOURCE=/path/to/quicktalk_assets
+mkdir -p "$OMNIRT_MODEL_ROOT/quicktalk"
+
+rsync -a "$QUICKTALK_ASSET_SOURCE/checkpoints/repair.npy" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/repair.npy"
+rsync -a "$QUICKTALK_ASSET_SOURCE/checkpoints/chinese-hubert-large/" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/chinese-hubert-large/"
+rsync -a "$QUICKTALK_ASSET_SOURCE/checkpoints/auxiliary/" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/auxiliary/"
 ```
 
-验证：
+整理后先检查关键文件：
 
 ```bash title="终端"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/quicktalk.pth"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/repair.npy"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/chinese-hubert-large/pytorch_model.bin"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/auxiliary/models/buffalo_l/det_10g.onnx"
+```
+
+### 3. 准备 OmniRT
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME"
+git clone https://github.com/datascale-ai/omnirt.git
+cd omnirt
+export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+uv sync --extra server --extra quicktalk-cuda --python 3.11
+```
+
+`quicktalk-cuda` 中的 `torch` / `torchvision` 由 OmniRT `pyproject.toml` 固定到
+PyTorch CUDA wheel 源；上面的镜像只用于普通 PyPI 包。
+
+### 4. 启动 QuickTalk
+
+QuickTalk 当前推荐 CUDA。默认画面参数由 helper 设置为：
+`OMNIRT_QUICKTALK_MAX_LONG_EDGE=900`、`OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS=1`、
+`OMNIRT_QUICKTALK_RESOLUTION=256`。
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/start_omnirt_quicktalk.sh --device cuda
+```
+
+如需将主模型和 HuBERT 分配到不同 GPU：
+
+```bash title="终端"
+OMNIRT_QUICKTALK_DEVICE=cuda:0 \
+OMNIRT_QUICKTALK_HUBERT_DEVICE=cuda:1 \
+bash scripts/quickstart/start_omnirt_quicktalk.sh
+```
+
+### 5. 启动 OpenTalking
+
+```bash title="终端"
+bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
+```
+
+如果 OmniRT 在远端 GPU 机器，把 `--omnirt` 改成 `http://<gpu-server-ip>:9000`。
+
+### 6. 验证
+
+```bash title="终端"
+curl -s http://127.0.0.1:9000/v1/audio2video/models | jq '.statuses[] | select(.id=="quicktalk")'
 curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="quicktalk")'
 ```
 
-期望：
+期望 OpenTalking 返回：
 
 ```json
-{"id":"quicktalk","backend":"local","connected":true,"reason":"local_runtime"}
+{"id":"quicktalk","backend":"omnirt","connected":true,"reason":"omnirt"}
 ```
+
+内置资产如果包含 `quicktalk/template_900.mp4` 和 `quicktalk/face_cache_v3_900.npz`，
+OpenTalking 会在会话初始化时传给 OmniRT，减少首次对话的模板预处理耗时。
+
+QuickTalk 实测性能（RTX 3090，OmniRT WebSocket 生成压测，720×900，25fps）：
+
+| 模式 | 显存占用 | 生成吞吐 |
+| --- | --- | --- |
+| QuickTalk，主模型 `cuda:0` + HuBERT `cuda:1` | 约 3.8 GiB，总量拆分为主模型约 1.1 GiB、HuBERT 约 2.8 GiB | 约 35 fps |
 
 ## FlashTalk
 

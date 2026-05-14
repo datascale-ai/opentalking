@@ -39,7 +39,6 @@ OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地�
 
 - **快速体验**：`mock / 无驱动模式`，不需要独立模型服务，适合第一次验证 API、TTS、WebRTC 和前端。
 - **轻量适配验证**：`wav2lip` / `musetalk` 可按配置选择本地、单模型直连或 OmniRT 后端，用于验证 Avatar 资产格式、模型适配器和端到端编排。
-- **QuickTalk 实时路径**：`quicktalk` 本地适配器，支持流式 LLM → 句级 TTS → 实时口型渲染，并可通过 Worker 缓存降低首轮等待。
 - **高质量部署**：通过 OmniRT 接入 `flashtalk` 等高质量模型，面向 GPU/NPU 私有化推理服务。
 
 - 在线文档固定地址：<https://datascale-ai.github.io/opentalking/>
@@ -53,7 +52,6 @@ OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地�
 - **基础打断能力**：当前说话轮次已有打断基础，后续会升级为全链路取消。
 - **OpenAI 兼容 LLM**：支持 DashScope、Ollama、vLLM、DeepSeek 等 OpenAI-compatible endpoint。
 - **多部署形态**：支持单进程 demo、API/Worker 分布式模式和 Docker Compose。
-- **QuickTalk 适配器**：内置 `quicktalk` 模型注册、Avatar 校验、实时渲染队列、音画同步和 benchmark CLI。
 
 ## 交流与联系
 
@@ -151,7 +149,7 @@ opentalking/
 
 ## 快速开始
 
-OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成 backend**（`mock`、`local`、`direct_ws` 或 [OmniRT](https://github.com/datascale-ai/omnirt)）可以独立部署。先用 Mock 跑通完整链路，再按需求切到 Wav2Lip、QuickTalk 或 FlashTalk。
+OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成 backend**（`mock`、`local`、`direct_ws` 或 [OmniRT](https://github.com/datascale-ai/omnirt)）可以独立部署。先用 Mock 跑通完整链路，再按需求切到 Wav2Lip、MuseTalk 或 FlashTalk。
 
 ### 0. 安装编排层
 
@@ -160,6 +158,8 @@ git clone https://github.com/datascale-ai/opentalking.git && cd opentalking
 uv sync --extra dev --python 3.11
 source .venv/bin/activate
 cp .env.example .env
+```
+
 OpenTalking 是主入口，负责 Web、API、LLM、TTS、WebRTC、Avatar 资产和模型选择；[OmniRT](https://github.com/datascale-ai/omnirt) 是独立的推理服务，负责 Wav2Lip、MuseTalk、FlashTalk 等真实数字人模型。两者可以跑在同一台机器，也可以分开部署。
 
 按照接下来的步骤，可以快速部署属于你的数字人服务。
@@ -180,20 +180,25 @@ OmniRT 真实模型服务:
 
 真实模型建议：
 
-| 模型 | 推荐用途 | 显存 / 内存建议 | 已测试硬件 | 实测吞吐 | 说明 |
-| --- | --- | ---: | --- | --- | --- |
-| `wav2lip` | 快速口型同步 | 预留 `>= 8 GB` GPU/NPU memory | ✅3090 GPU<br>✅Ascend 910B | `singer` 在 CUDA quickstart 配置下约 `28` 帧 / `0.83-0.85s`，约 `33 FPS`，可覆盖 30 fps 播放 | 快速本地部署，权重小、启动和排错快 |
-| `musetalk` | 轻量全帧 talking-head | 预留 `>= 12 GB` GPU memory | ✅3090 GPU | 预加载较重，稳态可满足实时会话验证 | 推理与服务都在 OmniRT，OpenTalking 侧直接复用 OmniRT audio2video 路径 |
-| `flashtalk` | 高质量数字人生成 | 多卡 Ascend 910B | ✅Ascend 910B2 x8 | Ascend 910B2 x8：hot full-audio `937` 帧 / `37.377s`，约 `25 FPS`；稳态 29-frame chunk 约 `30 FPS` 等效 | 权重大、部署重；适合工业级或私有化质量优先场景 |
+| 模型 | 推荐用途 | 资源建议 | 已验证硬件 |
+| --- | --- | --- | --- |
+| `wav2lip` | 快速口型同步 | 预留 `>= 8 GB` GPU / NPU memory | RTX 3090、Ascend 910B |
+| `musetalk` | 轻量全帧 talking-head | 预留 `>= 12 GB` GPU memory | RTX 3090 |
+| `flashtalk` | 高质量数字人生成 | 多卡 Ascend 910B | Ascend 910B2 x8 |
+
+实测吞吐参考：
+
+- `wav2lip`：`singer` 在 CUDA quickstart 配置下约 `28` 帧 / `0.83-0.85s`，约 `33 FPS`，可覆盖 30 fps 播放。
+- `flashtalk`：Ascend 910B2 x8，hot full-audio `937` 帧 / `37.377s`，约 `25 FPS`；稳态 29-frame chunk 约 `30 FPS` 等效。
 
 如果只是想最快看到结果，先跑 `无驱动模式`，再选一个真实驱动模型测试。真实模式推荐先使用 `wav2lip`；想验证全帧 talking-head 路径时使用 `musetalk`；需要更高质量时再部署 `flashtalk`。
 
-uv包下载慢时可以先设置国内镜像源：
+uv 包下载慢时可以先设置国内镜像源：
 
 ```bash
-export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
 # 或：
-# export UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple
+# export UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple
 ```
 
 设置一个工作目录，后续所有 terminal 保持一致：
@@ -569,15 +574,6 @@ bash scripts/quickstart/status.sh
 bash scripts/quickstart/stop_all.sh
 ```
 
-QuickTalk 也走同一套 OmniRT endpoint，只是模型权重目录换成 `$OMNIRT_MODEL_ROOT/quicktalk/`，并通过路径 `/v1/audio2video/quicktalk` 分发。QuickTalk 当前推荐 CUDA，已验证的默认画面参数会由 helper 带上：`OMNIRT_QUICKTALK_MAX_LONG_EDGE=900`、`OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS=1`、`OMNIRT_QUICKTALK_RESOLUTION=256`。
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_quicktalk.sh --device cuda
-curl http://127.0.0.1:9000/v1/audio2video/models
-bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
-```
-
 ### 路径 3：高质量私有化部署
 
 目标：运行 FlashTalk 14B / FlashHead 等高质量模型，面向私有化或生产环境。仍使用 `OMNIRT_ENDPOINT`，但建议启用 API / Worker 分离、Redis 和独立前端构建。
@@ -608,7 +604,6 @@ bash scripts/deploy_ascend_910b.sh
 | --- | --- | --- | --- |
 | 快速体验 | 内置 Mock | 不需要 | 首次运行、前端调试、主链路验证 |
 | 轻量模型验证 | Local / direct WS / OmniRT lightweight model | 入门级 GPU 起 | Avatar / 模型适配开发 |
-| QuickTalk 实时路径 | Local QuickTalk adapter | CUDA GPU | 本地实时数字人和 LLM 对话 demo |
 | 高质量部署 | OmniRT + FlashTalk / FlashHead | 4090 / 910B | 私有化、生产、高质量画面 |
 
 ### 支持模型
@@ -618,7 +613,6 @@ bash scripts/deploy_ascend_910b.sh
 | `mock` | 参考图 | 内置静态帧 | 快速体验 |
 | `wav2lip` | frames + audio | 可插拔轻量口型 backend；local / direct backend 优先，OmniRT 作为兼容路径 | 轻量模型验证 |
 | `musetalk` | full frames + audio | 可插拔轻量 talking-head backend | 轻量模型验证 |
-| `quicktalk` | template video + audio | 本地实时 adapter，支持 Worker 缓存和 `/chat` | QuickTalk 实时路径 |
 | `soulx-flashtalk-14b` | portrait + audio | OmniRT 高质量 FlashTalk | 高质量部署 |
 | `soulx-flashhead-1.3b` | portrait + audio | direct FlashHead WebSocket | 高质量部署 |
 

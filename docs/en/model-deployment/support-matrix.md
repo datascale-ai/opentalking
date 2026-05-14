@@ -35,7 +35,7 @@ Use it as the decision page before following the deeper setup guides.
 | `mock` | `mock` | `mock` | Built-in, Validated | CPU | Fastest full-pipeline self-test; no model weights. |
 | `wav2lip` | `omnirt`, `local`, `direct_ws` | `omnirt` for compatibility | OmniRT path validated; local path planned | Single GPU or Ascend 910B | Best first real model. Directionally local-first, but current runnable default is OmniRT. |
 | `musetalk` | `omnirt`, `direct_ws`, `local` | `omnirt` | Documented; local adapter missing | Single GPU or remote model service | Framework is ready, but bundled local runtime is not included yet. |
-| `quicktalk` | `local` | `local` | Built-in, Validated | Local CUDA GPU | Reference local realtime adapter. Best example of the decoupled local path. |
+| `quicktalk` | `omnirt` | `omnirt` | Documented, Validated | CUDA GPU | Exposes realtime audio2video through OmniRT `/v1/audio2video/quicktalk`. |
 | `flashtalk` | `omnirt`, legacy `direct_ws` fallback | `omnirt` | OmniRT path documented, Ascend path validated | 4090-class GPU or Ascend 910B multi-card | High-quality path for heavyweight deployment. |
 | `flashhead` | `direct_ws` | `direct_ws` | Documented | External FlashHead service | OpenTalking acts as the orchestrator and client, not the model host. |
 
@@ -44,9 +44,9 @@ Use it as the decision page before following the deeper setup guides.
 | Backend | What OpenTalking expects | Connected when | Typical models |
 |---------|--------------------------|----------------|----------------|
 | `mock` | No external runtime | Always | `mock` |
-| `local` | In-process adapter/runtime | The adapter imports and dependencies are satisfied | `quicktalk`, future local Wav2Lip / MuseTalk |
+| `local` | In-process adapter/runtime | The adapter imports and dependencies are satisfied | Future local Wav2Lip / MuseTalk |
 | `direct_ws` | Model-specific remote service | A model-specific WebSocket URL is configured | `flashhead`, custom single-model services |
-| `omnirt` | OmniRT `/v1/audio2video/{model}` | OmniRT is reachable and reports the model | `wav2lip`, `musetalk`, `flashtalk` |
+| `omnirt` | OmniRT `/v1/audio2video/{model}` | OmniRT is reachable and reports the model | `wav2lip`, `musetalk`, `quicktalk`, `flashtalk` |
 
 ## Validation Notes
 
@@ -54,7 +54,7 @@ Use it as the decision page before following the deeper setup guides.
 |------|---------------------------|
 | `mock` | Quickstart and `/models` examples show the full self-test path. |
 | `wav2lip + omnirt` | Documented startup scripts, `/models` status semantics, and README benchmark plus connectivity examples for 3090 and Ascend 910B. |
-| `quicktalk + local` | `/models` tests explicitly cover `reason=local_runtime` for the local adapter path. |
+| `quicktalk + omnirt` | The talking-head guide covers weight download, the OmniRT startup script, `/v1/audio2video/quicktalk`, and `/models` connectivity checks. |
 | `flashtalk + omnirt` | Documented startup scripts, legacy fallback behavior, and README validation notes for Ascend 910B2 x8. |
 | `flashhead + direct_ws` | Configured integration path plus the `/models` `reason=direct_ws` example in the talking-head guide. |
 
@@ -62,7 +62,7 @@ Use it as the decision page before following the deeper setup guides.
 
 1. Use `mock` to validate the browser, API, LLM, STT, TTS, and WebRTC path.
 2. Use `wav2lip` when you want the lightest real talking-head integration.
-3. Use `quicktalk` when you specifically want a local in-process realtime adapter.
+3. Use `quicktalk` when you want realtime audio2video and can run CUDA.
 4. Use `flashtalk` when quality matters more than deployment weight.
 5. Use `flashhead` only when you already operate a FlashHead service.
 

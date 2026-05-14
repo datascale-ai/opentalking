@@ -12,7 +12,7 @@ OpenTalking is the orchestration layer. Model execution is selected per model:
 | `mock` | `mock` | Built-in self-test | None |
 | `wav2lip` | `omnirt` for compatibility; local-first target | Lightweight local or direct backend; OmniRT is the current runnable compatibility path | Wav2Lip + S3FD checkpoints |
 | `musetalk` | `omnirt` | OmniRT or a future local adapter | MuseTalk 1.5 weights |
-| `quicktalk` | `local` | Local adapter | QuickTalk `hdModule` asset bundle |
+| `quicktalk` | `omnirt` | OmniRT `/v1/audio2video/quicktalk` | QuickTalk checkpoint + repair parameters |
 | `flashtalk` | `omnirt` | OmniRT on CUDA or Ascend | SoulX-FlashTalk-14B + wav2vec2 |
 | `flashhead` | `direct_ws` | External FlashHead WebSocket service | Managed by the FlashHead service |
 
@@ -66,8 +66,14 @@ DASHSCOPE_API_KEY=<dashscope-api-key>
 International environments can use Hugging Face directly:
 
 ```bash title="terminal"
-uv pip install -U "huggingface_hub[cli]"
+uv pip install -U huggingface_hub
 hf auth login  # optional, required for gated/private models
+```
+
+If the server has unstable access to Hugging Face, configure a mirror endpoint first:
+
+```bash title="terminal"
+export HF_ENDPOINT=https://hf-mirror.com
 ```
 
 China-friendly environments can use ModelScope when the model is mirrored there:
@@ -275,64 +281,147 @@ Expected failure mode:
 
 ## QuickTalk
 
-QuickTalk is the reference local adapter. It does not use OmniRT. The adapter imports
-from `opentalking/models/quicktalk/` and loads a QuickTalk asset bundle at runtime.
+QuickTalk is deployed through OmniRT as an `audio2video` model service. OpenTalking
+connects only to the unified `OMNIRT_ENDPOINT` and routes requests through
+`/v1/audio2video/quicktalk`. OpenTalking does not load QuickTalk weights directly.
 
-Required asset shape:
+### 1. Download QuickTalk weights
+
+QuickTalk-owned model files are hosted on Hugging Face:
+
+- [datascale-ai/quicktalk](https://huggingface.co/datascale-ai/quicktalk)
+
+```bash title="terminal"
+mkdir -p "$OMNIRT_MODEL_ROOT/quicktalk"
+
+hf download datascale-ai/quicktalk \
+  quicktalk.pth \
+  repair.npy \
+  --local-dir "$OMNIRT_MODEL_ROOT/quicktalk"
+```
+
+`repair.npy` is a required runtime post-processing parameter file. Keep it in the same
+directory as `quicktalk.pth`. It is not a standalone neural network checkpoint.
+
+If the deployment machine cannot reach Hugging Face, prepare the QuickTalk-owned
+weights on a networked machine or an internal mirror, then sync them into the same
+directory:
+
+```bash title="terminal"
+export QUICKTALK_MODEL_BUNDLE=/path/to/quicktalk-model-bundle
+mkdir -p "$OMNIRT_MODEL_ROOT/quicktalk"
+rsync -a \
+  "$QUICKTALK_MODEL_BUNDLE/quicktalk.pth" \
+  "$QUICKTALK_MODEL_BUNDLE/repair.npy" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/"
+```
+
+### 2. Prepare third-party dependencies
+
+The QuickTalk runtime also needs HuBERT and InsightFace `buffalo_l` dependency weights.
+They are not included in `datascale-ai/quicktalk`; download them from their original
+sources under their own licenses and place them under the same QuickTalk model root:
 
 ```text
-$OMNIRT_MODEL_ROOT/quicktalk/hdModule/
-└── checkpoints/
-    ├── 256.onnx
-    ├── repair.npy
-    ├── chinese-hubert-large/
-    └── auxiliary_min/ or auxiliary/
+$OMNIRT_MODEL_ROOT/quicktalk/
+  quicktalk.pth
+  repair.npy
+  chinese-hubert-large/
+    config.json
+    preprocessor_config.json
+    pytorch_model.bin
+  auxiliary/models/buffalo_l/
+    <InsightFace model files>
 ```
 
-Avatar metadata must point to both the QuickTalk asset root and a template video:
-
-```json title="examples/avatars/quicktalk-demo/manifest.json"
-{
-  "id": "quicktalk-demo",
-  "name": "QuickTalk Demo",
-  "model_type": "quicktalk",
-  "fps": 25,
-  "sample_rate": 16000,
-  "width": 512,
-  "height": 512,
-  "metadata": {
-    "asset_root": "/absolute/path/to/models/quicktalk/hdModule",
-    "template_video": "/absolute/path/to/template.mp4"
-  }
-}
-```
-
-Runtime environment:
-
-```env title=".env"
-OPENTALKING_QUICKTALK_ASSET_ROOT=/absolute/path/to/models/quicktalk/hdModule
-OPENTALKING_QUICKTALK_TEMPLATE_VIDEO=/absolute/path/to/template.mp4
-OPENTALKING_QUICKTALK_WORKER_CACHE=1
-OPENTALKING_TORCH_DEVICE=cuda:0
-```
-
-Start:
+If your third-party assets come from the original QuickTalk asset bundle and are
+stored under `checkpoints/`, normalize them into the OpenTalking quickstart layout:
 
 ```bash title="terminal"
-OPENTALKING_QUICKTALK_BACKEND=local bash scripts/quickstart/start_all.sh
+export QUICKTALK_ASSET_SOURCE=/path/to/quicktalk_assets
+mkdir -p "$OMNIRT_MODEL_ROOT/quicktalk"
+
+rsync -a "$QUICKTALK_ASSET_SOURCE/checkpoints/repair.npy" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/repair.npy"
+rsync -a "$QUICKTALK_ASSET_SOURCE/checkpoints/chinese-hubert-large/" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/chinese-hubert-large/"
+rsync -a "$QUICKTALK_ASSET_SOURCE/checkpoints/auxiliary/" \
+  "$OMNIRT_MODEL_ROOT/quicktalk/auxiliary/"
 ```
 
-Verify:
+Check the required files before starting OmniRT:
 
 ```bash title="terminal"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/quicktalk.pth"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/repair.npy"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/chinese-hubert-large/pytorch_model.bin"
+test -f "$OMNIRT_MODEL_ROOT/quicktalk/auxiliary/models/buffalo_l/det_10g.onnx"
+```
+
+### 3. Prepare OmniRT
+
+```bash title="terminal"
+cd "$DIGITAL_HUMAN_HOME"
+git clone https://github.com/datascale-ai/omnirt.git
+cd omnirt
+export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+uv sync --extra server --extra quicktalk-cuda --python 3.11
+```
+
+`torch` and `torchvision` in `quicktalk-cuda` are pinned by OmniRT's `pyproject.toml`
+to the PyTorch CUDA wheel index; the mirror above is only for regular PyPI packages.
+
+### 4. Start QuickTalk
+
+QuickTalk currently targets CUDA. The helper sets the validated visual defaults:
+`OMNIRT_QUICKTALK_MAX_LONG_EDGE=900`, `OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS=1`, and
+`OMNIRT_QUICKTALK_RESOLUTION=256`.
+
+```bash title="terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/start_omnirt_quicktalk.sh --device cuda
+```
+
+To place the main model and HuBERT on different GPUs:
+
+```bash title="terminal"
+OMNIRT_QUICKTALK_DEVICE=cuda:0 \
+OMNIRT_QUICKTALK_HUBERT_DEVICE=cuda:1 \
+bash scripts/quickstart/start_omnirt_quicktalk.sh
+```
+
+### 5. Start OpenTalking
+
+```bash title="terminal"
+bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
+```
+
+If OmniRT runs on a remote GPU machine, replace `--omnirt` with
+`http://<gpu-server-ip>:9000`.
+
+### 6. Verify
+
+```bash title="terminal"
+curl -s http://127.0.0.1:9000/v1/audio2video/models | jq '.statuses[] | select(.id=="quicktalk")'
 curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="quicktalk")'
 ```
 
-Expected:
+Expected OpenTalking status:
 
 ```json
-{"id":"quicktalk","backend":"local","connected":true,"reason":"local_runtime"}
+{"id":"quicktalk","backend":"omnirt","connected":true,"reason":"omnirt"}
 ```
+
+Built-in avatars that include `quicktalk/template_900.mp4` and
+`quicktalk/face_cache_v3_900.npz` pass those paths to OmniRT during session
+initialization, reducing first-turn template preprocessing time.
+
+Measured QuickTalk performance (RTX 3090, OmniRT WebSocket generation benchmark,
+720×900, 25fps):
+
+| Mode | VRAM | Generation throughput |
+| --- | --- | --- |
+| QuickTalk, main model on `cuda:0` + HuBERT on `cuda:1` | About 3.8 GiB total, split as about 1.1 GiB for the main model and about 2.8 GiB for HuBERT | About 35 fps |
 
 ## FlashTalk
 

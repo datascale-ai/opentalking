@@ -34,7 +34,7 @@
 | `mock` | `mock` | `mock` | 已内置，已验证 | CPU | 最快的全链路自测路径，不需要模型权重。 |
 | `wav2lip` | `omnirt`、`local`、`direct_ws` | 为兼容默认 `omnirt` | OmniRT 路径已验证；local 路径规划中 | 单 GPU 或 Ascend 910B | 最推荐的第一个真实模型。方向上应 local-first，但当前可直接跑通的是 OmniRT。 |
 | `musetalk` | `omnirt`、`direct_ws`、`local` | `omnirt` | 已文档化；local adapter 缺失 | 单 GPU 或远端模型服务 | 框架已就位，但仓库内未附带本地 runtime。 |
-| `quicktalk` | `local` | `local` | 已内置，已验证 | 本地 CUDA GPU | 本地实时 adapter 的参考实现，也是解耦架构的最佳示例。 |
+| `quicktalk` | `omnirt` | `omnirt` | 已文档化，已验证 | CUDA GPU | 通过 OmniRT `/v1/audio2video/quicktalk` 暴露实时 audio2video 服务。 |
 | `flashtalk` | `omnirt`、legacy `direct_ws` fallback | `omnirt` | OmniRT 路径已文档化，Ascend 路径已验证 | 4090 级 GPU 或 Ascend 910B 多卡 | 高质量重模型路径。 |
 | `flashhead` | `direct_ws` | `direct_ws` | 已文档化 | 外部 FlashHead 服务 | OpenTalking 负责编排和客户端接入，不负责托管模型。 |
 
@@ -43,9 +43,9 @@
 | Backend | OpenTalking 期望什么 | 何时视为 connected | 典型模型 |
 |---------|----------------------|--------------------|----------|
 | `mock` | 无外部 runtime | 始终可用 | `mock` |
-| `local` | 进程内 adapter/runtime | adapter 可 import 且依赖满足 | `quicktalk`，未来的本地 Wav2Lip / MuseTalk |
+| `local` | 进程内 adapter/runtime | adapter 可 import 且依赖满足 | 未来的本地 Wav2Lip / MuseTalk |
 | `direct_ws` | 模型自带远端服务 | 已配置模型专属 WebSocket URL | `flashhead`、自定义单模型服务 |
-| `omnirt` | OmniRT `/v1/audio2video/{model}` | OmniRT 可达且返回该模型 | `wav2lip`、`musetalk`、`flashtalk` |
+| `omnirt` | OmniRT `/v1/audio2video/{model}` | OmniRT 可达且返回该模型 | `wav2lip`、`musetalk`、`quicktalk`、`flashtalk` |
 
 ## 验证说明
 
@@ -53,7 +53,7 @@
 |------|--------------|
 | `mock` | quickstart 与 `/models` 示例都覆盖了完整自测路径。 |
 | `wav2lip + omnirt` | 有启动脚本、`/models` 状态语义，以及 README 中 3090 / Ascend 910B 的 benchmark 与连通性示例。 |
-| `quicktalk + local` | `/models` 测试明确覆盖 `reason=local_runtime`，对应本地 adapter 路径。 |
+| `quicktalk + omnirt` | Talking-head 文档覆盖权重下载、OmniRT 启动脚本、`/v1/audio2video/quicktalk` 和 `/models` 连通性验证。 |
 | `flashtalk + omnirt` | 有启动脚本、legacy fallback 说明，以及 README 中 Ascend 910B2 x8 的验证记录。 |
 | `flashhead + direct_ws` | 有配置接入路径，以及 Talking-head 文档中的 `/models` `reason=direct_ws` 示例。 |
 
@@ -61,7 +61,7 @@
 
 1. 先用 `mock` 验证浏览器、API、LLM、STT、TTS 和 WebRTC。
 2. 想接入最轻量的真实 talking-head，先用 `wav2lip`。
-3. 明确要本地进程内实时 adapter 时，选 `quicktalk`。
+3. 想验证实时 audio2video 且可使用 CUDA 时，选 `quicktalk`。
 4. 质量优先、可接受部署重量时，选 `flashtalk`。
 5. 已经有独立 FlashHead 服务时，再选 `flashhead`。
 

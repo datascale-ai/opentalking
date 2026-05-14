@@ -24,7 +24,7 @@ flowchart LR
 | STT | DashScope Paraformer realtime | Keep it unless you need a different realtime ASR provider. |
 | TTS | Edge TTS | Use DashScope, CosyVoice, or ElevenLabs for production voices and voice cloning. |
 | Avatar assets | Built-in examples | Prepare model-specific assets before selecting Wav2Lip, QuickTalk, FlashHead, or FlashTalk. |
-| Talking-head backend | `mock` first, then Wav2Lip compatibility path | Use QuickTalk local, FlashHead direct WS, or OmniRT for heavier models. |
+| Talking-head backend | `mock` first, then Wav2Lip compatibility path | Use QuickTalk / FlashTalk through OmniRT, FlashHead direct WS, or another model service. |
 
 ## Setup order
 
