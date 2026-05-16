@@ -82,21 +82,44 @@ def _env_value(name: str, default: str = "") -> str:
     return os.environ.get(name, "").strip() or default
 
 
+def _metadata_section(metadata: dict[str, Any], key: str) -> dict[str, Any]:
+    value = metadata.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _resolve_config_path(raw: str, *, base_dir: Path | None = None) -> Path:
+    path = Path(raw).expanduser()
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / path
+    return path.resolve()
+
+
 def _path_from_env_or_metadata(
     name: str,
     metadata: dict[str, Any],
     *keys: str,
+    base_dir: Path | None = None,
+    sections: tuple[str, ...] = (),
 ) -> Path:
     raw = _env_value(name)
     if not raw:
+        sources: list[dict[str, Any]] = [
+            section for key in sections if (section := _metadata_section(metadata, key))
+        ]
+        sources.append(metadata)
         for key in keys:
-            value = metadata.get(key)
-            if value:
-                raw = str(value)
+            for source in sources:
+                value = source.get(key)
+                if value:
+                    raw = str(value)
+                    break
+            if raw:
                 break
     if not raw:
-        raise ValueError(f"Missing {name} or avatar metadata key: {', '.join(keys)}")
-    return Path(raw).expanduser().resolve()
+        metadata_keys = [f"{section}.{key}" for section in sections for key in keys]
+        metadata_keys.extend(keys)
+        raise ValueError(f"Missing {name} or avatar metadata key: {', '.join(metadata_keys)}")
+    return _resolve_config_path(raw, base_dir=base_dir)
 
 
 def _optional_env_path(name: str) -> Path | None:
@@ -104,6 +127,39 @@ def _optional_env_path(name: str) -> Path | None:
     if not raw:
         return None
     return Path(raw).expanduser().resolve()
+
+
+def _normalize_asset_root(asset_root: Path) -> Path:
+    if (asset_root / "checkpoints").is_dir():
+        return asset_root
+    nested = asset_root / "hdModule"
+    if (nested / "checkpoints").is_dir():
+        return nested.resolve()
+    return asset_root
+
+
+def _validate_asset_root(asset_root: Path) -> None:
+    checkpoints = asset_root / "checkpoints"
+    aux_root = checkpoints / "auxiliary"
+    aux_min_root = checkpoints / "auxiliary_min"
+    required = [
+        checkpoints / "256.onnx",
+        checkpoints / "repair.npy",
+        checkpoints / "chinese-hubert-large" / "pytorch_model.bin",
+    ]
+    missing = [path for path in required if not path.exists()]
+    if not aux_root.exists() and not aux_min_root.exists():
+        missing.append(aux_root)
+    if missing:
+        formatted = "\n  - ".join(str(path) for path in missing)
+        raise FileNotFoundError(
+            "QuickTalk local assets are incomplete. "
+            "OPENTALKING_QUICKTALK_ASSET_ROOT must point to a QuickTalk local "
+            "asset directory containing checkpoints/256.onnx, checkpoints/repair.npy, "
+            "checkpoints/chinese-hubert-large/ and checkpoints/auxiliary/.\n"
+            f"Current asset root: {asset_root}\n"
+            f"Missing:\n  - {formatted}"
+        )
 
 
 @register_model("quicktalk")
@@ -193,23 +249,25 @@ class QuickTalkAdapter:
         from opentalking.models.quicktalk.runtime import RealtimeV3Worker
 
         bundle = load_avatar_bundle(Path(avatar_path), strict=False)
-        if bundle.manifest.model_type != self.model_type:
-            raise ValueError(
-                f"Avatar {bundle.manifest.id} model_type={bundle.manifest.model_type}, "
-                f"expected {self.model_type}"
-            )
         metadata = bundle.manifest.metadata or {}
         asset_root = self._asset_root if self._asset_root is not None else _path_from_env_or_metadata(
             "OPENTALKING_QUICKTALK_ASSET_ROOT",
             metadata,
             "asset_root",
             "quicktalk_asset_root",
+            base_dir=bundle.path,
+            sections=("quicktalk",),
         )
+        asset_root = _normalize_asset_root(asset_root)
+        _validate_asset_root(asset_root)
         template_video = _path_from_env_or_metadata(
             "OPENTALKING_QUICKTALK_TEMPLATE_VIDEO",
             metadata,
             "template_video",
+            "source_video",
             "video",
+            base_dir=bundle.path,
+            sections=("quicktalk",),
         )
         face_cache_raw = _env_value("OPENTALKING_QUICKTALK_FACE_CACHE_DIR")
         face_cache_dir = Path(face_cache_raw).expanduser().resolve() if face_cache_raw else asset_root / ".face_cache_v3"

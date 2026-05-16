@@ -187,6 +187,72 @@ def test_create_custom_avatar_from_non_wav2lip_base_writes_mouth_metadata(tmp_pa
     assert metadata["animation"]["outer_lip"] == [[0.25, 0.625], [0.5, 0.5], [0.75, 0.625], [0.5, 0.75]]
 
 
+def test_create_custom_avatar_generates_quicktalk_template_from_upload(tmp_path, monkeypatch):
+    base = tmp_path / "base-quicktalk"
+    base.mkdir()
+    (base / "preview.png").write_bytes(_png_bytes((416, 704)))
+    (base / "reference.png").write_bytes(_png_bytes((416, 704)))
+    quicktalk_dir = base / "quicktalk"
+    quicktalk_dir.mkdir()
+    (quicktalk_dir / "template_900.mp4").write_bytes(b"old-template")
+    (quicktalk_dir / "face_cache_v3_900.npz").write_bytes(b"stale-cache")
+    (base / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "base-quicktalk",
+                "name": "Base QuickTalk",
+                "model_type": "flashhead",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 416,
+                "height": 704,
+                "version": "1.0",
+                "metadata": {
+                    "quicktalk": {
+                        "template_video": "quicktalk/template_900.mp4",
+                        "face_cache": "quicktalk/face_cache_v3_900.npz",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_detect(frame):
+        from opentalking.avatar.mouth_metadata import AvatarMouthLandmarks
+
+        height, width = frame.shape[:2]
+        return AvatarMouthLandmarks(
+            mouth_center=(width // 2, height * 5 // 8),
+            mouth_rx=width // 4,
+            mouth_ry=height // 8,
+            outer_lip=((width // 4, height * 5 // 8), (width // 2, height // 2), (width * 3 // 4, height * 5 // 8), (width // 2, height * 3 // 4)),
+        )
+
+    monkeypatch.setattr(avatars.mouth_metadata, "detect_mouth_landmarks", fake_detect)
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(avatars_dir=str(tmp_path))
+    app.include_router(avatars.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/avatars/custom",
+        data={"base_avatar_id": "base-quicktalk", "name": "QuickTalk 新形象"},
+        files={"image": ("avatar.png", _png_bytes((640, 900)), "image/png")},
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    custom_dir = tmp_path / created["id"]
+    manifest = json.loads((custom_dir / "manifest.json").read_text(encoding="utf-8"))
+    quicktalk = manifest["metadata"]["quicktalk"]
+    assert quicktalk["template_video"] == "quicktalk/template_900.mp4"
+    assert "face_cache" not in quicktalk
+    assert (custom_dir / "quicktalk" / "template_900.mp4").is_file()
+    assert (custom_dir / "quicktalk" / "template_900.mp4").read_bytes() != b"old-template"
+
+
 def test_create_custom_avatar_resizes_large_upload_to_realtime_max(tmp_path, monkeypatch):
     base = tmp_path / "base-wav2lip"
     base.mkdir()

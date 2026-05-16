@@ -30,6 +30,10 @@ dependencies = [
   "opencv-python>=4.8,<4.12",
   'mediapipe==0.10.21; python_version < "3.13" and platform_machine != "aarch64"',
   'mediapipe==0.10.18; python_version < "3.13" and platform_machine == "aarch64"',
+  "kornia>=0.8.2",
+  "onnxruntime>=1.24.3",
+  "insightface>=0.7.3",
+  "transformers>=5.8.1",
 ]
 
 [project.optional-dependencies]

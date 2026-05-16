@@ -7,7 +7,9 @@ import shutil
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from PIL import Image
@@ -97,6 +99,14 @@ def _write_custom_avatar_manifest(base_manifest_path: Path, target_manifest_path
     target_manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _read_manifest(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_manifest(path: Path, raw: dict[str, Any]) -> None:
+    path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def _custom_avatar_max_size() -> tuple[int, int]:
     width = int(os.environ.get("OPENTALKING_CUSTOM_AVATAR_MAX_WIDTH", "720"))
     height = int(os.environ.get("OPENTALKING_CUSTOM_AVATAR_MAX_HEIGHT", "1280"))
@@ -121,6 +131,47 @@ def _update_manifest_dimensions(manifest_path: Path, image: Image.Image) -> None
 def _model_type_from_manifest(manifest_path: Path) -> str:
     raw = json.loads(manifest_path.read_text(encoding="utf-8"))
     return str(raw.get("model_type") or "")
+
+
+def _write_static_quicktalk_template(image: Image.Image, output_path: Path, *, fps: int) -> None:
+    import cv2
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    frame_rgb = np.asarray(image.convert("RGB"))
+    frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+    height, width = frame_bgr.shape[:2]
+    frame_count = max(1, int(max(1, fps)))
+    writer = cv2.VideoWriter(
+        str(output_path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        float(max(1, fps)),
+        (int(width), int(height)),
+    )
+    if not writer.isOpened():
+        raise RuntimeError(f"failed to open video writer: {output_path}")
+    try:
+        for _ in range(frame_count):
+            writer.write(frame_bgr)
+    finally:
+        writer.release()
+
+
+def _prepare_quicktalk_custom_assets(manifest_path: Path, image: Image.Image) -> None:
+    raw = _read_manifest(manifest_path)
+    metadata = dict(raw.get("metadata") or {})
+    quicktalk = metadata.get("quicktalk")
+    if not isinstance(quicktalk, dict):
+        return
+
+    quicktalk = dict(quicktalk)
+    template_rel = "quicktalk/template_900.mp4"
+    template_path = manifest_path.parent / template_rel
+    _write_static_quicktalk_template(image, template_path, fps=int(raw.get("fps") or 25))
+    quicktalk["template_video"] = template_rel
+    quicktalk.pop("face_cache", None)
+    metadata["quicktalk"] = quicktalk
+    raw["metadata"] = metadata
+    _write_manifest(manifest_path, raw)
 
 
 @router.get("", response_model=list[AvatarSummary])
@@ -183,6 +234,7 @@ async def create_custom_avatar(
             target_dir / "reference.png",
             force=True,
         )
+        _prepare_quicktalk_custom_assets(target_dir / "manifest.json", fitted_image)
         if _model_type_from_manifest(target_dir / "manifest.json") == "wav2lip":
             frames_dir = target_dir / "frames"
             frames_dir.mkdir(parents=True, exist_ok=True)

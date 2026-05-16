@@ -19,13 +19,12 @@
 </p>
 
 <p align="center">
-  <a href="#当前能力">当前能力</a> ·
-  <a href="#交流与联系">交流与联系</a> ·
-  <a href="#视频展示">视频展示</a> ·
-  <a href="#系统架构">系统架构</a> ·
   <a href="#快速开始">快速开始</a> ·
-  <a href="#roadmap">Roadmap</a> ·
-  <a href="#文档">文档</a> ·
+  <a href="#选择部署路线">部署路线</a> ·
+  <a href="#模型支持">模型支持</a> ·
+  <a href="#能力进展与-roadmap">Roadmap</a> ·
+  <a href="#系统架构与项目结构">架构</a> ·
+  <a href="#文档与社区">文档与社区</a> ·
   <a href="#致谢">致谢</a>
 </p>
 
@@ -33,47 +32,28 @@
 
 ## 项目简介
 
-OpenTalking 是一个开源实时数字人框架，目标是把 **数字人对话产品** 需要的链路串起来：前端交互、会话状态、LLM 回复、TTS/音色选择、打断控制、字幕事件、WebRTC 音视频播放，以及外部模型服务调用。
+OpenTalking 是一个开源实时数字人对话编排框架，目标是构建 **数字人对话产品** 的核心链路：前端交互、会话状态、LLM 回复、TTS/音色选择、打断控制、字幕事件、WebRTC 音视频播放，以及本地或远端模型服务调用。
 
-OpenTalking 关注的是 **产线编排层**，支持调用外部 API 和本地部署模型。默认入口优先让新用户先跑通完整链路，再按需要升级模型能力：
+OpenTalking 专注 **数字人产线编排**，可以根据不同层级的需求，快速构建属于你的数字人：
 
-- **快速体验**：`mock / 无驱动模式`，不需要独立模型服务，适合第一次验证 API、TTS、WebRTC 和前端。
-- **轻量适配验证**：`wav2lip` / `musetalk` 可按配置选择本地、单模型直连或 OmniRT 后端，用于验证 Avatar 资产格式、模型适配器和端到端编排。
-- **高质量部署**：通过 OmniRT 接入 `flashtalk` 等高质量模型，面向 GPU/NPU 私有化推理服务。
+- **快速体验**：`mock / 无驱动模式`，适合第一次打通 API、TTS、WebRTC 全链路，但缺少视频推理渲染。
+- **轻量单机部署**：面向消费级 GPU 单机，提供快速接入 `Wav2Lip/MuseTalk/QuickTalk` 能力，具备视频渲染效果。
+- **高质量部署**：通过 OmniRT 接入 `FlashTalk` 等高质量模型，面向多卡和分布式推理部署，提供更佳使用体验。
 
-- 在线文档固定地址：<https://datascale-ai.github.io/opentalking/>
-- 英文文档入口：<https://datascale-ai.github.io/opentalking/en/>
+更多文档：
 
-## 当前能力
+- 在线文档：<https://datascale-ai.github.io/opentalking/>
+- 英文文档：<https://datascale-ai.github.io/opentalking/en/>
 
-- **实时数字人对话**：LLM 回复、流式 TTS、字幕事件、状态事件和 WebRTC 播放在一条链路中完成。
-- **FlashTalk 兼容路径**：支持本地或远端 FlashTalk 风格推理服务，作为高质量数字人渲染后端。
-- **轻量 Demo 路径**：无需先下载完整 FlashTalk 权重，也可以跑通 API、TTS、WebRTC 和前端体验。
-- **基础打断能力**：当前说话轮次已有打断基础，后续会升级为全链路取消。
-- **OpenAI 兼容 LLM**：支持 DashScope、Ollama、vLLM、DeepSeek 等 OpenAI-compatible endpoint。
-- **多部署形态**：支持单进程 demo、API/Worker 分布式模式和 Docker Compose。
-
-## 交流与联系
-
-欢迎加入 QQ 交流群，讨论实时数字人、FlashTalk、OmniRT、模型部署和产品场景。
-
-<p align="center">
-  <img src="docs/assets/images/qq_group_qrcode.png" alt="AI 数字人交流群二维码" width="280">
-</p>
-
-<p align="center">
-  <b>AI 数字人交流群</b> · 群号：<code>1103327938</code>
-</p>
-
-## 数字人服务界面
+## WebUI 与效果展示
 
 OpenTalking 提供 Web 服务界面，用于管理数字人对话链路：可以选择或新建数字人物，配置音色、LLM、TTS、STT 和数字人驱动模型，查看模型连接状态，并在同一页面完成实时对话、字幕和音视频播放验证。
 
 ![OpenTalking WebUI](docs/assets/images/WebUI.png)
 
-## 视频展示
+### Demo 视频
 
-以下是 OpenTalking 典型场景演示视频，用来展示实时数字人产线在不同内容形态下的表现。横屏示例单独占一行，其余为竖屏，避免同一行里行高被横屏拉高导致竖屏看起来像被裁切。
+以下是 OpenTalking 典型场景演示视频，展示数字人在不同内容形态下的表现。
 
 <table>
   <tr>
@@ -114,124 +94,26 @@ OpenTalking 提供 Web 服务界面，用于管理数字人对话链路：可以
   </tr>
 </table>
 
-## 系统架构
-
-![OpenTalking 当前代码架构图](docs/assets/images/opentalking_architecture_zh.png)
-
-## 项目结构
-
-```text
-opentalking/
-├── opentalking/                  # 编排层 Python 包（flat layout，根目录直接 import）
-│   ├── core/                     # 接口协议、类型、配置、registry
-│   ├── providers/                # 能力适配器（按"能力域 / 提供方"两级）
-│   │   ├── stt/dashscope/        # 语音识别
-│   │   ├── tts/{edge,dashscope_qwen,cosyvoice_ws,...}/   # 语音合成 + 复刻
-│   │   ├── llm/openai_compatible/                        # 大语言模型
-│   │   ├── rtc/aiortc/                                   # WebRTC 推流
-│   │   └── synthesis/{flashtalk,flashhead,omnirt,mock}/  # 数字人合成（thin client）
-│   ├── avatar/                   # 数字人形象资产管理
-│   ├── voice/                    # 音色资产管理
-│   ├── media/                    # 中性算子工具
-│   ├── pipeline/{session,speak,recording}/   # 业务编排
-│   └── runtime/                  # 进程胶水（task_consumer / bus / timing）
-├── apps/
-│   ├── api/                      # FastAPI 服务
-│   ├── unified/                  # 单进程模式（开发友好）
-│   ├── web/                      # React 前端
-│   └── cli/                      # download_models / doctor / ...
-├── configs/                      # YAML 配置（profiles / inference / synthesis）
-├── docker/ + docker-compose.yml  # 容器化部署
-├── scripts/                      # 辅助脚本（run_omnirt.sh / prepare-avatar.sh）
-├── tests/                        # 单元 / 集成测试
-└── docs/                         # 文档
-```
-
 ## 快速开始
 
-OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成 backend**（`mock`、`local`、`direct_ws` 或 [OmniRT](https://github.com/datascale-ai/omnirt)）可以独立部署。先用 Mock 跑通完整链路，再按需求切到 Wav2Lip、MuseTalk 或 FlashTalk。
+OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后端**（`mock`、`local`、`direct_ws` 或 [OmniRT](https://github.com/datascale-ai/omnirt)）可以独立部署。第一次接触项目时，建议先用 Mock 模式跑通完整链路，再按显卡和模型需求切换到更多数字人渲染模型。
 
-### 0. 安装编排层
-
-```bash
-git clone https://github.com/datascale-ai/opentalking.git && cd opentalking
-uv sync --extra dev --python 3.11
-source .venv/bin/activate
-cp .env.example .env
-```
-
-OpenTalking 是主入口，负责 Web、API、LLM、TTS、WebRTC、Avatar 资产和模型选择；[OmniRT](https://github.com/datascale-ai/omnirt) 是独立的推理服务，负责 Wav2Lip、MuseTalk、FlashTalk 等真实数字人模型。两者可以跑在同一台机器，也可以分开部署。
-
-按照接下来的步骤，可以快速部署属于你的数字人服务。
-
-### 0. 环境要求
-
-OpenTalking:
-
-- Python 3.10+
-- uv
-- Node.js 18+
-- FFmpeg
-
-OmniRT 真实模型服务:
-
-- **GPU / CUDA**：NVIDIA driver，CUDA-capable PyTorch 环境。
-- **NPU / Ascend 910B**：Ascend driver，CANN toolkit，`torch-npu` 环境。
-
-真实模型建议：
-
-| 模型 | 推荐用途 | 资源建议 | 已验证硬件 |
-| --- | --- | --- | --- |
-| `wav2lip` | 快速口型同步 | 预留 `>= 8 GB` GPU / NPU memory | RTX 3090、Ascend 910B |
-| `musetalk` | 轻量全帧 talking-head | 预留 `>= 12 GB` GPU memory | RTX 3090 |
-| `flashtalk` | 高质量数字人生成 | 多卡 Ascend 910B | Ascend 910B2 x8 |
-
-实测吞吐参考：
-
-- `wav2lip`：`singer` 在 CUDA quickstart 配置下约 `28` 帧 / `0.83-0.85s`，约 `33 FPS`，可覆盖 30 fps 播放。
-- `flashtalk`：Ascend 910B2 x8，hot full-audio `937` 帧 / `37.377s`，约 `25 FPS`；稳态 29-frame chunk 约 `30 FPS` 等效。
-
-如果只是想最快看到结果，先跑 `无驱动模式`，再选一个真实驱动模型测试。真实模式推荐先使用 `wav2lip`；想验证全帧 talking-head 路径时使用 `musetalk`；需要更高质量时再部署 `flashtalk`。
-
-uv 包下载慢时可以先设置国内镜像源：
-
-```bash
-export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
-# 或：
-# export UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple
-```
-
-设置一个工作目录，后续所有 terminal 保持一致：
+### 0. 安装 OpenTalking
 
 ```bash
 export DIGITAL_HUMAN_HOME=/opt/digital_human
-# 或你自己的路径，例如：
-# export DIGITAL_HUMAN_HOME=/data/digital_human
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
-```
+mkdir -p "$DIGITAL_HUMAN_HOME"
 
-推荐目录结构：
+cd "$DIGITAL_HUMAN_HOME"
+git clone https://github.com/datascale-ai/opentalking.git && cd opentalking
 
-```text
-$DIGITAL_HUMAN_HOME/
-  opentalking/
-  omnirt/
-  models/
-    wav2lip/
-      wav2lip384.pth
-      s3fd.pth
-    musetalk/
-      pytorch_model.bin
-      musetalk.json
-    sd-vae-ft-mse/
-    whisper/
-      tiny.pt
-    dwpose/
-      dw-ll_ucoco_384.pth
-    face-parse-bisenet/
-      79999_iter.pth
-    SoulX-FlashTalk-14B/
-    chinese-wav2vec2-base/
+# 设置国内源提升依赖包下载速度（样例为清华源，可按需切换）
+export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+
+# 依赖包安装
+uv sync --extra dev --python 3.11
+source .venv/bin/activate
+cp .env.example .env
 ```
 
 要求：Python 3.10+（推荐 3.11）、Node.js 18+、FFmpeg。若环境不便使用 `uv`，可用兼容安装：
@@ -258,386 +140,249 @@ OPENTALKING_TTS_PROVIDER=edge
 OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
-运行 `opentalking-doctor` 可以检查本机依赖状态。
-真实模型模式启动时通过 `--omnirt` 指定视频合成推理入口。网页前端选择 `wav2lip`、`musetalk` 或 `flashtalk` 时，OpenTalking 会自动连接对应模型。
+> 注意：`edge` TTS 不需要 key。`DASHSCOPE_API_KEY` 只在使用实时 STT 或 DashScope 语音合成时需要。
 
-> 注意：`mock / 无驱动模式` 是本地自测模式，不需要 OmniRT；真实模型卡片会根据 OmniRT 状态显示 **已连接** 或 **未连接**。`edge` TTS 不需要 key。`DASHSCOPE_API_KEY` 只在使用实时 STT 时需要。
+### 1. 快速上手
 
-### 路径 1：快速体验（推荐首次运行）
-
-目标：不下载模型权重、不启动 OmniRT，先验证前端、API、LLM、TTS、STT、WebRTC 和浏览器链路。数字人画面使用内置 Mock 静态帧，LLM 回复、流式 TTS、字幕事件和 WebRTC 传输仍是真链路。
+适用：不下载模型权重、不部署推理后端，先验证前端、API、LLM、TTS、STT、WebRTC 和浏览器播放链路。数字人画面使用内置 Mock 静态帧，LLM 回复、流式 TTS、字幕事件和 WebRTC 传输仍是完整链路，启动服务：
 
 ```bash
-bash scripts/quickstart/start_mock.sh
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/start_unified.sh --mock
 ```
 
-默认前端地址是 `http://localhost:5173`。如果需要改端口：
+默认前端地址是 `http://localhost:5173`。如果需要改端口请额外指定端口：
 
 ```bash
-bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180
+bash scripts/start_unified.sh --mock --api-port 8210 --web-port 5280
 ```
 
-停止 helper 管理的服务：
+停止服务：
 
 ```bash
 bash scripts/quickstart/stop_all.sh
 ```
 
-### 路径 2：轻量模型验证
+### 2. 常用启动参数
 
-目标：验证 Avatar 资产、模型适配器和真实口型同步。轻量模型可走本地 adapter、单模型直连 WebSocket，或当前最稳妥的 OmniRT 兼容路径。
+`scripts/start_unified.sh` 是推荐入口；旧的 `scripts/quickstart/*` 脚本继续保留，适合更细的模型服务调试。
 
-先在同级目录安装 OmniRT，并准备模型目录：
+| 参数 | 作用 | 示例 |
+| --- | --- | --- |
+| `--mock` | 使用内置 Mock，不需要模型权重或视频推理后端 | `--mock` |
+| `--backend <mock\|local\|omnirt\|direct_ws>` | 指定模型的推理后端 | `--backend local` |
+| `--model <name>` | 指定要使用推理的模型 | `--model quicktalk` |
+| `--omnirt <url>` | 接入 OmniRT 推理服务的url | `--omnirt http://127.0.0.1:9000` |
+| `--api-port <port>` | OpenTalking服务后端端口 | `--api-port 8010` |
+| `--web-port <port>` | OpenTalking WebUI端口 | `--web-port 5180` |
+| `--host <host>` | WebUI 监听地址（可选） | `--host 0.0.0.0` |
+| `--env <file>` | 指定 env 文件位置（可选） | `--env scripts/quickstart/env` |
+
+示例：
 
 ```bash
-export DIGITAL_HUMAN_HOME=/opt/digital_human
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+# 初阶：消费级卡单机路线，权重放在仓库根目录 models/ (需要先按下方教程完成部署)
+bash scripts/start_unified.sh --backend local --model quicktalk
 
-mkdir -p "$DIGITAL_HUMAN_HOME"
-cd "$DIGITAL_HUMAN_HOME"
-git clone https://github.com/datascale-ai/omnirt.git
-cd omnirt
-uv sync --extra server --python 3.11
+# 高阶：OmniRT 远端推理路线，先启动 OmniRT，再连接 endpoint (需要先按下方教程完成部署)
+bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt http://<gpu-server>:9000
+```
+
+## 选择部署路线
+
+Mock 模式跑通后，建议按以下部署场景选择其中一条路线继续。
+
+| 路线 | 推荐模型 | 是否部署推理后端 | 适合场景 |
+| --- | --- | --- | --- |
+| 初阶：消费级显卡单机部署 | `quicktalk` | 不需要独立推理服务 | 单机 3090 / 4090 机器上实时视频渲染 |
+| 高阶：远端高质量推理 | `flashtalk` | 需要 | 多卡、远端 GPU/NPU、私有化和高质量画面 |
+
+### 初阶：消费级显卡单机部署
+
+适用：在本地 GPU 机器上运行真实数字人实时渲染，不想一开始就引入如OmniRT等推理服务，推荐从 **QuickTalk** 开始。
+
+#### 1. 安装本地模型依赖
+
+如果前面只安装了 `--extra dev`，这里补装本地模型依赖：
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+uv sync --extra dev --extra models --python 3.11
 source .venv/bin/activate
+```
+
+#### 2. 准备 QuickTalk 权重
+
+本地权重、第三方 HuBERT / InsightFace 依赖和缓存统一放到仓库根目录 `models/quicktalk/`。当前 QuickTalk local adapter 读取的是 ONNX local 资产包，需要准备 `checkpoints/256.onnx` 和 `checkpoints/repair.npy`。如果你手里只有 `quicktalk.pth`，请先使用高阶 OmniRT 路线，或准备/转换为 local adapter 需要的 ONNX 资产包。
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p models/quicktalk/checkpoints
+
+# 从团队提供的 QuickTalk local 资产包同步 256.onnx / repair.npy
+export QUICKTALK_LOCAL_ASSET_SOURCE=/path/to/quicktalk-local-assets
+
+rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/256.onnx" \
+  models/quicktalk/checkpoints/256.onnx
+rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/repair.npy" \
+  models/quicktalk/checkpoints/repair.npy
+```
+
+QuickTalk 还需要 HuBERT 与 InsightFace `buffalo_l` 依赖权重。它们不包含在 `datascale-ai/quicktalk` 中，需要按各自来源和许可单独准备：
+
+```bash
+# HuBERT
 uv pip install -U "huggingface_hub[cli]"
-```
 
-#### 1. 下载模型权重
-
-部分模型需要先在 Hugging Face 页面接受 license 或申请权限。如果下载返回 `401`、`403` 或 `Repository not found`，先打开模型页面确认权限，再执行 `hf auth login`。
-
-只下载你要跑的模型即可：
-
-- 想最快跑通真实数字人，选 **Wav2Lip**。
-- 想测试全帧 talking-head，选 **MuseTalk**。
-- 想要更高质量，且硬件资源足够，选 **FlashTalk**。
-- 想测试多模型切换时再按需多下载。
-
-Hugging Face 下载慢或容易中断时可配置镜像和传输加速：
-
-```bash
+# 可选：网络慢时使用镜像
 export HF_ENDPOINT=https://hf-mirror.com
-hf auth login
+
+hf download TencentGameMate/chinese-hubert-large \
+  config.json \
+  preprocessor_config.json \
+  pytorch_model.bin \
+  --local-dir models/quicktalk/checkpoints/chinese-hubert-large
+
+# InsightFace buffalo_l
+mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
+curl -L \
+  -o /tmp/opentalking-insightface/buffalo_l.zip \
+  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
+unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
+  -d /tmp/opentalking-insightface
+rsync -a /tmp/opentalking-insightface/buffalo_l/ \
+  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
 ```
 
-下载 Wav2Lip：
+如果 Hugging Face 或 GitHub 访问不稳定，可以使用内部镜像或手动同步离线文件；只要最终目录结构与下方一致即可。
 
-```bash
-mkdir -p "$OMNIRT_MODEL_ROOT/wav2lip"
-hf download Pypa/wav2lip384 \
-  wav2lip384.pth \
-  --local-dir "$OMNIRT_MODEL_ROOT/wav2lip"
-hf download rippertnt/wav2lip \
-  s3fd.pth \
-  --local-dir "$OMNIRT_MODEL_ROOT/wav2lip"
-```
-
-检查 Wav2Lip 文件：
-
-```bash
-test -f "$OMNIRT_MODEL_ROOT/wav2lip/wav2lip384.pth"
-test -f "$OMNIRT_MODEL_ROOT/wav2lip/s3fd.pth"
-```
-
-下载 MuseTalk：
-
-MuseTalk 的运行时代码由 OmniRT 的 `runtime install musetalk` 自动拉取；OpenTalking 侧不需要额外指定 repo。你只需要把权重放到 `$OMNIRT_MODEL_ROOT` 下，布局满足 MuseTalk v1.5 的要求：
+整理后目录应类似：
 
 ```text
-$OMNIRT_MODEL_ROOT/
-  musetalk/
-    pytorch_model.bin
-    musetalk.json
-  sd-vae-ft-mse/
-    config.json
-    diffusion_pytorch_model.bin
-  whisper/
-    tiny.pt
-  dwpose/
-    dw-ll_ucoco_384.pth
-  face-parse-bisenet/
-    79999_iter.pth
+models/
+  quicktalk/
+    checkpoints/
+      256.onnx
+      repair.npy
+      chinese-hubert-large/
+        config.json
+        preprocessor_config.json
+        pytorch_model.bin
+      auxiliary/models/buffalo_l/
+        det_10g.onnx
+        ...
 ```
 
-检查 MuseTalk 文件：
+检查关键文件（若文件不存在会提示No such file or directory）：
 
 ```bash
-test -f "$OMNIRT_MODEL_ROOT/musetalk/pytorch_model.bin"
-test -f "$OMNIRT_MODEL_ROOT/musetalk/musetalk.json"
-test -f "$OMNIRT_MODEL_ROOT/sd-vae-ft-mse/config.json"
-test -f "$OMNIRT_MODEL_ROOT/sd-vae-ft-mse/diffusion_pytorch_model.bin"
-test -f "$OMNIRT_MODEL_ROOT/whisper/tiny.pt"
-test -f "$OMNIRT_MODEL_ROOT/dwpose/dw-ll_ucoco_384.pth"
-test -f "$OMNIRT_MODEL_ROOT/face-parse-bisenet/79999_iter.pth"
+stat models/quicktalk/checkpoints/256.onnx
+stat models/quicktalk/checkpoints/repair.npy
+stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
+stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
 ```
 
-说明：
+更完整的 QuickTalk 权重来源、第三方依赖说明和离线同步方式见 [Talking-Head 模型部署](docs/zh/model-deployment/talking-head.md#quicktalk)。
 
-- 官方 MuseTalk README / `download_weights.sh` 里还会提到 `syncnet/latentsync_syncnet.pt`。
-- 当前 OpenTalking + OmniRT 的 MuseTalk 路径只使用 **实时推理** 所需的权重：UNet、VAE、Whisper、DWPose、face-parse。
-- `syncnet` 在官方仓里主要用于 **训练 / 评估 / lip-sync 打分**，不是当前 `musetalk_ws_server.py` 在线推理链的必需项，因此这里不要求下载。
-- 如果后续要继续训练 MuseTalk、复现实验脚本，或引入基于 SyncNet 的离线评分/筛选流程，再额外补 `syncnet` 权重即可。
-- 其中 `whisper/tiny.pt` 必须是 OpenAI `openai-whisper` 官方 checkpoint，不要用 Hugging Face 的 `pytorch_model.bin` 改名替代。
-
-更完整的权重说明、目录要求与排错见：
-
-- `omnirt/model_backends/musetalk/README.md`
-- `omnirt/docs/user_guide/serving/musetalk_ws.md`
-
-下载 FlashTalk（可选）：
+#### 3. 启动 OpenTalking（推理后端为 QuickTalk）
 
 ```bash
-hf download Soul-AILab/SoulX-FlashTalk-14B \
-  --local-dir "$OMNIRT_MODEL_ROOT/SoulX-FlashTalk-14B"
+export OPENTALKING_TORCH_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
-hf download TencentGameMate/chinese-wav2vec2-base \
-  --local-dir "$OMNIRT_MODEL_ROOT/chinese-wav2vec2-base"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/start_unified.sh --backend local --model quicktalk
 ```
 
-SoulX-FlashTalk 的推理代码不是模型权重。推荐的 Ascend 910B 路径会由 OmniRT 的 runtime install 流程准备代码、打补丁并记录 runtime 状态；只有使用自定义 fork 或 CUDA 手动路径时，才需要指定自己的 SoulX checkout。
+打开 `http://localhost:5173`，选择 `QuickTalk Local` 形象和 `quicktalk` 模型。首次启动会构建 face cache 和 worker，可能需要几十秒；后续会复用缓存。
 
-模型页面：
+#### 4. 上传自己的数字人形象
 
-- Wav2Lip 384: https://huggingface.co/Pypa/wav2lip384
-- Wav2Lip S3FD: https://huggingface.co/rippertnt/wav2lip
-- MuseTalk code: https://github.com/TMElyralab/MuseTalk
-- SoulX FlashTalk code: https://github.com/Soul-AILab/SoulX-FlashTalk
-- SoulX FlashTalk 14B: https://huggingface.co/Soul-AILab/SoulX-FlashTalk-14B
-- Chinese wav2vec2: https://huggingface.co/TencentGameMate/chinese-wav2vec2-base
+WebUI 的“形象库”支持从本地上传参考图创建自定义形象。进入页面后点击 **从本地上传新形象**，填写名称并上传正脸或半身参考图，系统会基于当前选择的形象生成一个可删除的自定义形象。
 
-#### 2. 启动 Wav2Lip OmniRT
+选中 `QuickTalk` 作为驱动模型，再上传自己的参考图，给数字人命名，产生一个新的形象。随后可以按照需要在左侧调整音色等，最后点击开始对话即可。
 
-CUDA GPU:
+![OpenTalking 自定义上传数字人](https://github.com/user-attachments/assets/491b84b6-4b5c-4b5c-b886-27ea3cc68320)
+
+#### 5. 消费级卡调优
+
+如果显存紧张或首帧太慢，优先调这些参数：
+
+> 注意，调整完后需要重新启动服务
+
+| 参数 | 默认建议 | 作用 |
+| --- | --- | --- |
+| `OPENTALKING_QUICKTALK_MAX_TEMPLATE_SECONDS` | `1` | 限制模板视频预处理时长，降低冷启动 |
+| `OPENTALKING_QUICKTALK_RESOLUTION` | `256` | 降低可减少显存和推理压力 |
+| `OPENTALKING_QUICKTALK_HUBERT_DEVICE` | 留空或 `cuda:1` | 多卡时可把 HuBERT 放到另一张卡 |
+| `OPENTALKING_PREWARM_AVATARS` | `quicktalk-local` | 服务启动时提前预热 avatar |
+
+想在初阶阶段部署 Wav2Lip / MuseTalk 时，先看 [Wav2Lip](docs/zh/model-deployment/talking-head.md#wav2lip) 和 [MuseTalk](docs/zh/model-deployment/talking-head.md#musetalk)，里面包含对应的模型部署和参数调优指南。
+
+### 高阶：远端高质量推理
+
+适用：当你需要更高画质、远端 GPU/NPU、多卡调度或生产隔离时，再引入 OmniRT。OmniRT 完整部署见 [模型部署文档](docs/zh/model-deployment/talking-head.md)。
+
+当 OmniRT 已在远端 GPU 机器启动，并暴露端口（如 `http://<gpu-server>:9000`），就可以在 OpenTalking 中连接这个 endpoint：
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_wav2lip.sh --device cuda
+
+bash scripts/start_unified.sh \
+  --backend omnirt \
+  --model flashtalk \
+  --api-port 8210 \
+  --web-port 5280 \
+  --omnirt http://<gpu-server>:9000
 ```
 
-Ascend 910B NPU:
+高阶路线推荐模型：
 
-启动 NPU 服务前先 source CANN
+- **FlashTalk / FlashHead**：高质量数字人视频生成模型，推荐通过 OmniRT 部署在远端 GPU/NPU 或多卡机器上。
+- **Wav2Lip / MuseTalk**：如果你希望用 OmniRT 管理所有轻量模型，也可以通过同一个 endpoint 接入。
 
-```bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
+### 路线速览
 
-> 如果你的 CANN 路径不同，把上面的路径替换成实际的 `set_env.sh`。
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_wav2lip.sh --device npu
-```
-
-验证：
-
-```bash
-curl http://127.0.0.1:9000/v1/audio2video/models
-```
-
-`wav2lip` 应该返回 `connected: true`。
-
-这个 helper 默认设置：
-
-- `OMNIRT_WAV2LIP_CPU_THREADS=4`
-- `OMNIRT_WAV2LIP_PRELOAD=1`
-- `OMNIRT_WAV2LIP_MAX_LONG_EDGE=832`
-- CUDA batch size 默认 `16`
-- Ascend NPU batch size 默认 `8`
-
-环境已经装好后，重复启动可以加 `--skip-install`。
-如果你的 OmniRT checkout 还没有定义 `wav2lip-cuda` extra，helper 会自动回退到 `model_backends/wav2lip/requirements-wav2lip.txt` 安装；也建议先更新 OmniRT 到最新 `main`。
-
-#### 3. 启动 MuseTalk OmniRT
-
-MuseTalk 的编排方式和 Wav2Lip / FlashTalk 一致：推理与服务都在 OmniRT，OpenTalking 只通过 `--omnirt` 访问统一的 audio2video 接口。和 Wav2Lip 的单层 `serve-avatar-ws` 不同，MuseTalk helper 会先启动 WebSocket backend，再启动 OmniRT gateway。
-
-CUDA GPU：
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_musetalk.sh --device cuda
-```
-
-如果 `9000` 或默认 GPU 已被占用，直接改端口或卡号。例如：
-
-```bash
-export CUDA_VISIBLE_DEVICES=4
-bash scripts/quickstart/start_omnirt_musetalk.sh \
-  --device cuda \
-  --port 9001 \
-  --musetalk-port 8766
-```
-
-Ascend 910B NPU：
-
-启动 NPU 服务前先 source CANN
-
-```bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
-
-> 如果你的 CANN 路径不同，把上面的路径替换成实际的 `set_env.sh`。
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_musetalk.sh --device npu
-```
-
-验证：
-
-```bash
-curl http://127.0.0.1:9000/v1/audio2video/models
-```
-
-`musetalk` 应该返回 `connected: true`。
-
-这个 helper 会做两件事：
-
-- 启动 MuseTalk WS backend，默认 `127.0.0.1:8766`
-- 启动 OmniRT gateway，默认 `0.0.0.0:9000`
-
-环境已经装好后，重复启动可以加 `--skip-install`。
-
-#### 4. 启动 FlashTalk OmniRT（可选）
-
-FlashTalk 比 Wav2Lip 更重。建议先跑通 Wav2Lip，再启动 FlashTalk。
-
-CUDA GPU：
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_flashtalk.sh --device cuda --nproc 1
-```
-
-Ascend 910B NPU：
-
-启动 NPU 服务前先 source CANN
-
-```bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-```
-
-> 如果你的 CANN 路径不同，把上面的路径替换成实际的 `set_env.sh`。
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_omnirt_flashtalk.sh --device npu --nproc 8
-```
-
-验证：
-
-```bash
-curl http://127.0.0.1:9000/v1/audio2video/models
-```
-
-`flashtalk` 应该返回 `connected: true`。
-
-#### 5. 启动 OpenTalking 真实模型模式并连接 OmniRT
-
-保持第 2、3 或 4 步启动的 OmniRT 服务运行，然后启动 OpenTalking API 和前端：
-
-```bash
-export DIGITAL_HUMAN_HOME=/opt/digital_human
-
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
-```
-
-如需自定义端口：
-
-```bash
-bash scripts/quickstart/start_all.sh \
-  --omnirt http://127.0.0.1:9000 \
-  --api-port 8010 \
-  --web-port 5180
-```
-
-如果 OmniRT 在远端 GPU / NPU 机器，把 `--omnirt` 改成 `http://<gpu-or-npu-server-ip>:9000`：
-
-```bash
-bash scripts/quickstart/start_all.sh \
-  --omnirt http://<gpu-or-npu-server-ip>:9000 \
-  --api-port 8010 \
-  --web-port 5180
-```
-
-默认浏览器地址是 `http://localhost:5173`；如果使用了 `--web-port 5180`，则访问 `http://localhost:5180`。
-
-选择 `wav2lip`、`musetalk` 或 `flashtalk`。真实模型卡片应显示 **已连接**；`mock / 无驱动模式` 会显示 **无需连接**。
-
-查看或停止 helper 管理的服务：
-
-```bash
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/quickstart/status.sh
-bash scripts/quickstart/stop_all.sh
-```
-
-### 路径 3：高质量私有化部署
-
-目标：运行 FlashTalk 14B / FlashHead 等高质量模型，面向私有化或生产环境。仍使用 `OMNIRT_ENDPOINT`，但建议启用 API / Worker 分离、Redis 和独立前端构建。
-
-```env
-OMNIRT_ENDPOINT=http://<gpu-host>:9000
-OMNIRT_API_KEY=sk-omnirt-xxx           # 如果你的 OmniRT 开启鉴权
-OPENTALKING_DEFAULT_MODEL=flashtalk     # 或 flashhead
-OPENTALKING_REDIS_URL=redis://redis:6379/0
-```
-
-```bash
-opentalking-api &
-opentalking-worker &
-cd apps/web && npm ci && npm run build
-```
-
-Ascend 910B 可使用薄部署 wrapper：
-
-```bash
-source /usr/local/Ascend/ascend-toolkit/set_env.sh
-bash scripts/deploy_ascend_910b.sh
-```
-
-### 三种路径速览
-
-| 路径 | 推理 backend | GPU | 适合场景 |
+| 阶段 | 推荐模型 | 启动方式 | 结果 |
 | --- | --- | --- | --- |
-| 快速体验 | 内置 Mock | 不需要 | 首次运行、前端调试、主链路验证 |
-| 轻量模型验证 | Local / direct WS / OmniRT lightweight model | 入门级 GPU 起 | Avatar / 模型适配开发 |
-| 高质量部署 | OmniRT + FlashTalk / FlashHead | 4090 / 910B | 私有化、生产、高质量画面 |
+| 快速上手 | `mock` | `bash scripts/start_unified.sh --mock` | 验证 API、LLM、TTS、WebRTC |
+| 初阶单机 | `quicktalk` | `bash scripts/start_unified.sh --backend local --model quicktalk` | 消费级显卡真实视频渲染 |
+| 高阶远端 | `flashtalk` | `bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt ...` | 高质量、多卡、生产部署 |
 
-### 支持模型
+## 模型支持
 
-| 模型 | 输入 | OpenTalking 集成方式 | 推荐路径 |
-| --- | --- | --- | --- |
-| `mock` | 参考图 | 内置静态帧 | 快速体验 |
-| `wav2lip` | frames + audio | 可插拔轻量口型 backend；local / direct backend 优先，OmniRT 作为兼容路径 | 轻量模型验证 |
-| `musetalk` | full frames + audio | 可插拔轻量 talking-head backend | 轻量模型验证 |
-| `soulx-flashtalk-14b` | portrait + audio | OmniRT 高质量 FlashTalk | 高质量部署 |
-| `soulx-flashhead-1.3b` | portrait + audio | direct FlashHead WebSocket | 高质量部署 |
+| 模型 | 输入 | 推荐 backend | 资源建议 | 当前定位 |
+| --- | --- | --- | --- | --- |
+| `mock` | 参考图 / 静态帧 | `mock` | 不需要 GPU | 首次体验和联调 |
+| `quicktalk` | template video + audio | `local` | CUDA GPU，推荐 3090 / 4090 | 初阶消费级卡路线 |
+| `wav2lip` | frames + audio | `omnirt` / `local` | `>= 8 GB` GPU / NPU memory | 快速口型同步 |
+| `musetalk` | full frames + audio | `omnirt` / `local` | `>= 12 GB` GPU memory | 轻量全帧 talking-head |
+| `soulx-flashtalk-14b` | portrait + audio | `omnirt` | 多卡 GPU / NPU | 高阶高质量生成 |
+| `soulx-flashhead-1.3b` | portrait + audio | `omnirt` | 多卡 GPU / NPU | 高质量实时头像驱动 |
 
-更完整的权重下载、国内源、Docker Compose、故障排查和模型 backend 配置见 [模型部署文档](docs/zh/model-deployment/index.md) 与 [部署文档](docs/zh/user-guide/deployment.md)。
+### 消费级显卡参考
 
+下表是测试过的部署数据，后续会补充 4090 / 5090 或更多显卡数据，包括冷启动时间、首轮总延迟和显存等。
 
-## Roadmap
+| 模型 | 硬件 | 输入 | 输出 | 显存占用 | 生成吞吐 |
+| --- | --- | --- | --- | --- | --- |
+| `quicktalk` | RTX 3090 | template video + audio | 720x900 / 25fps | 约 3.8 GiB | 约 35 fps |
 
-- [x] **实时数字人基础体验**
-  Web 控制台、LLM 对话、TTS、字幕事件、WebRTC 音视频播放。
+更多的权重下载、Docker、故障排查和模型配置见 [索引](docs/zh/model-deployment/index.md)、[模型部署文档](docs/zh/model-deployment/talking-head.md)、[部署文档](docs/zh/user-guide/deployment.md)。
 
-- [ ] **更自然的实时对话（进行中）**
-  支持打断、会话状态、低延迟响应、音画同步和异常恢复。
+## 能力进展与 Roadmap
 
-- [x] **OmniRT 模型服务接入**
-  OmniRT 作为重模型、多卡和远端推理 backend 接入；轻量模型保留本地或单模型直连扩展空间。
+### Coming soon
 
-- [x] **消费级显卡可用**
-  面向 RTX 3090 / 4090 提供轻量模型、单卡实时配置和端到端 benchmark。
+- [ ] **更自然的实时对话**
+  强化打断、会话状态、低延迟响应、音画同步和异常恢复。
 
-- [ ] **高质量私有化部署（进行中）**
-  面向企业私有化场景，支持外部 OmniRT 推理服务、容量调度、健康检查和生产监控；昇腾 910B 等企业级 GPU/NPU 路线已在构建中。
+- [ ] **消费级显卡 路线完善**
+  补齐 QuickTalk 的一键资产检查、更多消费卡 benchmark，并逐步完善 Wav2Lip / MuseTalk adapter。
 
-- [x] **自定义角色和音色**
-  支持角色配置、内置音色选择、上传参考音频、自然语言描述音色，并通过 OmniRT 生成语音。
+- [ ] **高质量私有化部署**
+  面向企业私有化场景，完善外部 OmniRT 推理服务、容量调度、健康检查和生产监控。
 
 - [ ] **Agent 与记忆能力**
   对接 OpenClaw 或外部 Agent，复用其 memory、工具调用和知识库能力。
@@ -645,7 +390,60 @@ bash scripts/deploy_ascend_910b.sh
 - [ ] **生产级平台能力**
   多会话调度、观测指标、安全合规、授权音色、合成内容标识。
 
-## 文档
+### 已完成进展
+
+- **2026-05-15：QuickTalk 统一接入**
+  QuickTalk 已进入 OpenTalking 模型列表，可通过统一 audio2video 路径接入。
+
+- **2026-05-15：MuseTalk WebRTC 播放优化**
+  增加 MuseTalk 媒体 backpressure，提升 WebRTC 播放稳定性。
+
+- **2026-05-14：MuseTalk 适配**
+  增加 MuseTalk talking-head 路线，用于轻量全帧数字人验证。
+
+- **2026-05-13：模型 backend 解耦**
+  将 `mock`、`local`、`direct_ws`、`omnirt` 从架构上拆开，支持不同模型按部署形态选择后端。
+
+- **2026-05-08：QuickTalk 本地适配器**
+  增加 QuickTalk model adapter、配置说明和异步初始化能力。
+
+- **2026-04-16：实时数字人基础体验**
+  建立 Web 控制台、LLM 对话、TTS、字幕事件和 WebRTC 音视频播放的主链路。
+
+## 系统架构与项目结构
+
+![OpenTalking 当前代码架构图](docs/assets/images/opentalking_architecture_zh.png)
+
+```text
+opentalking/
+├── opentalking/                  # 编排层 Python 包（flat layout，根目录直接 import）
+│   ├── core/                     # 接口协议、类型、配置、registry
+│   ├── providers/                # 能力适配器（按"能力域 / 提供方"两级）
+│   │   ├── stt/dashscope/        # 语音识别
+│   │   ├── tts/{edge,dashscope_qwen,cosyvoice_ws,...}/   # 语音合成 + 复刻
+│   │   ├── llm/openai_compatible/                        # 大语言模型
+│   │   ├── rtc/aiortc/                                   # WebRTC 推流
+│   │   └── synthesis/{flashtalk,flashhead,omnirt,mock}/  # 远端/协议型合成 provider
+│   ├── models/                   # local adapter 代码（quicktalk / wav2lip / musetalk 等）
+│   ├── avatar/                   # 数字人形象资产管理
+│   ├── voice/                    # 音色资产管理
+│   ├── media/                    # 中性算子工具
+│   ├── pipeline/{session,speak,recording}/   # 业务编排
+│   └── runtime/                  # 进程胶水（task_consumer / bus / timing）
+├── models/                       # 本地权重、模板、缓存和用户资产
+├── apps/
+│   ├── api/                      # FastAPI 服务
+│   ├── unified/                  # 单进程模式（开发友好）
+│   ├── web/                      # React 前端
+│   └── cli/                      # download_models / doctor / ...
+├── configs/                      # YAML 配置（profiles / inference / synthesis）
+├── docker/ + docker-compose.yml  # 容器化部署
+├── scripts/                      # start_unified.sh / quickstart / run_omnirt.sh 等
+├── tests/                        # 单元 / 集成测试
+└── docs/                         # 文档
+```
+
+## 文档与社区
 
 - [快速开始](docs/zh/user-guide/quickstart.md)
 - [模型](docs/zh/model-deployment/index.md)（权重下载、国内源、启动、验证）
@@ -654,6 +452,16 @@ bash scripts/deploy_ascend_910b.sh
 - [部署文档](docs/zh/user-guide/deployment.md)（Docker Compose、分布式部署）
 - [模型适配](docs/zh/developer-guide/model-adapter.md)
 - [贡献指南](CONTRIBUTING.md)（开发环境、CLI 工具、ruff / mypy / pytest）
+
+欢迎加入 QQ 交流群，讨论实时数字人、FlashTalk、OmniRT、模型部署和产品场景。
+
+<p align="center">
+  <img src="docs/assets/images/qq_group_qrcode.png" alt="AI 数字人交流群二维码" width="280">
+</p>
+
+<p align="center">
+  <b>AI 数字人交流群</b> · 群号：<code>1103327938</code>
+</p>
 
 ## 致谢
 
