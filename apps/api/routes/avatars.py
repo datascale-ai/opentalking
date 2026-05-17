@@ -141,9 +141,10 @@ def _write_static_quicktalk_template(image: Image.Image, output_path: Path, *, f
     frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
     height, width = frame_bgr.shape[:2]
     frame_count = max(1, int(max(1, fps)))
+    video_writer_fourcc = getattr(cv2, "VideoWriter_fourcc")
     writer = cv2.VideoWriter(
         str(output_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        video_writer_fourcc(*"mp4v"),
         float(max(1, fps)),
         (int(width), int(height)),
     )

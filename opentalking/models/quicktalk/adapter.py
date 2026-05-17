@@ -61,6 +61,7 @@ def _worker_cache_key(
     neck_fade_start: float,
     neck_fade_end: float,
     hubert_device: str | None,
+    model_backend: str,
 ) -> tuple[Any, ...]:
     return (
         str(asset_root),
@@ -75,6 +76,7 @@ def _worker_cache_key(
         float(neck_fade_start),
         float(neck_fade_end),
         str(hubert_device) if hubert_device else "",
+        str(model_backend),
     )
 
 
@@ -142,12 +144,17 @@ def _validate_asset_root(asset_root: Path) -> None:
     checkpoints = asset_root / "checkpoints"
     aux_root = checkpoints / "auxiliary"
     aux_min_root = checkpoints / "auxiliary_min"
-    required = [
+    model_files = [
+        checkpoints / "quicktalk.pth",
         checkpoints / "256.onnx",
+    ]
+    required = [
         checkpoints / "repair.npy",
         checkpoints / "chinese-hubert-large" / "pytorch_model.bin",
     ]
     missing = [path for path in required if not path.exists()]
+    if not any(path.exists() for path in model_files):
+        missing.append(checkpoints / "quicktalk.pth or 256.onnx")
     if not aux_root.exists() and not aux_min_root.exists():
         missing.append(aux_root)
     if missing:
@@ -155,7 +162,7 @@ def _validate_asset_root(asset_root: Path) -> None:
         raise FileNotFoundError(
             "QuickTalk local assets are incomplete. "
             "OPENTALKING_QUICKTALK_ASSET_ROOT must point to a QuickTalk local "
-            "asset directory containing checkpoints/256.onnx, checkpoints/repair.npy, "
+            "asset directory containing checkpoints/quicktalk.pth or checkpoints/256.onnx, checkpoints/repair.npy, "
             "checkpoints/chinese-hubert-large/ and checkpoints/auxiliary/.\n"
             f"Current asset root: {asset_root}\n"
             f"Missing:\n  - {formatted}"
@@ -186,6 +193,7 @@ class QuickTalkAdapter:
         self._neck_fade_start = float(_env_value("OPENTALKING_QUICKTALK_NECK_FADE_START", "0.72"))
         self._neck_fade_end = float(_env_value("OPENTALKING_QUICKTALK_NECK_FADE_END", "0.88"))
         self._max_template_seconds_env = _env_value("OPENTALKING_QUICKTALK_MAX_TEMPLATE_SECONDS")
+        self._model_backend = _env_value("OPENTALKING_QUICKTALK_MODEL_BACKEND", "auto")
         # Idle frame selection. The template video typically contains the source
         # speaker talking, so cycling all frames during idle makes the avatar
         # appear to keep speaking. We restrict idle to a configurable still
@@ -290,6 +298,7 @@ class QuickTalkAdapter:
             neck_fade_start=self._neck_fade_start,
             neck_fade_end=self._neck_fade_end,
             hubert_device=self._hubert_device,
+            model_backend=self._model_backend,
         )
 
         cache_disabled = _env_value("OPENTALKING_QUICKTALK_WORKER_CACHE", "1") == "0"
@@ -324,6 +333,7 @@ class QuickTalkAdapter:
                         neck_fade_start=self._neck_fade_start,
                         neck_fade_end=self._neck_fade_end,
                         hubert_device=self._hubert_device,
+                        model_backend=self._model_backend,
                     )
                     if not cache_disabled:
                         _WORKER_CACHE[cache_key] = worker

@@ -213,30 +213,27 @@ source .venv/bin/activate
 
 #### 2. 准备 QuickTalk 权重
 
-本地权重、第三方 HuBERT / InsightFace 依赖和缓存统一放到仓库根目录 `models/quicktalk/`。当前 QuickTalk local adapter 读取的是 ONNX local 资产包，需要准备 `checkpoints/256.onnx` 和 `checkpoints/repair.npy`。如果你手里只有 `quicktalk.pth`，请先使用高阶 OmniRT 路线，或准备/转换为 local adapter 需要的 ONNX 资产包。
+本地权重、第三方 HuBERT / InsightFace 依赖和缓存统一放到仓库根目录 `models/quicktalk/`。QuickTalk 权重可从 Hugging Face 下载：
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
 mkdir -p models/quicktalk/checkpoints
 
-# 从团队提供的 QuickTalk local 资产包同步 256.onnx / repair.npy
-export QUICKTALK_LOCAL_ASSET_SOURCE=/path/to/quicktalk-local-assets
+uv pip install -U "huggingface_hub[cli]"
 
-rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/256.onnx" \
-  models/quicktalk/checkpoints/256.onnx
-rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/repair.npy" \
-  models/quicktalk/checkpoints/repair.npy
+# 可选：网络慢时使用镜像
+export HF_ENDPOINT=https://hf-mirror.com
+
+hf download datascale-ai/quicktalk \
+  quicktalk.pth \
+  repair.npy \
+  --local-dir models/quicktalk/checkpoints
 ```
 
 QuickTalk 还需要 HuBERT 与 InsightFace `buffalo_l` 依赖权重。它们不包含在 `datascale-ai/quicktalk` 中，需要按各自来源和许可单独准备：
 
 ```bash
 # HuBERT
-uv pip install -U "huggingface_hub[cli]"
-
-# 可选：网络慢时使用镜像
-export HF_ENDPOINT=https://hf-mirror.com
-
 hf download TencentGameMate/chinese-hubert-large \
   config.json \
   preprocessor_config.json \
@@ -262,7 +259,7 @@ rsync -a /tmp/opentalking-insightface/buffalo_l/ \
 models/
   quicktalk/
     checkpoints/
-      256.onnx
+      quicktalk.pth
       repair.npy
       chinese-hubert-large/
         config.json
@@ -276,7 +273,7 @@ models/
 检查关键文件（若文件不存在会提示No such file or directory）：
 
 ```bash
-stat models/quicktalk/checkpoints/256.onnx
+stat models/quicktalk/checkpoints/quicktalk.pth
 stat models/quicktalk/checkpoints/repair.npy
 stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
 stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx

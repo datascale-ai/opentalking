@@ -16,11 +16,13 @@ import math
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
+import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Protocol, Sequence, Tuple, cast
 
 import cv2
 import kornia
@@ -79,6 +81,136 @@ def save_tensor_mask(path: Path, hw: np.ndarray) -> None:
     cv2.imwrite(str(path), img_color)
 
 
+class QuickTalkOnnxLSTM(torch.nn.Module):
+    """Compatibility shim for ONNX2Torch QuickTalk checkpoints.
+
+    Existing ``quicktalk.pth`` bundles were serialized with
+    ``omnirt.models.quicktalk.converter.QuickTalkOnnxLSTM``. OpenTalking does
+    not depend on OmniRT for local mode, so we provide the same operator under
+    that import path before calling ``torch.load``.
+    """
+
+    hidden_size: int
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        h0: torch.Tensor,
+        c0: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        weight_ih = cast(torch.Tensor, getattr(self, "weight_ih"))
+        weight_hh = cast(torch.Tensor, getattr(self, "weight_hh"))
+        bias_ih = cast(torch.Tensor, getattr(self, "bias_ih"))
+        bias_hh = cast(torch.Tensor, getattr(self, "bias_hh"))
+        h = h0[0]
+        c = c0[0]
+        outputs: list[torch.Tensor] = []
+        for step in x.unbind(0):
+            gates = (
+                step @ weight_ih.t()
+                + h @ weight_hh.t()
+                + bias_ih
+                + bias_hh
+            )
+            i, f, g, o = gates.chunk(4, dim=1)
+            c = torch.sigmoid(f) * c + torch.sigmoid(i) * torch.tanh(g)
+            h = torch.sigmoid(o) * torch.tanh(c)
+            outputs.append(h)
+        return torch.stack(outputs, dim=0).unsqueeze(1), h.unsqueeze(0), c.unsqueeze(0)
+
+
+def _install_omnirt_quicktalk_lstm_shim() -> None:
+    for name in ("omnirt", "omnirt.models", "omnirt.models.quicktalk"):
+        sys.modules.setdefault(name, types.ModuleType(name))
+    converter = types.ModuleType("omnirt.models.quicktalk.converter")
+    setattr(converter, "QuickTalkOnnxLSTM", QuickTalkOnnxLSTM)
+    sys.modules["omnirt.models.quicktalk.converter"] = converter
+
+
+class QuickTalkModelBackend(Protocol):
+    input_names: list[str]
+
+    def run(
+        self,
+        audio: np.ndarray,
+        face: np.ndarray,
+        hn: np.ndarray,
+        cn: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        ...
+
+
+class OnnxQuickTalkModel:
+    def __init__(self, onnx_path: Path, device: torch.device) -> None:
+        if device.type == "cuda":
+            device_id = device.index if device.index is not None else 0
+            providers = [
+                ("CUDAExecutionProvider", {"device_id": device_id}),
+                "CPUExecutionProvider",
+            ]
+        else:
+            providers = ["CPUExecutionProvider"]
+        self.session = ort.InferenceSession(str(onnx_path), providers=providers)
+        self.input_names = [x.name for x in self.session.get_inputs()]
+
+    def run(
+        self,
+        audio: np.ndarray,
+        face: np.ndarray,
+        hn: np.ndarray,
+        cn: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        g, hn_out, cn_out = self.session.run(
+            None,
+            {
+                self.input_names[0]: audio.astype(np.float32),
+                self.input_names[1]: face.astype(np.float32),
+                self.input_names[2]: hn.astype(np.float32),
+                self.input_names[3]: cn.astype(np.float32),
+            },
+        )
+        return cast(np.ndarray, g), cast(np.ndarray, hn_out), cast(np.ndarray, cn_out)
+
+
+class TorchQuickTalkModel:
+    input_names = ["input_1", "input_2", "input_3", "input_4"]
+
+    def __init__(self, pth_path: Path, device: torch.device) -> None:
+        _install_omnirt_quicktalk_lstm_shim()
+        model = torch.load(pth_path, map_location=device, weights_only=False)
+        self.model = cast(torch.nn.Module, model).to(device=device).eval()
+        self.device = device
+
+    def _tensor(self, value: np.ndarray) -> torch.Tensor:
+        return torch.from_numpy(value.astype(np.float32, copy=False)).to(
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+    @torch.inference_mode()
+    def run(
+        self,
+        audio: np.ndarray,
+        face: np.ndarray,
+        hn: np.ndarray,
+        cn: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        outputs = self.model(
+            self._tensor(audio),
+            self._tensor(face),
+            self._tensor(hn),
+            self._tensor(cn),
+        )
+        if not isinstance(outputs, (list, tuple)) or len(outputs) != 3:
+            raise RuntimeError("QuickTalk pth model must return g, hn, cn")
+        g, hn_out, cn_out = outputs
+        return (
+            cast(torch.Tensor, g).detach().cpu().numpy().astype(np.float32),
+            cast(torch.Tensor, hn_out).detach().cpu().numpy().astype(np.float32),
+            cast(torch.Tensor, cn_out).detach().cpu().numpy().astype(np.float32),
+        )
+
+
 def format_stats(name: str, arr: np.ndarray) -> str:
     arr = np.asarray(arr)
     return (
@@ -126,7 +258,7 @@ class AlignRestore:
         img_t = torch.from_numpy(img).to(device=self.device, dtype=self.dtype)
         img_t = img_t.permute(2, 0, 1).unsqueeze(0)
         affine_t = torch.from_numpy(affine_matrix).to(device=self.device, dtype=self.dtype).unsqueeze(0)
-        cropped_face = warp_affine(
+        cropped_face_t = warp_affine(
             img_t,
             affine_t,
             (self.face_size[1], self.face_size[0]),
@@ -134,7 +266,7 @@ class AlignRestore:
             padding_mode="fill",
             fill_value=self.fill_value,
         )
-        cropped_face = cropped_face.squeeze(0).permute(1, 2, 0).contiguous().to(dtype=torch.uint8).cpu().numpy()
+        cropped_face = cropped_face_t.squeeze(0).permute(1, 2, 0).contiguous().to(dtype=torch.uint8).cpu().numpy()
         return cropped_face, affine_matrix
 
     def transformation_from_points(
@@ -345,10 +477,12 @@ class QuickTalkRebuild:
         debug_dir: Path | None = None,
         debug_frames: int = 0,
         hubert_device: str | None = None,
+        model_backend: str = "auto",
     ) -> None:
         self.asset_root = asset_root
         self.checkpoints = asset_root / "checkpoints"
         self.onnx_path = self.checkpoints / "256.onnx"
+        self.pth_path = self.checkpoints / "quicktalk.pth"
         self.repair_path = self.checkpoints / "repair.npy"
         self.hubert_path = self.checkpoints / "chinese-hubert-large"
         aux_min = self.checkpoints / "auxiliary_min"
@@ -370,22 +504,23 @@ class QuickTalkRebuild:
         # warp/restore path is numerically sensitive and should stay in fp32.
         self.image_processor = ImageProcessor(self.aux_root, self.repair_path, resolution, self.device, torch.float32)
 
-        if self.device.type == "cuda":
-            device_id = self.device.index if self.device.index is not None else 0
-            providers = [
-                ("CUDAExecutionProvider", {"device_id": device_id}),
-                "CPUExecutionProvider",
-            ]
+        self.model_backend_name = self._select_model_backend(model_backend)
+        self.model_backend: QuickTalkModelBackend
+        self.ort_session: ort.InferenceSession | None
+        if self.model_backend_name == "pth":
+            self.model_backend = TorchQuickTalkModel(self.pth_path, self.device)
+            self.ort_session = None
         else:
-            providers = ["CPUExecutionProvider"]
-        self.ort_session = ort.InferenceSession(str(self.onnx_path), providers=providers)
+            onnx_backend = OnnxQuickTalkModel(self.onnx_path, self.device)
+            self.model_backend = onnx_backend
+            self.ort_session = onnx_backend.session
         # HuBERT 可单独配到另一张卡，与 ONNX/restore_contexts 物理并行，
         # 消除每个流式块在块尾的 ~80ms HuBERT 串行 gap。默认与主 device 相同。
         self.hubert_device = (
             torch.device(hubert_device) if hubert_device else self.device
         )
         self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(str(self.hubert_path))
-        self.hubert_model = HubertModel.from_pretrained(str(self.hubert_path)).to(self.hubert_device)
+        self.hubert_model = cast(torch.nn.Module, HubertModel.from_pretrained(str(self.hubert_path))).to(self.hubert_device)
         if self.hubert_device.type == "cuda":
             self.hubert_model = self.hubert_model.half()
         self.hubert_model.eval()
@@ -393,6 +528,39 @@ class QuickTalkRebuild:
             maybe_mkdir(self.debug_dir)
         if self.face_cache_dir is not None:
             maybe_mkdir(self.face_cache_dir)
+
+    def _select_model_backend(self, requested: str) -> str:
+        normalized = requested.strip().lower() or "auto"
+        if normalized not in {"auto", "onnx", "pth"}:
+            raise ValueError(
+                "Unsupported QuickTalk model backend: "
+                f"{requested!r}. Expected one of: auto, onnx, pth"
+            )
+        if normalized == "pth":
+            if not self.pth_path.exists():
+                raise FileNotFoundError(f"QuickTalk pth model not found: {self.pth_path}")
+            return "pth"
+        if normalized == "onnx":
+            if not self.onnx_path.exists():
+                raise FileNotFoundError(f"QuickTalk onnx model not found: {self.onnx_path}")
+            return "onnx"
+        if self.pth_path.exists():
+            return "pth"
+        if self.onnx_path.exists():
+            return "onnx"
+        raise FileNotFoundError(
+            "QuickTalk model not found. Expected checkpoints/quicktalk.pth "
+            f"or checkpoints/256.onnx under {self.asset_root}"
+        )
+
+    def run_model(
+        self,
+        audio: np.ndarray,
+        face: np.ndarray,
+        hn: np.ndarray,
+        cn: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return self.model_backend.run(audio, face, hn, cn)
 
     def transform_output(self, p: np.ndarray) -> np.ndarray:
         if self.output_transform == "rgb":
@@ -747,7 +915,6 @@ class QuickTalkRebuild:
 
             hn = np.zeros((2, 1, 576), dtype=np.float32)
             cn = np.zeros((2, 1, 576), dtype=np.float32)
-            input_names = [x.name for x in self.ort_session.get_inputs()]
 
             total_frames = 0
             cache_path = self.face_cache_path(video_path, len(frames), fps, read_limit)
@@ -766,15 +933,7 @@ class QuickTalkRebuild:
                 for frame_idx in range(face_batch.shape[0]):
                     x_face = face_batch[frame_idx : frame_idx + 1].astype(np.float32)
                     x_audio = rep_batch[frame_idx : frame_idx + 1].astype(np.float32)
-                    g, hn, cn = self.ort_session.run(
-                        None,
-                        {
-                            input_names[0]: x_audio,
-                            input_names[1]: x_face,
-                            input_names[2]: hn,
-                            input_names[3]: cn,
-                        },
-                    )
+                    g, hn, cn = self.run_model(x_audio, x_face, hn, cn)
                     self.maybe_dump_debug(
                         x_face[0],
                         x_audio[0],
@@ -862,8 +1021,9 @@ def parse_args() -> argparse.Namespace:
         "--output-transform",
         choices=["rgb", "bgr", "tanh_rgb", "tanh_bgr"],
         default="bgr",
-        help="How to interpret ONNX output before paste-back",
+        help="How to interpret model output before paste-back",
     )
+    parser.add_argument("--model-backend", choices=["auto", "pth", "onnx"], default="auto")
     parser.add_argument("--debug-dir", default=None, help="Optional directory for intermediate debug dumps")
     parser.add_argument("--debug-frames", type=int, default=0, help="How many frames to dump for debugging")
     return parser.parse_args()
@@ -893,6 +1053,7 @@ def main() -> None:
         output_transform=args.output_transform,
         debug_dir=Path(args.debug_dir) if args.debug_dir else None,
         debug_frames=args.debug_frames,
+        model_backend=args.model_backend,
     )
     output = rebuild.infer_video(Path(args.video), Path(args.audio), Path(args.output), limit_seconds=args.limit_seconds)
     print(output)

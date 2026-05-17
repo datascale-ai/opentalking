@@ -95,6 +95,7 @@ class RealtimeV3Worker:
         neck_fade_start: float | None = None,
         neck_fade_end: float | None = None,
         hubert_device: str | None = None,
+        model_backend: str = "auto",
     ) -> None:
         self.template_video = template_video
         if (neck_fade_start is None) != (neck_fade_end is None):
@@ -113,8 +114,9 @@ class RealtimeV3Worker:
             device=device,
             output_transform=output_transform,
             hubert_device=hubert_device,
+            model_backend=model_backend,
         )
-        self.input_names = [x.name for x in self.v2.ort_session.get_inputs()]
+        self.input_names = self.v2.model_backend.input_names
         self.frames, self.fps = self._load_template_frames(template_video, max_template_seconds)
         if not self.frames:
             raise RuntimeError(f"No template frames read from {template_video}")
@@ -351,14 +353,13 @@ class RealtimeV3Worker:
                     hn_in, cn_in = state.hn, state.cn
                 else:
                     hn_in, cn_in = self.hn, self.cn
-                g, hn_out, cn_out = self.v2.ort_session.run(
-                    None,
-                    {
-                        self.input_names[0]: rep_input.astype(np.float32),
-                        self.input_names[1]: context.face_input,
-                        self.input_names[2]: hn_in,
-                        self.input_names[3]: cn_in,
-                    },
+                if hn_in is None or cn_in is None:
+                    raise RuntimeError("QuickTalk session state is not initialized")
+                g, hn_out, cn_out = self.v2.run_model(
+                    rep_input.astype(np.float32),
+                    context.face_input,
+                    hn_in,
+                    cn_in,
                 )
                 if state is not None:
                     state.hn, state.cn = hn_out, cn_out
@@ -541,6 +542,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-template-seconds", type=float, default=None)
     parser.add_argument("--neck-fade-start", type=float, default=None)
     parser.add_argument("--neck-fade-end", type=float, default=None)
+    parser.add_argument("--model-backend", choices=["auto", "pth", "onnx"], default="auto")
     parser.add_argument("--sink", choices=["ffmpeg-pipe", "opencv"], default="ffmpeg-pipe")
     parser.add_argument("--video-codec", default="libx264")
     parser.add_argument("--ffmpeg-preset", default="veryfast")
@@ -571,6 +573,7 @@ def main() -> None:
         max_template_seconds=args.max_template_seconds,
         neck_fade_start=args.neck_fade_start,
         neck_fade_end=args.neck_fade_end,
+        model_backend=args.model_backend,
     )
     stats = worker.generate_video_from_wav(
         Path(args.audio),

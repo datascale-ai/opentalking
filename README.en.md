@@ -215,17 +215,17 @@ source .venv/bin/activate
 
 #### 2. Prepare QuickTalk Weights
 
-Local weights, third-party HuBERT / InsightFace dependencies, and caches are organized under repository-root `models/quicktalk/`. The current QuickTalk local adapter reads an ONNX local asset bundle and requires `checkpoints/256.onnx` plus `checkpoints/repair.npy`. If you only have `quicktalk.pth`, use the advanced OmniRT route first, or prepare/convert an ONNX asset bundle for the local adapter.
+Local weights, third-party HuBERT / InsightFace dependencies, and caches are organized under repository-root `models/quicktalk/`. The QuickTalk local adapter supports both `checkpoints/quicktalk.pth` and `checkpoints/256.onnx`; when both are present, it prefers `quicktalk.pth` by default. `repair.npy` is still required.
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
 mkdir -p models/quicktalk/checkpoints
 
-# Sync 256.onnx / repair.npy from a team-provided QuickTalk local asset bundle.
+# Sync quicktalk.pth / repair.npy from a team-provided QuickTalk local asset bundle.
 export QUICKTALK_LOCAL_ASSET_SOURCE=/path/to/quicktalk-local-assets
 
-rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/256.onnx" \
-  models/quicktalk/checkpoints/256.onnx
+rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/quicktalk.pth" \
+  models/quicktalk/checkpoints/quicktalk.pth
 rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/repair.npy" \
   models/quicktalk/checkpoints/repair.npy
 ```
@@ -262,7 +262,7 @@ If Hugging Face or GitHub access is unstable, use an internal mirror or manually
 models/
   quicktalk/
     checkpoints/
-      256.onnx
+      quicktalk.pth  # or 256.onnx
       repair.npy
       chinese-hubert-large/
         config.json
@@ -276,10 +276,16 @@ models/
 Check key files. Missing files will show `No such file or directory`:
 
 ```bash
-stat models/quicktalk/checkpoints/256.onnx
+stat models/quicktalk/checkpoints/quicktalk.pth
 stat models/quicktalk/checkpoints/repair.npy
 stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
 stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
+```
+
+To force the ONNX compatibility path, set this before startup:
+
+```bash
+export OPENTALKING_QUICKTALK_MODEL_BACKEND=onnx
 ```
 
 For more QuickTalk weight sources, third-party dependency notes, and offline sync details, see [Talking-Head Model Deployment](docs/en/model-deployment/talking-head.md#quicktalk).
