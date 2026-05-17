@@ -46,3 +46,4 @@ def list_available_models(*, flashtalk_mode: str) -> list[str]:
 def ensure_models_imported() -> None:
     """Import side-effect: register built-in local model adapters."""
     import opentalking.models.quicktalk.adapter  # noqa: F401
+    import opentalking.models.wav2lip.adapter  # noqa: F401

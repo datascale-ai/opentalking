@@ -89,9 +89,15 @@ def _explicit_env_enabled(name: str) -> bool:
 
 def _local_adapter_available(model: str) -> bool:
     try:
-        get_adapter(model)
+        adapter = get_adapter(model)
     except Exception:
         return False
+    runtime_available = getattr(adapter, "runtime_available", None)
+    if callable(runtime_available):
+        try:
+            return bool(runtime_available())
+        except Exception:
+            return False
     return True
 
 

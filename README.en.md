@@ -181,9 +181,12 @@ bash scripts/quickstart/stop_all.sh
 Examples:
 
 ```bash
-# Beginner path: consumer-GPU single-machine route.
+# Beginner 1 path: consumer-GPU single-machine route.
 # Weights live under repository-root models/ after following the deployment steps below.
 bash scripts/start_unified.sh --backend local --model quicktalk
+
+# Beginner 2 path: single-machine Wav2Lip on consumer GPUs, using OpenTalking's built-in local runtime.
+bash scripts/start_unified.sh --backend local --model wav2lip
 
 # Advanced path: OmniRT remote inference route.
 # Start OmniRT first, then connect its endpoint.
@@ -196,12 +199,13 @@ After Mock mode works, choose one path based on your deployment scenario.
 
 | Path | Recommended model | Inference backend | Best for |
 | --- | --- | --- | --- |
-| Beginner: consumer-GPU single-machine deployment | `quicktalk` | No standalone inference service required | Real-time video rendering on a single 3090 / 4090 machine |
+| Beginner 1: consumer-GPU single-machine deployment | `quicktalk` | No standalone inference service required | Real-time video rendering on a single 3090 / 4090 machine |
+| Beginner 2: consumer-GPU single-machine deployment | `wav2lip` | No standalone inference service required | Lightweight lip sync and quick custom-avatar validation |
 | Advanced: remote high-quality inference | `flashtalk` | Required | Multi-GPU, remote GPU/NPU, private deployment, and higher visual quality |
 
-### Beginner: Consumer-GPU Single-Machine Deployment
+### Beginner 1: Consumer-GPU Single-Machine Deployment
 
-Use this path when you want real-time digital-human rendering on a local GPU machine without introducing inference services such as OmniRT at the beginning. We recommend starting with **QuickTalk**.
+Use this path when you want real-time digital-human rendering on a local GPU machine without introducing inference services such as OmniRT at the beginning. We recommend starting with **QuickTalk**. If you are interested in **Wav2Lip**, see [Beginner 2](docs/en/model-deployment/wav2lip-local.md); the two beginner paths are similar.
 
 #### 1. Install Local Model Dependencies
 
@@ -215,30 +219,27 @@ source .venv/bin/activate
 
 #### 2. Prepare QuickTalk Weights
 
-Local weights, third-party HuBERT / InsightFace dependencies, and caches are organized under repository-root `models/quicktalk/`. The QuickTalk local adapter supports both `checkpoints/quicktalk.pth` and `checkpoints/256.onnx`; when both are present, it prefers `quicktalk.pth` by default. `repair.npy` is still required.
+Local weights, third-party HuBERT / InsightFace dependencies, and caches are organized under repository-root `models/quicktalk/`. QuickTalk weights can be downloaded from Hugging Face:
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
 mkdir -p models/quicktalk/checkpoints
 
-# Sync quicktalk.pth / repair.npy from a team-provided QuickTalk local asset bundle.
-export QUICKTALK_LOCAL_ASSET_SOURCE=/path/to/quicktalk-local-assets
+uv pip install -U "huggingface_hub[cli]"
 
-rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/quicktalk.pth" \
-  models/quicktalk/checkpoints/quicktalk.pth
-rsync -a "$QUICKTALK_LOCAL_ASSET_SOURCE/checkpoints/repair.npy" \
-  models/quicktalk/checkpoints/repair.npy
+# Optional: use a mirror when the network is slow.
+export HF_ENDPOINT=https://hf-mirror.com
+
+hf download datascale-ai/quicktalk \
+  quicktalk.pth \
+  repair.npy \
+  --local-dir models/quicktalk/checkpoints
 ```
 
 QuickTalk also needs HuBERT and InsightFace `buffalo_l` dependency weights. They are not included in `datascale-ai/quicktalk` and must be prepared separately according to their own sources and licenses:
 
 ```bash
 # HuBERT
-uv pip install -U "huggingface_hub[cli]"
-
-# Optional: use a mirror when the network is slow.
-export HF_ENDPOINT=https://hf-mirror.com
-
 hf download TencentGameMate/chinese-hubert-large \
   config.json \
   preprocessor_config.json \
@@ -262,7 +263,7 @@ If Hugging Face or GitHub access is unstable, use an internal mirror or manually
 models/
   quicktalk/
     checkpoints/
-      quicktalk.pth  # or 256.onnx
+      quicktalk.pth
       repair.npy
       chinese-hubert-large/
         config.json
@@ -280,12 +281,6 @@ stat models/quicktalk/checkpoints/quicktalk.pth
 stat models/quicktalk/checkpoints/repair.npy
 stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
 stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
-```
-
-To force the ONNX compatibility path, set this before startup:
-
-```bash
-export OPENTALKING_QUICKTALK_MODEL_BACKEND=onnx
 ```
 
 For more QuickTalk weight sources, third-party dependency notes, and offline sync details, see [Talking-Head Model Deployment](docs/en/model-deployment/talking-head.md#quicktalk).
@@ -324,7 +319,83 @@ If GPU memory is tight or first-frame latency is high, tune these parameters fir
 | `OPENTALKING_QUICKTALK_HUBERT_DEVICE` | empty or `cuda:1` | Put HuBERT on another GPU when using multiple cards. |
 | `OPENTALKING_PREWARM_AVATARS` | `quicktalk-local` | Prewarm avatars when the service starts. |
 
-If you want to deploy Wav2Lip / MuseTalk in the beginner phase, start with [Wav2Lip](docs/en/model-deployment/talking-head.md#wav2lip) and [MuseTalk](docs/en/model-deployment/talking-head.md#musetalk). Those pages include model deployment and tuning notes.
+### Beginner 2: Consumer-GPU Single-Machine Wav2Lip Deployment
+
+Use this path when you want to validate a lighter lip-sync effect on a single consumer GPU and do not want to introduce a standalone inference service at the beginning. OpenTalking includes the `wav2lip` local adapter and runtime, so you only need local model dependencies and Wav2Lip weights.
+
+#### 1. Install Local Model Dependencies
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+uv sync --extra dev --extra models --python 3.11
+source .venv/bin/activate
+```
+
+#### 2. Prepare Wav2Lip Weights
+
+Place the weights under repository-root `models/wav2lip/`:
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p models/wav2lip
+
+# Install the Hugging Face CLI if it is not already installed.
+uv pip install -U "huggingface_hub[cli]"
+
+# Wav2Lip 384 main checkpoint.
+hf download Pypa/wav2lip384 \
+  wav2lip384.pth \
+  --local-dir models/wav2lip
+
+# S3FD face detector checkpoint.
+hf download rippertnt/wav2lip \
+  s3fd.pth \
+  --local-dir models/wav2lip
+```
+
+The final layout should look like this:
+
+```text
+models/
+  wav2lip/
+    wav2lip384.pth
+    s3fd.pth
+```
+
+Check key files:
+
+```bash
+stat models/wav2lip/wav2lip384.pth
+stat models/wav2lip/s3fd.pth
+```
+
+If the server cannot access Hugging Face directly, download the files on a machine with network access first, then sync the same files into `models/wav2lip/` with `rsync` or an offline package.
+
+#### 3. Start OpenTalking With Wav2Lip
+
+```bash
+export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/wav2lip"
+export OPENTALKING_WAV2LIP_DEVICE=cuda
+export OPENTALKING_WAV2LIP_BATCH_SIZE=4
+export OPENTALKING_WAV2LIP_MAX_LONG_EDGE=768
+
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/start_unified.sh --backend local --model wav2lip --api-port 8210 --web-port 5280
+```
+
+Open `http://localhost:5173`, select a built-in Wav2Lip avatar such as `singer`, `office-woman`, or `ancient-beauty`, select the `wav2lip` model, and start a conversation. The first load initializes the Wav2Lip checkpoint, S3FD face detector, and avatar cache, which may take tens of seconds.
+
+#### 4. Wav2Lip Single-Machine Tuning
+
+If GPU memory is tight or first-frame latency is high, tune these parameters first:
+
+| Parameter | Recommended default | Purpose |
+| --- | --- | --- |
+| `OPENTALKING_WAV2LIP_DEVICE` | `cuda` | Select the Wav2Lip runtime device; use `cpu` for debugging. |
+| `OPENTALKING_WAV2LIP_BATCH_SIZE` | `4` or `8` | Lower values reduce peak memory; higher values improve throughput. |
+| `OPENTALKING_WAV2LIP_MAX_LONG_EDGE` | `768` | Limit the long edge of input avatars to reduce memory and preprocessing cost. |
+| `OPENTALKING_WAV2LIP_JPEG_QUALITY` | `85` | Output-frame JPEG quality; higher values improve visuals but increase bandwidth. |
+| `OPENTALKING_PREWARM_AVATARS` | `singer` | Prewarm Wav2Lip avatars when the service starts. |
 
 ### Advanced: Remote High-Quality Inference
 
@@ -353,7 +424,8 @@ Recommended models for the advanced path:
 | Stage | Recommended model | Startup | Result |
 | --- | --- | --- | --- |
 | Fast first run | `mock` | `bash scripts/start_unified.sh --mock` | Validate API, LLM, TTS, and WebRTC |
-| Beginner single-machine | `quicktalk` | `bash scripts/start_unified.sh --backend local --model quicktalk` | Real video rendering on consumer GPUs |
+| Beginner 1 | `quicktalk` | `bash scripts/start_unified.sh --backend local --model quicktalk` | Real video rendering on consumer GPUs |
+| Beginner 2 | `wav2lip` | `bash scripts/start_unified.sh --backend local --model wav2lip` | Lightweight lip sync and custom-avatar validation |
 | Advanced remote | `flashtalk` | `bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt ...` | High quality, multi-GPU, production deployment |
 
 ## Supported Models
@@ -362,7 +434,7 @@ Recommended models for the advanced path:
 | --- | --- | --- | --- | --- |
 | `mock` | reference image / static frame | `mock` | No GPU required | First run and integration testing |
 | `quicktalk` | template video + audio | `local` | CUDA GPU, 3090 / 4090 recommended | Beginner consumer-GPU path |
-| `wav2lip` | frames + audio | `omnirt` / `local` | `>= 8 GB` GPU / NPU memory | Fast lip sync |
+| `wav2lip` | reference image / frames + audio | `local` / `omnirt` | `>= 8 GB` GPU / NPU memory | Fast lip sync |
 | `musetalk` | full frames + audio | `omnirt` / `local` | `>= 12 GB` GPU memory | Lightweight full-frame talking head |
 | `soulx-flashtalk-14b` | portrait + audio | `omnirt` | Multi-GPU / NPU | Advanced high-quality generation |
 | `soulx-flashhead-1.3b` | portrait + audio | `omnirt` | Multi-GPU / NPU | High-quality real-time head driving |
@@ -398,8 +470,8 @@ For more weight downloads, Docker, troubleshooting, and model configuration, see
 
 ### Completed Progress
 
-- **2026-05-15: QuickTalk unified integration**
-  QuickTalk is now in the OpenTalking model list and can be connected through the unified audio2video path.
+- **2026-05-17: QuickTalk integration**
+  QuickTalk / Wav2Lip now have easier startup paths and can be launched directly through OpenTalking for digital-human generation.
 
 - **2026-05-15: MuseTalk WebRTC playback optimization**
   Added MuseTalk media backpressure to improve WebRTC playback stability.

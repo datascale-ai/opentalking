@@ -67,6 +67,9 @@ models = [
   "onnxruntime>=1.16",
   "kornia>=0.7",
   "insightface>=0.7",
+  "librosa>=0.10",
+  "scipy>=1.10",
+  "tqdm>=4.65",
   "diffusers>=0.34",
   "openai-whisper>=20240930",
 ]

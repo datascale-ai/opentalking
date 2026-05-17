@@ -51,7 +51,7 @@ models:
   mock:
     backend: mock
   wav2lip:
-    backend: omnirt
+    backend: local
     stream_batch_size: 8
     pads: [0, 10, 0, 0]
   musetalk:

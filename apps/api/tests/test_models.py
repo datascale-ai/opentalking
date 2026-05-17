@@ -15,7 +15,11 @@ from opentalking.providers.synthesis.availability import (
 )
 
 
-def test_models_route_lists_all_models_with_connection_status_without_omnirt() -> None:
+def test_models_route_lists_all_models_with_connection_status_without_omnirt(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "opentalking.models.wav2lip.adapter.Wav2LipAdapter.runtime_available",
+        staticmethod(lambda: False),
+    )
     app = FastAPI()
     app.state.settings = SimpleNamespace(
         omnirt_endpoint="",
@@ -46,8 +50,9 @@ def test_models_route_lists_all_models_with_connection_status_without_omnirt() -
     assert statuses["flashtalk"]["connected"] is False
     assert statuses["musetalk"]["backend"] == "omnirt"
     assert statuses["musetalk"]["connected"] is False
-    assert statuses["wav2lip"]["backend"] == "omnirt"
+    assert statuses["wav2lip"]["backend"] == "local"
     assert statuses["wav2lip"]["connected"] is False
+    assert statuses["wav2lip"]["reason"] == "local_adapter_missing"
     assert statuses["fasterliveportrait"]["backend"] == "omnirt"
     assert statuses["fasterliveportrait"]["connected"] is False
     assert statuses["flashhead"]["backend"] == "direct_ws"
@@ -113,7 +118,12 @@ def test_omnirt_endpoint_defaults_to_audio2video_routes() -> None:
     assert resolve_synthesis_ws_url("flashtalk", settings) == "ws://127.0.0.1:9000/v1/audio2video/flashtalk"
 
 
-async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypatch) -> None:
+async def test_omnirt_status_keeps_local_backend_local(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "opentalking.models.wav2lip.adapter.Wav2LipAdapter.runtime_available",
+        staticmethod(lambda: True),
+    )
+
     async def fake_fetch(_settings) -> set[str]:
         return {"flashtalk", "wav2lip", "fasterliveportrait", "quicktalk"}
 
@@ -131,8 +141,9 @@ async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypa
 
     assert statuses["flashtalk"].connected is True
     assert statuses["flashtalk"].reason == "omnirt"
+    assert statuses["wav2lip"].backend == "local"
     assert statuses["wav2lip"].connected is True
-    assert statuses["wav2lip"].reason == "omnirt"
+    assert statuses["wav2lip"].reason == "local_runtime"
     assert statuses["fasterliveportrait"].connected is True
     assert statuses["fasterliveportrait"].reason == "omnirt"
     assert statuses["quicktalk"].backend == "omnirt"
@@ -141,6 +152,11 @@ async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypa
 
 
 async def test_omnirt_endpoint_only_affects_omnirt_backend(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "opentalking.models.wav2lip.adapter.Wav2LipAdapter.runtime_available",
+        staticmethod(lambda: True),
+    )
+
     config_file = tmp_path / "opentalking.yaml"
     config_file.write_text(
         """
@@ -181,8 +197,8 @@ models:
     assert statuses["flashtalk"].backend == "omnirt"
     assert statuses["flashtalk"].connected is True
     assert statuses["wav2lip"].backend == "local"
-    assert statuses["wav2lip"].connected is False
-    assert statuses["wav2lip"].reason == "local_adapter_missing"
+    assert statuses["wav2lip"].connected is True
+    assert statuses["wav2lip"].reason == "local_runtime"
     assert statuses["musetalk"].backend == "direct_ws"
     assert statuses["musetalk"].connected is True
     assert statuses["musetalk"].reason == "direct_ws"

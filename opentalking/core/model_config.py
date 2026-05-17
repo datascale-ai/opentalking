@@ -119,7 +119,7 @@ _DEFAULT_MODEL_BACKENDS: dict[str, str] = {
     "flashtalk": "omnirt",
     "fasterliveportrait": "omnirt",
     "musetalk": "omnirt",
-    "wav2lip": "omnirt",
+    "wav2lip": "local",
 }
 
 

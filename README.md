@@ -181,8 +181,11 @@ bash scripts/quickstart/stop_all.sh
 示例：
 
 ```bash
-# 初阶：消费级卡单机路线，权重放在仓库根目录 models/ (需要先按下方教程完成部署)
+# 初阶1：消费级卡单机路线，权重放在仓库根目录 models/ (需要先按下方教程完成部署)
 bash scripts/start_unified.sh --backend local --model quicktalk
+
+# 初阶2：消费级卡单机 Wav2Lip 路线，使用 OpenTalking 内置 local runtime
+bash scripts/start_unified.sh --backend local --model wav2lip
 
 # 高阶：OmniRT 远端推理路线，先启动 OmniRT，再连接 endpoint (需要先按下方教程完成部署)
 bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt http://<gpu-server>:9000
@@ -194,12 +197,13 @@ Mock 模式跑通后，建议按以下部署场景选择其中一条路线继续
 
 | 路线 | 推荐模型 | 是否部署推理后端 | 适合场景 |
 | --- | --- | --- | --- |
-| 初阶：消费级显卡单机部署 | `quicktalk` | 不需要独立推理服务 | 单机 3090 / 4090 机器上实时视频渲染 |
+| 初阶1：消费级显卡单机部署 | `quicktalk` | 不需要独立推理服务 | 单机 3090 / 4090 机器上实时视频渲染 |
+| 初阶2：消费级显卡单机部署 | `wav2lip` | 不需要独立推理服务 | 轻量的口型同步、快速验证自定义形象 |
 | 高阶：远端高质量推理 | `flashtalk` | 需要 | 多卡、远端 GPU/NPU、私有化和高质量画面 |
 
-### 初阶：消费级显卡单机部署
+### 初阶1：消费级显卡单机部署
 
-适用：在本地 GPU 机器上运行真实数字人实时渲染，不想一开始就引入如OmniRT等推理服务，推荐从 **QuickTalk** 开始。
+适用：在本地 GPU 机器上运行真实数字人实时渲染，不想一开始就引入如OmniRT等推理服务，推荐从 **QuickTalk** 开始。若对 **Wav2Lip** 感兴趣，移步[初阶2](docs/zh/model-deployment/wav2lip-local.md)，初阶1与初阶2内容非常相似。
 
 #### 1. 安装本地模型依赖
 
@@ -289,7 +293,7 @@ export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/
 export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
 cd "$DIGITAL_HUMAN_HOME/opentalking"
-bash scripts/start_unified.sh --backend local --model quicktalk
+bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5280
 ```
 
 打开 `http://localhost:5173`，选择 `QuickTalk Local` 形象和 `quicktalk` 模型。首次启动会构建 face cache 和 worker，可能需要几十秒；后续会复用缓存。
@@ -298,7 +302,7 @@ bash scripts/start_unified.sh --backend local --model quicktalk
 
 WebUI 的“形象库”支持从本地上传参考图创建自定义形象。进入页面后点击 **从本地上传新形象**，填写名称并上传正脸或半身参考图，系统会基于当前选择的形象生成一个可删除的自定义形象。
 
-选中 `QuickTalk` 作为驱动模型，再上传自己的参考图，给数字人命名，产生一个新的形象。随后可以按照需要在左侧调整音色等，最后点击开始对话即可。
+选中 `QuickTalk` 作为驱动模型，再上传自己的参考图，给数字人命名，产生一个新的形象。随后可以按照需要在左侧调整音色等，最后点击开始对话即可（下图是一个gif演示，可能加载较慢）。
 
 ![OpenTalking 自定义上传数字人](https://github.com/user-attachments/assets/491b84b6-4b5c-4b5c-b886-27ea3cc68320)
 
@@ -314,8 +318,6 @@ WebUI 的“形象库”支持从本地上传参考图创建自定义形象。�
 | `OPENTALKING_QUICKTALK_RESOLUTION` | `256` | 降低可减少显存和推理压力 |
 | `OPENTALKING_QUICKTALK_HUBERT_DEVICE` | 留空或 `cuda:1` | 多卡时可把 HuBERT 放到另一张卡 |
 | `OPENTALKING_PREWARM_AVATARS` | `quicktalk-local` | 服务启动时提前预热 avatar |
-
-想在初阶阶段部署 Wav2Lip / MuseTalk 时，先看 [Wav2Lip](docs/zh/model-deployment/talking-head.md#wav2lip) 和 [MuseTalk](docs/zh/model-deployment/talking-head.md#musetalk)，里面包含对应的模型部署和参数调优指南。
 
 ### 高阶：远端高质量推理
 
@@ -344,19 +346,20 @@ bash scripts/start_unified.sh \
 | 阶段 | 推荐模型 | 启动方式 | 结果 |
 | --- | --- | --- | --- |
 | 快速上手 | `mock` | `bash scripts/start_unified.sh --mock` | 验证 API、LLM、TTS、WebRTC |
-| 初阶单机 | `quicktalk` | `bash scripts/start_unified.sh --backend local --model quicktalk` | 消费级显卡真实视频渲染 |
+| 初阶1 | `quicktalk` | `bash scripts/start_unified.sh --backend local --model quicktalk` | 消费级显卡真实视频渲染 |
+| 初阶2 | `wav2lip` | `bash scripts/start_unified.sh --backend local --model wav2lip` | 轻量口型同步和自定义形象验证 |
 | 高阶远端 | `flashtalk` | `bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt ...` | 高质量、多卡、生产部署 |
 
 ## 模型支持
 
-| 模型 | 输入 | 推荐 backend | 资源建议 | 当前定位 |
-| --- | --- | --- | --- | --- |
-| `mock` | 参考图 / 静态帧 | `mock` | 不需要 GPU | 首次体验和联调 |
-| `quicktalk` | template video + audio | `local` | CUDA GPU，推荐 3090 / 4090 | 初阶消费级卡路线 |
-| `wav2lip` | frames + audio | `omnirt` / `local` | `>= 8 GB` GPU / NPU memory | 快速口型同步 |
-| `musetalk` | full frames + audio | `omnirt` / `local` | `>= 12 GB` GPU memory | 轻量全帧 talking-head |
-| `soulx-flashtalk-14b` | portrait + audio | `omnirt` | 多卡 GPU / NPU | 高阶高质量生成 |
-| `soulx-flashhead-1.3b` | portrait + audio | `omnirt` | 多卡 GPU / NPU | 高质量实时头像驱动 |
+| 模型 | 输入 | 推荐 backend | 资源建议 |
+| --- | --- | --- | --- |
+| `mock` | 参考图 / 静态帧 | `mock` | 不需要 GPU |
+| `quicktalk` | template video + audio | `local` | CUDA GPU，推荐 3090 / 4090 |
+| `wav2lip` | 参考图 / frames + audio | `local` / `omnirt` | `>= 8 GB` GPU / NPU memory |
+| `musetalk` | full frames + audio | `omnirt` / `local` | `>= 12 GB` GPU memory |
+| `soulx-flashtalk-14b` | portrait + audio | `omnirt` | 多卡 GPU / NPU |
+| `soulx-flashhead-1.3b` | portrait + audio | `omnirt` | 多卡 GPU / NPU |
 
 ### 消费级显卡参考
 
@@ -389,8 +392,8 @@ bash scripts/start_unified.sh \
 
 ### 已完成进展
 
-- **2026-05-15：QuickTalk 统一接入**
-  QuickTalk 已进入 OpenTalking 模型列表，可通过统一 audio2video 路径接入。
+- **2026-05-17：QuickTalk 接入**
+  QuickTalk / Wav2Lip 新增更便捷使用方式，可通过 Opentalking 直接拉起推理进行数字人生成。
 
 - **2026-05-15：MuseTalk WebRTC 播放优化**
   增加 MuseTalk 媒体 backpressure，提升 WebRTC 播放稳定性。

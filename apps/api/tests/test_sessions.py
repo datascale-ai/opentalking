@@ -175,7 +175,7 @@ def test_create_session_avatar_model_decoupled_within_supported(unified_client: 
 def test_create_session_rejects_unconnected_model() -> None:
     """Picking a model not connected on this deployment yields 400 with a clear hint."""
     with TestClient(unified_main.create_app()) as client:
-        for unsupported in ("musetalk", "wav2lip"):
+        for unsupported in ("musetalk",):
             response = client.post(
                 "/sessions",
                 json={"avatar_id": "anchor", "model": unsupported},
@@ -186,7 +186,7 @@ def test_create_session_rejects_unconnected_model() -> None:
             assert "not yet supported" in detail
 
 
-def test_create_session_rejects_local_model_with_missing_adapter(
+def test_create_session_accepts_local_wav2lip_adapter(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -200,6 +200,16 @@ models:
         encoding="utf-8",
     )
     monkeypatch.setenv("OPENTALKING_CONFIG_FILE", str(config_file))
+    monkeypatch.setattr(
+        "opentalking.models.wav2lip.adapter.Wav2LipAdapter.runtime_available",
+        staticmethod(lambda: True),
+    )
+
+    def fake_create_runner(task, redis, avatars_root: Path, device: str) -> FakeRunner:
+        del avatars_root, device
+        return FakeRunner(session_id=str(task["session_id"]), redis=redis)
+
+    monkeypatch.setattr(task_consumer, "_create_runner", fake_create_runner)
     clear_model_config_cache()
 
     with TestClient(unified_main.create_app()) as client:
@@ -208,10 +218,8 @@ models:
             json={"avatar_id": "anchor", "model": "wav2lip"},
         )
 
-    assert response.status_code == 400, response.json()
-    detail = response.json()["detail"]
-    assert "wav2lip" in detail
-    assert "not yet supported" in detail
+    assert response.status_code == 200, response.json()
+    assert response.json()["status"] in {"created", "initializing"}
     clear_model_config_cache()
 
 

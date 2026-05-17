@@ -32,7 +32,7 @@
 | 模型 | backend 选择 | 仓库默认值 | 验证级别 | 推荐硬件路径 | 当前建议 |
 |------|--------------|------------|----------|--------------|----------|
 | `mock` | `mock` | `mock` | 已内置，已验证 | CPU | 最快的全链路自测路径，不需要模型权重。 |
-| `wav2lip` | `omnirt`、`local`、`direct_ws` | 为兼容默认 `omnirt` | OmniRT 路径已验证；local 路径规划中 | 单 GPU 或 Ascend 910B | 最推荐的第一个真实模型。方向上应 local-first，但当前可直接跑通的是 OmniRT。 |
+| `wav2lip` | `local`、`omnirt`、`direct_ws` | `local` | local adapter 已内置并有测试覆盖；OmniRT 兼容路径已文档化 | CPU 可跑；OmniRT 兼容路径用单 GPU 或 Ascend 910B | 最推荐的第一个轻量 talking-head 验证路径。 |
 | `musetalk` | `omnirt`、`direct_ws`、`local` | `omnirt` | 已文档化；local adapter 缺失 | 单 GPU 或远端模型服务 | 框架已就位，但仓库内未附带本地 runtime。 |
 | `quicktalk` | `omnirt` | `omnirt` | 已文档化，已验证 | CUDA GPU | 通过 OmniRT `/v1/audio2video/quicktalk` 暴露实时 audio2video 服务。 |
 | `fasterliveportrait` | `omnirt` | `omnirt` | 已文档化 | 单张 CUDA GPU + TensorRT | 通过 OmniRT `/v1/audio2video/fasterliveportrait` 提供 JoyVASA 音频驱动和 FasterLivePortrait 贴回渲染。 |
@@ -44,7 +44,7 @@
 | Backend | OpenTalking 期望什么 | 何时视为 connected | 典型模型 |
 |---------|----------------------|--------------------|----------|
 | `mock` | 无外部 runtime | 始终可用 | `mock` |
-| `local` | 进程内 adapter/runtime | adapter 可 import 且依赖满足 | 未来的本地 Wav2Lip / MuseTalk |
+| `local` | 进程内 adapter/runtime | adapter 可 import 且依赖满足 | `wav2lip`、`quicktalk`，未来的本地 MuseTalk |
 | `direct_ws` | 模型自带远端服务 | 已配置模型专属 WebSocket URL | `flashhead`、自定义单模型服务 |
 | `omnirt` | OmniRT `/v1/audio2video/{model}` | OmniRT 可达且返回该模型 | `wav2lip`、`musetalk`、`quicktalk`、`fasterliveportrait`、`flashtalk` |
 
@@ -53,7 +53,8 @@
 | 路径 | 仓库中的证据 |
 |------|--------------|
 | `mock` | quickstart 与 `/models` 示例都覆盖了完整自测路径。 |
-| `wav2lip + omnirt` | 有启动脚本、`/models` 状态语义，以及 README 中 3090 / Ascend 910B 的 benchmark 与连通性示例。 |
+| `wav2lip + local` | 内置 adapter 注册、`/models` `reason=local_runtime` 和本地渲染测试覆盖。 |
+| `wav2lip + omnirt` | 保留启动脚本和 `/models` 状态语义，适合 checkpoint-backed 兼容路径。 |
 | `quicktalk + omnirt` | Talking-head 文档覆盖权重下载、OmniRT 启动脚本、`/v1/audio2video/quicktalk` 和 `/models` 连通性验证。 |
 | `fasterliveportrait + omnirt` | FasterLivePortrait 文档覆盖 JoyVASA/chinese-hubert-base checkpoint、TensorRT 启动、`/v1/audio2video/fasterliveportrait`、前端参数和热更新。 |
 | `flashtalk + omnirt` | 有启动脚本、legacy fallback 说明，以及 README 中 Ascend 910B2 x8 的验证记录。 |
@@ -62,7 +63,7 @@
 ## 推荐起步路径
 
 1. 先用 `mock` 验证浏览器、API、LLM、STT、TTS 和 WebRTC。
-2. 想接入最轻量的真实 talking-head，先用 `wav2lip`。
+2. 想接入最轻量的 talking-head 验证，先用本地 `wav2lip`。
 3. 想验证实时 audio2video 且可使用 CUDA 时，选 `quicktalk`。
 4. 想在单张 CUDA GPU 上做实时音频驱动头像贴回时，选 `fasterliveportrait`。
 5. 质量优先、可接受部署重量时，选 `flashtalk`。
