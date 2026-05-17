@@ -349,6 +349,10 @@ class Settings(BaseSettings):
             return "auto"
         return provider or "edge"
 
+    @property
+    def normalized_flashtalk_mode(self) -> str:
+        return "flashtalk"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

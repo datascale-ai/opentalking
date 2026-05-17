@@ -33,6 +33,13 @@ def test_ws_endpoint_passthrough():
     )
 
 
+def test_fasterliveportrait_model_url():
+    assert (
+        derive_audio2video_ws_url("http://omnirt:9000", "fasterliveportrait")
+        == "ws://omnirt:9000/v1/audio2video/fasterliveportrait"
+    )
+
+
 def test_endpoint_with_basepath_preserved():
     assert (
         derive_audio2video_ws_url("http://gw.example.com/omnirt/", "flashtalk")

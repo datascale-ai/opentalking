@@ -5,7 +5,7 @@ import inspect
 import json
 import time
 import uuid
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Mapping
 from typing import Any
 
 import redis.asyncio as redis
@@ -33,6 +33,7 @@ async def create_session(
     llm_system_prompt: str | None = None,
     custom_ref_image_path: str | None = None,
     wav2lip_postprocess_mode: str | None = None,
+    fasterliveportrait_config: Mapping[str, object] | None = None,
 ) -> str:
     sid = f"sess_{uuid.uuid4().hex[:12]}"
     data = {
@@ -51,6 +52,8 @@ async def create_session(
         data["custom_ref_image_path"] = custom_ref_image_path
     if wav2lip_postprocess_mode:
         data["wav2lip_postprocess_mode"] = wav2lip_postprocess_mode
+    if fasterliveportrait_config:
+        data["fasterliveportrait_config"] = json.dumps(fasterliveportrait_config, ensure_ascii=False)
     await _await_result(r.hset(session_key(sid), mapping=data))
     init_task: dict[str, Any] = {
         "cmd": "init",
@@ -68,6 +71,8 @@ async def create_session(
         init_task["custom_ref_image_path"] = custom_ref_image_path
     if wav2lip_postprocess_mode:
         init_task["wav2lip_postprocess_mode"] = wav2lip_postprocess_mode
+    if fasterliveportrait_config:
+        init_task["fasterliveportrait_config"] = dict(fasterliveportrait_config)
     await _push_task(
         r,
         init_task,
@@ -81,6 +86,21 @@ async def get_session(r: redis.Redis, sid: str) -> dict[str, str] | None:
 
 async def update_session_state(r: redis.Redis, sid: str, state: str) -> None:
     await set_session_state(r, sid, state)
+
+
+async def update_fasterliveportrait_config(
+    r: redis.Redis,
+    sid: str,
+    config: Mapping[str, object],
+) -> None:
+    await _push_task(
+        r,
+        {
+            "cmd": "update_fasterliveportrait_config",
+            "session_id": sid,
+            "fasterliveportrait_config": dict(config),
+        },
+    )
 
 
 async def enqueue_flashtalk_offline_bundle(

@@ -12,6 +12,7 @@ inference throughput belong to the selected backend.
 | `wav2lip` | `omnirt`; target local-first | First real lip-sync model | OmniRT path verified | [Wav2Lip](wav2lip.md) |
 | `musetalk` | `omnirt` / `direct_ws` / future `local` | Existing MuseTalk service or future local adapter | Documented | [MuseTalk](musetalk.md) |
 | `quicktalk` | `local` | Local realtime adapter and development reference | Built in, verified | [QuickTalk](quicktalk.md) |
+| `fasterliveportrait` | `omnirt` | Single-GPU realtime audio-driven portrait with pasteback | Documented | [FasterLivePortrait](fasterliveportrait.md) |
 | `flashtalk` | `omnirt` | High-quality private GPU/NPU deployment | OmniRT/Ascend path verified | [FlashTalk](flashtalk.md) |
 | `flashhead` | `direct_ws` | Existing standalone FlashHead service | Documented | [FlashHead](flashhead.md) |
 
@@ -22,13 +23,16 @@ inference throughput belong to the selected backend.
 | `mock` | No external runtime; always available. | `mock` |
 | `local` | Adapter can be imported in-process and dependencies are satisfied. | `quicktalk`, future local Wav2Lip/MuseTalk |
 | `direct_ws` | The model service exposes its own WebSocket URL. | `flashhead`, custom single-model services |
-| `omnirt` | OmniRT exposes `/v1/audio2video/{model}`. | `wav2lip`, `musetalk`, `flashtalk` |
+| `omnirt` | OmniRT exposes `/v1/audio2video/{model}`. | `wav2lip`, `musetalk`, `fasterliveportrait`, `flashtalk` |
 
 ## Common Setup
 
 ```bash title="Terminal"
 export DIGITAL_HUMAN_HOME="$HOME/digital-human"
 export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
+export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
 
 mkdir -p "$DIGITAL_HUMAN_HOME" "$OMNIRT_MODEL_ROOT"
 cd "$DIGITAL_HUMAN_HOME"
@@ -44,7 +48,8 @@ $DIGITAL_HUMAN_HOME/
 │   ├── wav2lip/
 │   ├── SoulX-FlashTalk-14B/
 │   ├── chinese-wav2vec2-base/
-│   └── quicktalk/
+│   ├── quicktalk/
+│   └── FasterLivePortrait/
 ├── logs/
 └── run/
 ```
@@ -80,5 +85,5 @@ curl -fsS http://127.0.0.1:9000/v1/audio2video/models | jq
 |--------|---------|--------|
 | `connected=true` | The backend is usable for sessions. | Choose a matching avatar and model in the browser. |
 | `reason=not_configured` | Endpoint or WebSocket URL is empty. | Configure `OMNIRT_ENDPOINT` or the model-specific `WS_URL`. |
-| `reason=omnirt_unavailable` | OmniRT reachability or model registration issue. | Check OmniRT `/health`, model list, and logs. |
+| `reason=omnirt_unavailable` | OmniRT reachability or model registration issue. | Check OmniRT `/v1/audio2video/models`, model list, and logs. |
 | `reason=local_adapter_missing` | Configured as `local`, but no local adapter is registered. | Switch backend or add a local adapter. |

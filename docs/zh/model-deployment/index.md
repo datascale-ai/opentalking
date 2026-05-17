@@ -44,6 +44,7 @@ flowchart LR
 | 第一个真实唇形模型 | [Wav2Lip](wav2lip.md) |
 | 已有 MuseTalk runtime | [MuseTalk](musetalk.md) |
 | 本地实时 adapter | [QuickTalk](quicktalk.md) |
+| 单卡实时头像贴回链路 | [FasterLivePortrait](fasterliveportrait.md) |
 | 高质量重模型 | [FlashTalk](flashtalk.md) |
 | 独立 FlashHead 服务 | [FlashHead](flashhead.md) |
 

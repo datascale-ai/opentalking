@@ -13,6 +13,7 @@ def test_list_models() -> None:
     assert "wav2lip" in keys
     assert "musetalk" in keys
     assert "flashtalk" in keys
+    assert "fasterliveportrait" in keys
     assert "flashhead" in keys
     assert "quicktalk" in opentalking.models.list_models()
 

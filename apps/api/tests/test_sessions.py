@@ -35,6 +35,10 @@ def test_normalize_voice_for_speak_accepts_elevenlabs_voice_id() -> None:
     assert model is None
 
 
+def test_fasterliveportrait_is_flashtalk_compatible_for_audio_upload() -> None:
+    assert sessions_routes._is_flashtalk_compatible_model("fasterliveportrait") is True
+
+
 class FakeRunner:
     def __init__(self, *, session_id: str, redis) -> None:
         self.session_id = session_id
@@ -46,6 +50,7 @@ class FakeRunner:
         self.started_texts: list[str] = []
         self.finished_texts: list[str] = []
         self.cancelled_texts: list[str] = []
+        self.fasterliveportrait_config_updates: list[dict[str, float]] = []
         self.speaking_started = asyncio.Event()
         self.allow_finish = asyncio.Event()
 
@@ -91,6 +96,10 @@ class FakeRunner:
             await asyncio.gather(*tasks, return_exceptions=True)
         if not self._closed:
             await set_session_state(self.redis, self.session_id, "ready")
+
+    async def update_fasterliveportrait_runtime_config(self, config: dict[str, float]) -> dict[str, object]:
+        self.fasterliveportrait_config_updates.append(config)
+        return {"type": "config_ok", "updated": config}
 
     async def close(self) -> None:
         self._closed = True
@@ -213,6 +222,102 @@ def test_chat_endpoint_removed_from_unified_sessions() -> None:
     }
 
     assert "/sessions/{session_id}/chat" not in route_paths
+
+
+def test_create_session_passes_fasterliveportrait_config_to_task(
+    monkeypatch: pytest.MonkeyPatch,
+    unified_client: TestClient,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def fake_create_session(*_args: object, **kwargs: object) -> str:
+        calls.append(kwargs)
+        return "sess_fasterliveportrait_config"
+
+    monkeypatch.setattr(sessions_routes.session_service, "create_session", fake_create_session)
+
+    async def fake_connected_model_ids(_settings: object) -> set[str]:
+        return {"fasterliveportrait"}
+
+    monkeypatch.setattr(
+        "opentalking.providers.synthesis.availability.connected_model_ids",
+        fake_connected_model_ids,
+    )
+    monkeypatch.setattr(task_consumer, "slot_is_occupied", lambda: True)
+
+    response = unified_client.post(
+        "/sessions",
+        json={
+            "avatar_id": "singer",
+            "model": "fasterliveportrait",
+            "fasterliveportrait_config": {
+                "mouth_open_multiplier": 1.8,
+                "pose_motion_multiplier": 0.2,
+                "yaw_multiplier": 0.7,
+                "animation_region": "all",
+                "width": 999,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls[0]["fasterliveportrait_config"] == {
+        "mouth_open_multiplier": 1.8,
+        "pose_motion_multiplier": 0.2,
+        "yaw_multiplier": 0.7,
+        "animation_region": "all",
+    }
+
+
+def test_update_fasterliveportrait_config_for_active_session(
+    unified_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_connected_model_ids(_settings: object) -> set[str]:
+        return {"fasterliveportrait"}
+
+    monkeypatch.setattr(
+        "opentalking.providers.synthesis.availability.connected_model_ids",
+        fake_connected_model_ids,
+    )
+
+    create_response = unified_client.post(
+        "/sessions",
+        json={"avatar_id": "singer", "model": "fasterliveportrait"},
+    )
+    session_id = create_response.json()["session_id"]
+
+    response = unified_client.post(
+        f"/sessions/{session_id}/fasterliveportrait-config",
+        json={
+            "mouth_open_multiplier": 1.7,
+            "pose_motion_multiplier": 0.2,
+            "yaw_multiplier": 0.75,
+            "animation_region": "lip",
+            "width": 999,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": session_id,
+        "status": "updated",
+        "updated": {
+            "mouth_open_multiplier": 1.7,
+            "pose_motion_multiplier": 0.2,
+            "yaw_multiplier": 0.75,
+            "animation_region": "lip",
+        },
+    }
+    runner = unified_client.created_runners[session_id]  # type: ignore[attr-defined]
+    assert runner.fasterliveportrait_config_updates == [
+        {
+            "mouth_open_multiplier": 1.7,
+            "pose_motion_multiplier": 0.2,
+            "yaw_multiplier": 0.75,
+            "animation_region": "lip",
+        }
+    ]
 
 
 @pytest.mark.parametrize("tts_provider", ["dashscope", "cosyvoice", "sambert"])

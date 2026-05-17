@@ -6,6 +6,7 @@ FlashTalkSessionRunner – drives the full conversation pipeline:
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -21,7 +22,14 @@ from opentalking.avatar.wav2lip_config import (
     optional_wav2lip_postprocess_mode,
     read_manifest_preferred_wav2lip_postprocess_mode,
 )
+from opentalking.avatar.fasterliveportrait_config import (
+    normalize_fasterliveportrait_runtime_config,
+)
 from opentalking.core.config import get_settings
+from opentalking.core.session_store import (
+    FLASHTALK_DISK_RECORDING_FIELD,
+    session_key,
+)
 from opentalking.providers.synthesis.flashtalk.idle_generator import IdleVideoGenerator
 from opentalking.core.session_store import set_session_state
 from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
@@ -179,10 +187,14 @@ async def _synthesize_tts_opener_pcm(
         return np.array(pcm, copy=True), False
 
 
-async def _preload_tts_openers(sample_rate: int) -> None:
+async def _preload_tts_openers(sample_rate: int, default_voice: str | None = None) -> None:
     for _, opener_text in _iter_tts_opener_variants():
         try:
-            await _synthesize_tts_opener_pcm(opener_text, sample_rate=sample_rate)
+            await _synthesize_tts_opener_pcm(
+                opener_text,
+                sample_rate=sample_rate,
+                default_voice=default_voice,
+            )
         except Exception:
             log.warning("Failed to preload TTS opener %r", opener_text, exc_info=True)
 
@@ -206,11 +218,15 @@ class FlashTalkRunner:
         system_prompt: str = "你是一个友好的数字人助手，请用简洁的语言回答问题。",
         model_type: str = "flashtalk",
         wav2lip_postprocess_mode: str | None = None,
+        fasterliveportrait_config: dict[str, object] | None = None,
     ) -> None:
         self.session_id = session_id
         self.avatar_id = avatar_id
         self.model_type = model_type
         self._wav2lip_postprocess_mode_override = optional_wav2lip_postprocess_mode(wav2lip_postprocess_mode)
+        self._fasterliveportrait_config_override = normalize_fasterliveportrait_runtime_config(
+            fasterliveportrait_config
+        )
         self.avatars_root = avatars_root
         self.redis = redis
         self._flashtalk_ws_url = flashtalk_ws_url or _default_flashtalk_ws_url()
@@ -267,6 +283,10 @@ class FlashTalkRunner:
         self._speech_media_active = False
         #: Background dynamic idle cache (closes main WS briefly); speak() must await this.
         self._dynamic_idle_prepare_task: asyncio.Task[None] | None = None
+        self._recording_frame_index = 0
+        self._debug_frame_trace = os.environ.get("OPENTALKING_RTC_DEBUG_FRAMES", "").strip().lower() in {"1", "true", "yes", "on"}
+        self._debug_queued_video_count = 0
+        self._debug_prev_video_mean: float | None = None
 
     def _wav2lip_mouth_metadata(self) -> dict[str, Any] | None:
         if self.model_type != "wav2lip":
@@ -332,6 +352,11 @@ class FlashTalkRunner:
             default=default,
         )
 
+    @staticmethod
+    def _even_video_dim(value: int) -> int:
+        value = max(2, int(value))
+        return value + (value % 2)
+
     def _manifest_video_config(self, *, model_type: str) -> dict[str, int] | None:
         if self.model_type != model_type:
             return None
@@ -341,7 +366,12 @@ class FlashTalkRunner:
         try:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
         except Exception:
-            log.warning("Failed to read %s avatar video config: %s", model_type, manifest_path, exc_info=True)
+            log.warning(
+                "Failed to read %s avatar video config: %s",
+                model_type,
+                manifest_path,
+                exc_info=True,
+            )
             return None
         out: dict[str, int] = {}
         for key in ("width", "height", "fps"):
@@ -352,6 +382,129 @@ class FlashTalkRunner:
             if value > 0:
                 out[key] = value
         return out or None
+
+    def _fasterliveportrait_video_config(
+        self,
+        ref_image_path: Path | None = None,
+    ) -> dict[str, Any] | None:
+        if self.model_type != "fasterliveportrait":
+            return None
+        try:
+            from opentalking.core.model_config import get_model_config
+
+            config = get_model_config("fasterliveportrait")
+        except Exception:
+            log.warning("Failed to load fasterliveportrait config", exc_info=True)
+            return None
+        out: dict[str, Any] = {}
+        for key in (
+            "width",
+            "height",
+            "fps",
+            "chunk_samples",
+            "emit_frames_per_chunk",
+            "render_keyframes_per_chunk",
+            "disable_frame_interpolation",
+            "head_motion_multiplier",
+            "pose_motion_multiplier",
+            "yaw_multiplier",
+            "pitch_multiplier",
+            "roll_multiplier",
+            "animation_region",
+            "expression_multiplier",
+            "mouth_open_multiplier",
+            "mouth_corner_multiplier",
+            "cheek_jaw_multiplier",
+            "driving_multiplier",
+            "cfg_scale",
+            "cfg_cond",
+            "flag_stitching",
+            "flag_normalize_lip",
+            "flag_relative_motion",
+            "flag_lip_retargeting",
+            "lip_retargeting_multiplier",
+            "lip_retargeting_min",
+            "lip_retargeting_max",
+            "lip_retargeting_noise_floor",
+            "head_only_pasteback",
+            "lookahead_ms",
+        ):
+            value = config.get(key)
+            if value is not None:
+                out[key] = value
+        out.update(getattr(self, "_fasterliveportrait_config_override", {}) or {})
+        if out.get("flag_stitching"):
+            image_path = ref_image_path or self._ref_image_path
+            if image_path is not None and image_path.exists():
+                try:
+                    from PIL import Image
+
+                    with Image.open(image_path) as image:
+                        image_w, image_h = image.size
+                    target_w = self._even_video_dim(int(out.get("width") or 512))
+                    if image_w > 0 and image_h > 0:
+                        out["width"] = target_w
+                        out["height"] = self._even_video_dim(
+                            round(target_w * image_h / image_w)
+                        )
+                except Exception:
+                    log.warning(
+                        "Failed to preserve fasterliveportrait reference aspect ratio: %s",
+                        image_path,
+                        exc_info=True,
+                    )
+        return out or None
+
+    async def update_fasterliveportrait_runtime_config(
+        self,
+        config: dict[str, object],
+    ) -> dict[str, object]:
+        if self.model_type != "fasterliveportrait":
+            raise RuntimeError("session is not fasterliveportrait")
+        normalized = normalize_fasterliveportrait_runtime_config(config)
+        if not normalized:
+            return {"type": "config_ok", "updated": {}}
+        async with self._generate_lock:
+            update = getattr(self.flashtalk, "update_runtime_config", None)
+            if callable(update):
+                response = await update(normalized)
+                self._fasterliveportrait_config_override.update(normalized)
+                return response
+        self._fasterliveportrait_config_override.update(normalized)
+        return {"type": "config_ok", "updated": normalized}
+
+    def _fasterliveportrait_ref_image_payload(
+        self,
+        ref_image_path: Path,
+        video_config: dict[str, Any] | None,
+    ) -> bytes | Path:
+        if self.model_type != "fasterliveportrait" or not video_config:
+            return ref_image_path
+        try:
+            target_w = int(video_config.get("width") or 0)
+            target_h = int(video_config.get("height") or 0)
+        except (TypeError, ValueError):
+            return ref_image_path
+        if target_w <= 0 or target_h <= 0:
+            return ref_image_path
+        try:
+            from PIL import Image
+            from opentalking.media.frame_avatar import resize_reference_image_to_video
+
+            with Image.open(ref_image_path) as image:
+                resized = resize_reference_image_to_video(
+                    image.convert("RGB"), width=target_w, height=target_h
+                )
+            buffer = io.BytesIO()
+            resized.save(buffer, format="PNG")
+            return buffer.getvalue()
+        except Exception:
+            log.warning(
+                "Failed to resize fasterliveportrait reference payload: %s",
+                ref_image_path,
+                exc_info=True,
+            )
+            return ref_image_path
 
     def _wav2lip_video_config(self) -> dict[str, int] | None:
         return self._manifest_video_config(model_type="wav2lip")
@@ -601,6 +754,14 @@ class FlashTalkRunner:
                     len(idle_frames),
                 )
 
+        if self.model_type == "fasterliveportrait" and self._reference_frame is not None:
+            self._set_idle_frames(self._build_fasterliveportrait_idle_frames(self._reference_frame))
+            log.info(
+                "Built fasterliveportrait local idle frames: avatar=%s frames=%d",
+                self.avatar_id,
+                len(self._idle_frames),
+            )
+
         # Start idle loop after init; it replays local cached frames when WebRTC is live.
         if self._idle_task is None:
             self._idle_task = asyncio.create_task(self._idle_loop())
@@ -624,12 +785,14 @@ class FlashTalkRunner:
             asyncio.create_task(self._prepare_idle_cache_background(ref_image_path))
 
         global _TTS_OPENER_PRELOAD_TASK
-        s = get_settings()
-        if s.flashtalk_tts_opener_enable and s.flashtalk_tts_opener_preload:
+        if self._tts_opener_enabled_for_model() and self._tts_opener_preload_enabled_for_model():
             task = _TTS_OPENER_PRELOAD_TASK
             if task is None or task.done():
                 _TTS_OPENER_PRELOAD_TASK = asyncio.create_task(
-                    _preload_tts_openers(sample_rate=16000)
+                    _preload_tts_openers(
+                        sample_rate=16000,
+                        default_voice=self._tts_opener_preload_voice(),
+                    )
                 )
             self._tts_opener_warm_task = _TTS_OPENER_PRELOAD_TASK
 
@@ -727,6 +890,9 @@ class FlashTalkRunner:
         fps = float(self.flashtalk.fps) if self.flashtalk.fps else 25.0
         interval = 1.0 / fps
         while not self._closed:
+            if self.model_type == "fasterliveportrait":
+                await asyncio.sleep(interval)
+                continue
             if (
                 (self._speaking and self._speech_media_active)
                 or not self.webrtc
@@ -861,6 +1027,9 @@ class FlashTalkRunner:
                 continue
         return frames or None
 
+    def _build_fasterliveportrait_idle_frames(self, reference_frame: np.ndarray) -> list[np.ndarray]:
+        return [np.ascontiguousarray(reference_frame)]
+
     def _set_idle_frames(self, frames: list[np.ndarray]) -> None:
         self._idle_frames = frames
         playback_mode = os.environ.get("FLASHTALK_IDLE_CACHE_PLAYBACK", "pingpong").strip().lower()
@@ -935,11 +1104,12 @@ class FlashTalkRunner:
         await self._init_flashtalk_session(ref_image_path)
 
     async def _init_flashtalk_session(self, ref_image_path: Path) -> None:
+        video_config = self._fasterliveportrait_video_config(ref_image_path) or self._wav2lip_video_config()
         await self.flashtalk.init_session(
-            ref_image=ref_image_path,
+            ref_image=self._fasterliveportrait_ref_image_payload(ref_image_path, video_config),
             wav2lip_postprocess_mode=self._wav2lip_postprocess_mode(),
             mouth_metadata=self._wav2lip_mouth_metadata(),
-            video_config=self._wav2lip_video_config() or self._quicktalk_video_config(),
+            video_config=video_config or self._quicktalk_video_config(),
             reference_mode=self._wav2lip_reference_mode(),
             ref_frame_dir=self._wav2lip_reference_frame_dir(),
             ref_frame_metadata_path=self._wav2lip_reference_frame_metadata_path(),
@@ -966,11 +1136,12 @@ class FlashTalkRunner:
             ref_image_path = self.avatar_path() / "reference.png"
             if not ref_image_path.exists():
                 ref_image_path = self.avatar_path() / "reference.jpg"
+            video_config = self._fasterliveportrait_video_config(ref_image_path) or self._wav2lip_video_config()
             await temp_client.init_session(
-                ref_image=ref_image_path,
+                ref_image=self._fasterliveportrait_ref_image_payload(ref_image_path, video_config),
                 wav2lip_postprocess_mode=self._wav2lip_postprocess_mode(),
                 mouth_metadata=self._wav2lip_mouth_metadata(),
-                video_config=self._wav2lip_video_config(),
+                video_config=video_config,
             )
 
             chunk_samples = int(temp_client.audio_chunk_samples)
@@ -1067,6 +1238,43 @@ class FlashTalkRunner:
         if len(self._tts_opener_recent_ids) > max_history:
             self._tts_opener_recent_ids = self._tts_opener_recent_ids[-max_history:]
 
+    @staticmethod
+    def _legacy_bool_setting_declared(*names: str) -> bool:
+        if any(name in os.environ for name in names):
+            return True
+        try:
+            from dotenv import dotenv_values
+
+            values = dotenv_values(".env")
+        except Exception:
+            return False
+        return any(values.get(name) not in (None, "") for name in names)
+
+    def _tts_opener_enabled_for_model(self) -> bool:
+        settings = get_settings()
+        if self._legacy_bool_setting_declared(
+            "FLASHTALK_TTS_OPENER_ENABLE",
+            "OPENTALKING_FLASHTALK_TTS_OPENER_ENABLE",
+        ):
+            return bool(settings.flashtalk_tts_opener_enable)
+        if settings.flashtalk_tts_opener_enable:
+            return True
+        return self.model_type == "fasterliveportrait"
+
+    def _tts_opener_preload_enabled_for_model(self) -> bool:
+        settings = get_settings()
+        if self._legacy_bool_setting_declared(
+            "FLASHTALK_TTS_OPENER_PRELOAD",
+            "OPENTALKING_FLASHTALK_TTS_OPENER_PRELOAD",
+        ):
+            return bool(settings.flashtalk_tts_opener_preload)
+        if settings.flashtalk_tts_opener_preload:
+            return True
+        return self.model_type == "fasterliveportrait"
+
+    def _tts_opener_preload_voice(self) -> str | None:
+        return get_settings().tts_voice or None
+
     async def _select_tts_opener(
         self,
         user_text: str,
@@ -1076,7 +1284,7 @@ class FlashTalkRunner:
         default_voice: str | None = None,
     ) -> tuple[str, str, np.ndarray, bool, bool] | None:
         s = get_settings()
-        if not s.flashtalk_tts_opener_enable:
+        if not self._tts_opener_enabled_for_model():
             return None
 
         min_fill_ratio = min(
@@ -1178,6 +1386,30 @@ class FlashTalkRunner:
         await self._video_put_safe(frame)
         log.info("Initial WebRTC video frame queued: session=%s", self.session_id)
 
+    async def _queue_fasterliveportrait_rest_frame(self) -> None:
+        """Return FLP playback to the neutral reference frame after speech.
+
+        FasterLivePortrait does not run the generic idle loop, so without this
+        the browser holds the final generated frame. If the last phoneme is a
+        rounded vowel, that leaves the avatar stuck with puckered lips.
+        """
+        if self.model_type != "fasterliveportrait" or not self.webrtc:
+            return
+        if self.webrtc.draining or self._reference_frame is None:
+            return
+        from opentalking.core.types.frames import VideoFrameData
+
+        rest = np.ascontiguousarray(self._reference_frame.copy())
+        self._last_frame = rest.copy()
+        frame = VideoFrameData(
+            data=rest,
+            width=rest.shape[1],
+            height=rest.shape[0],
+            timestamp_ms=self._av_ts_ms,
+        )
+        await self._video_put_safe(frame)
+        log.info("FasterLivePortrait rest frame queued: session=%s", self.session_id)
+
     def _ensure_media_clock_started(self) -> None:
         if self.webrtc is None or self._media_clock_started:
             return
@@ -1218,6 +1450,49 @@ class FlashTalkRunner:
                 return 2
             return 3
         return max(1, int(getattr(get_settings(), "flashtalk_prebuffer_chunks", 1)))
+
+    def _playback_backpressure_config(self) -> tuple[int, int, float]:
+        if self.model_type != "fasterliveportrait":
+            return (0, 0, 0.0)
+        target = max(0, _env_int("FLP_PLAYBACK_TARGET_QUEUE_FRAMES", 8))
+        max_frames = max(target, _env_int("FLP_PLAYBACK_MAX_QUEUE_FRAMES", 24))
+        max_wait_ms = max(0.0, _env_float("FLP_PLAYBACK_MAX_WAIT_MS", 900.0))
+        return (target, max_frames, max_wait_ms)
+
+    async def _wait_for_playback_capacity(
+        self,
+        *,
+        n_frames: int,
+        first_media_this_speak: bool,
+    ) -> float:
+        """Keep FLP near real-time without dropping or inventing frames."""
+        if (
+            first_media_this_speak
+            or n_frames <= 0
+            or not self.webrtc
+            or self.webrtc.draining
+            or not self._speech_media_active
+            or not self._webrtc_started.is_set()
+        ):
+            return 0.0
+
+        target, max_frames, max_wait_ms = self._playback_backpressure_config()
+        if max_frames <= 0 or max_wait_ms <= 0:
+            return 0.0
+
+        vq = self.webrtc.video._queue.qsize()
+        if vq + n_frames <= max_frames:
+            return 0.0
+
+        deadline = time.perf_counter() + (max_wait_ms / 1000.0)
+        waited_ms = 0.0
+        while self.webrtc and not self._interrupt.is_set():
+            vq = self.webrtc.video._queue.qsize()
+            if vq <= target or time.perf_counter() >= deadline:
+                break
+            await asyncio.sleep(0.02)
+            waited_ms += 20.0
+        return waited_ms
 
     def create_speak_task(
         self,
@@ -1873,6 +2148,7 @@ class FlashTalkRunner:
                 t_parallel0 = time.perf_counter()
                 await asyncio.gather(_producer(), _consumer())
                 timing["parallel_total_ms"] = (time.perf_counter() - t_parallel0) * 1000.0
+                await self._queue_fasterliveportrait_rest_frame()
             except Exception as e:
                 log.exception("FlashTalk speak failed: session=%s", self.session_id)
                 await publish_event(
@@ -2135,6 +2411,7 @@ class FlashTalkRunner:
                 t_parallel0 = time.perf_counter()
                 await asyncio.gather(_producer(), _consumer())
                 timing["parallel_total_ms"] = (time.perf_counter() - t_parallel0) * 1000.0
+                await self._queue_fasterliveportrait_rest_frame()
             except Exception as e:
                 log.exception("FlashTalk speak_uploaded_pcm failed: session=%s", self.session_id)
                 await publish_event(
@@ -2348,6 +2625,9 @@ class FlashTalkRunner:
         ms = getattr(self, "_speak_milestones", None)
         eu = getattr(self, "_speak_enqueue_unix", None)
         first_media_this_speak = False
+        queue_t0 = time.perf_counter()
+        vq_before = self.webrtc.video._queue.qsize() if self.webrtc else -1
+        aq_before = self.webrtc.audio._queue.qsize() if self.webrtc else -1
         if (
             t0 is not None
             and isinstance(ms, dict)
@@ -2380,6 +2660,12 @@ class FlashTalkRunner:
             await self._audio_put_safe(arr)
             return
 
+        await self._append_recording_frames_if_enabled(frames)
+        playback_wait_ms = await self._wait_for_playback_capacity(
+            n_frames=n_frames,
+            first_media_this_speak=first_media_this_speak,
+        )
+
         sample_rate = max(1, int(getattr(self.flashtalk, "sample_rate", 16000) or 16000))
         default_frame_interval_ms = 1000.0 / max(1.0, float(getattr(self.flashtalk, "fps", 25) or 25))
         av_offset_ms = _env_float("AV_OFFSET_MS", 0.0)
@@ -2396,6 +2682,7 @@ class FlashTalkRunner:
                 else default_frame_interval_ms
             )
             frame.timestamp_ms = max(0.0, self._av_ts_ms + av_offset_ms)
+            self._trace_queued_video_frame(frame)
             await self._video_put_safe(frame)
             # Pair each frame with its proportional audio slice.
             # Use _audio_put_safe (20ms sub-chunks) for clean opus encoding,
@@ -2408,6 +2695,69 @@ class FlashTalkRunner:
         # Cache last frame for idle loop
         if frames:
             self._last_frame = frames[-1].data
+        queue_ms = (time.perf_counter() - queue_t0) * 1000.0
+        audio_ms = total_samples * 1000.0 / sample_rate if total_samples else 0.0
+        vq_after = self.webrtc.video._queue.qsize() if self.webrtc else -1
+        aq_after = self.webrtc.audio._queue.qsize() if self.webrtc else -1
+        log.info(
+            "FlashTalk queue AV chunk: session=%s model=%s frames=%d audio_ms=%.1f "
+            "queue_ms=%.1f playback_wait_ms=%.1f queue_fps=%.2f vq=%d->%d aq=%d->%d av_ts_ms=%.1f",
+            self.session_id,
+            self.model_type,
+            n_frames,
+            audio_ms,
+            queue_ms,
+            playback_wait_ms,
+            n_frames / max(queue_ms / 1000.0, 1e-6),
+            vq_before,
+            vq_after,
+            aq_before,
+            aq_after,
+            self._av_ts_ms,
+        )
+
+    async def _append_recording_frames_if_enabled(self, frames: list[Any]) -> None:
+        try:
+            recording = await self.redis.hget(
+                session_key(self.session_id),
+                FLASHTALK_DISK_RECORDING_FIELD,
+            )
+        except Exception:
+            log.exception("FlashTalk recording flag read failed: session=%s", self.session_id)
+            return
+        if str(recording or "").strip() != "1":
+            return
+        try:
+            from opentalking.pipeline.recording.recording import append_flashtalk_frames
+
+            self._recording_frame_index = append_flashtalk_frames(
+                self.session_id,
+                frames,
+                start_index=self._recording_frame_index,
+                fps=float(getattr(self.flashtalk, "fps", 25) or 25),
+            )
+        except Exception:
+            log.exception("FlashTalk recording append failed: session=%s", self.session_id)
+
+    def _trace_queued_video_frame(self, frame: Any) -> None:
+        if not self._debug_frame_trace:
+            return
+        data = getattr(frame, "data", frame)
+        arr = np.asarray(data)
+        mean = float(arr.mean()) if arr.size else 0.0
+        delta = 0.0 if self._debug_prev_video_mean is None else abs(mean - self._debug_prev_video_mean)
+        self._debug_prev_video_mean = mean
+        self._debug_queued_video_count += 1
+        if self._debug_queued_video_count <= 12 or self._debug_queued_video_count % 32 == 0:
+            log.info(
+                "RTC video queue: n=%d ts=%.1f vq=%d shape=%s mean=%.2f dmean=%.2f",
+                self._debug_queued_video_count,
+                float(getattr(frame, "timestamp_ms", 0.0) or 0.0),
+                self.webrtc.video._queue.qsize() if self.webrtc else -1,
+                tuple(arr.shape),
+                mean,
+                delta,
+            )
 
     async def interrupt(self) -> None:
         self._interrupt.set()

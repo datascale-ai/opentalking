@@ -29,7 +29,15 @@ def test_models_route_lists_all_models_with_connection_status_without_omnirt() -
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["models"] == ["mock", "flashtalk", "musetalk", "wav2lip", "flashhead", "quicktalk"]
+    assert payload["models"] == [
+        "mock",
+        "flashtalk",
+        "musetalk",
+        "wav2lip",
+        "fasterliveportrait",
+        "flashhead",
+        "quicktalk",
+    ]
     statuses = {item["id"]: item for item in payload["statuses"]}
     assert statuses["mock"]["backend"] == "mock"
     assert statuses["mock"]["connected"] is True
@@ -40,6 +48,8 @@ def test_models_route_lists_all_models_with_connection_status_without_omnirt() -
     assert statuses["musetalk"]["connected"] is False
     assert statuses["wav2lip"]["backend"] == "omnirt"
     assert statuses["wav2lip"]["connected"] is False
+    assert statuses["fasterliveportrait"]["backend"] == "omnirt"
+    assert statuses["fasterliveportrait"]["connected"] is False
     assert statuses["flashhead"]["backend"] == "direct_ws"
     assert statuses["flashhead"]["connected"] is False
     assert statuses["quicktalk"]["backend"] == "omnirt"
@@ -105,7 +115,7 @@ def test_omnirt_endpoint_defaults_to_audio2video_routes() -> None:
 
 async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypatch) -> None:
     async def fake_fetch(_settings) -> set[str]:
-        return {"flashtalk", "wav2lip", "quicktalk"}
+        return {"flashtalk", "wav2lip", "fasterliveportrait", "quicktalk"}
 
     monkeypatch.setattr(
         "opentalking.providers.synthesis.availability._fetch_omnirt_audio2video_models",
@@ -123,6 +133,8 @@ async def test_omnirt_status_takes_precedence_over_legacy_flashtalk_url(monkeypa
     assert statuses["flashtalk"].reason == "omnirt"
     assert statuses["wav2lip"].connected is True
     assert statuses["wav2lip"].reason == "omnirt"
+    assert statuses["fasterliveportrait"].connected is True
+    assert statuses["fasterliveportrait"].reason == "omnirt"
     assert statuses["quicktalk"].backend == "omnirt"
     assert statuses["quicktalk"].connected is True
     assert statuses["quicktalk"].reason == "omnirt"

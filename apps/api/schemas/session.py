@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +12,22 @@ class CreateSessionRequest(BaseModel):
     tts_voice: str | None = None
     llm_system_prompt: str | None = None
     wav2lip_postprocess_mode: str | None = None
+    fasterliveportrait_config: dict[str, Any] | None = None
+
+
+class FasterLivePortraitConfigRequest(BaseModel):
+    head_motion_multiplier: float | None = None
+    pose_motion_multiplier: float | None = None
+    yaw_multiplier: float | None = None
+    pitch_multiplier: float | None = None
+    roll_multiplier: float | None = None
+    expression_multiplier: float | None = None
+    mouth_open_multiplier: float | None = None
+    mouth_corner_multiplier: float | None = None
+    cheek_jaw_multiplier: float | None = None
+    driving_multiplier: float | None = None
+    cfg_scale: float | None = None
+    animation_region: str | None = None
 
 
 class CreateSessionResponse(BaseModel):

@@ -62,6 +62,8 @@ models:
     backend: omnirt
     frame_num: 33
     sample_steps: 2
+  fasterliveportrait:
+    backend: omnirt
   flashhead:
     backend: direct_ws
   quicktalk:

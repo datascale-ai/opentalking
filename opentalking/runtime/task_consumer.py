@@ -138,9 +138,9 @@ def _create_runner(
                 # Prebuild client so we can pass auth headers; FlashTalkRunner
                 # accepts a ready-made client and will use it instead of a URL.
                 flashtalk_client = FlashTalkWSClient(flashtalk_ws_url, extra_headers=headers)
-            # Preserve the user's chosen model name (flashtalk / musetalk / wav2lip).
-            # FlashTalkRunner only branches on model_type for FlashTalk-specific
-            # features (idle clip generation); musetalk / wav2lip just skip
+            # Preserve the user's chosen model name (flashtalk / musetalk / wav2lip / fasterliveportrait).
+            # FlashTalkRunner only branches on model_type for model-specific
+            # features; musetalk / wav2lip / fasterliveportrait just skip
             # those features without breaking the speak pipeline.
             effective_model = model
 
@@ -159,6 +159,9 @@ def _create_runner(
             or "你是一个友好的数字人助手，请用简洁的语言回答问题。不要使用表情符号或emoji。",
             model_type=effective_model,
             wav2lip_postprocess_mode=str(task.get("wav2lip_postprocess_mode", "") or ""),
+            fasterliveportrait_config=task.get("fasterliveportrait_config")
+            if isinstance(task.get("fasterliveportrait_config"), dict)
+            else None,
         )
 
     return SessionRunner(
@@ -506,6 +509,16 @@ async def handle_worker_task(
             )
     elif cmd == "interrupt":
         await runner.interrupt()
+    elif cmd == "update_fasterliveportrait_config":
+        update_fn = getattr(runner, "update_fasterliveportrait_runtime_config", None)
+        if not callable(update_fn):
+            log.warning("update_fasterliveportrait_config unsupported runner session=%s", sid)
+            return
+        raw_config = task.get("fasterliveportrait_config")
+        if not isinstance(raw_config, dict):
+            log.warning("update_fasterliveportrait_config missing config session=%s", sid)
+            return
+        await update_fn(raw_config)
     elif cmd == "close":
         await runner.close()
         runners.pop(sid, None)

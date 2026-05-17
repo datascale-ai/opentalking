@@ -11,6 +11,7 @@
 | `wav2lip` | `omnirt`；目标 local-first | 第一个真实唇形模型 | OmniRT 路径已验证 | [Wav2Lip](wav2lip.md) |
 | `musetalk` | `omnirt` / `direct_ws` / 未来 `local` | 已有 MuseTalk 服务或后续本地 adapter | 已文档化 | [MuseTalk](musetalk.md) |
 | `quicktalk` | `local` | 本地实时 adapter 与开发参考 | 已内置，已验证 | [QuickTalk](quicktalk.md) |
+| `fasterliveportrait` | `omnirt` | 单卡实时音频驱动头像并贴回原始资产图 | 已文档化 | [FasterLivePortrait](fasterliveportrait.md) |
 | `flashtalk` | `omnirt` | 高质量私有化、GPU/NPU 重模型 | OmniRT/Ascend 路径已验证 | [FlashTalk](flashtalk.md) |
 | `flashhead` | `direct_ws` | 已有独立 FlashHead 服务 | 已文档化 | [FlashHead](flashhead.md) |
 
@@ -21,13 +22,16 @@
 | `mock` | 无外部 runtime，始终可用。 | `mock` |
 | `local` | 本进程可 import adapter，依赖满足。 | `quicktalk`，未来本地 Wav2Lip/MuseTalk |
 | `direct_ws` | 模型服务提供专属 WebSocket URL。 | `flashhead`、自定义单模型服务 |
-| `omnirt` | OmniRT 暴露 `/v1/audio2video/{model}`。 | `wav2lip`、`musetalk`、`flashtalk` |
+| `omnirt` | OmniRT 暴露 `/v1/audio2video/{model}`。 | `wav2lip`、`musetalk`、`fasterliveportrait`、`flashtalk` |
 
 ## 通用准备
 
 ```bash title="终端"
 export DIGITAL_HUMAN_HOME="$HOME/digital-human"
 export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
+export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
 
 mkdir -p "$DIGITAL_HUMAN_HOME" "$OMNIRT_MODEL_ROOT"
 cd "$DIGITAL_HUMAN_HOME"
@@ -43,7 +47,8 @@ $DIGITAL_HUMAN_HOME/
 │   ├── wav2lip/
 │   ├── SoulX-FlashTalk-14B/
 │   ├── chinese-wav2vec2-base/
-│   └── quicktalk/
+│   ├── quicktalk/
+│   └── FasterLivePortrait/
 ├── logs/
 └── run/
 ```
@@ -79,5 +84,5 @@ curl -fsS http://127.0.0.1:9000/v1/audio2video/models | jq
 |------|------|------|
 | `connected=true` | 当前 backend 已可用于会话。 | 进入浏览器选择匹配 avatar 和模型。 |
 | `reason=not_configured` | 端点或 WebSocket URL 为空。 | 配置 `OMNIRT_ENDPOINT` 或模型专属 `WS_URL`。 |
-| `reason=omnirt_unavailable` | OmniRT 可达性或模型注册异常。 | 查 OmniRT `/health`、模型列表和日志。 |
+| `reason=omnirt_unavailable` | OmniRT 可达性或模型注册异常。 | 查 OmniRT `/v1/audio2video/models`、模型列表和日志。 |
 | `reason=local_adapter_missing` | 配置为 `local`，但未注册本地 adapter。 | 切换 backend 或补本地 adapter。 |

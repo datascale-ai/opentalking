@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import fractions
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from aiortc.contrib.media import MediaBlackhole
 from av import AudioFrame, VideoFrame
 
 from opentalking.core.types.frames import VideoFrameData
+
+log = logging.getLogger(__name__)
 
 try:
     from aiortc.mediastreams import MediaStreamTrack
@@ -80,6 +83,9 @@ class _BufferedNumpyVideoTrack(MediaStreamTrack):
         self._prev_source_ts_ms: float | None = None
         self._next_pts_ms = 0
         self._shared_clock = shared_clock
+        self._debug_frames = os.environ.get("OPENTALKING_RTC_DEBUG_FRAMES", "").strip().lower() in {"1", "true", "yes", "on"}
+        self._debug_recv_count = 0
+        self._debug_prev_mean: float | None = None
 
     async def put(self, frame: VideoFrameData | None) -> None:
         await self._queue.put(frame)
@@ -114,6 +120,23 @@ class _BufferedNumpyVideoTrack(MediaStreamTrack):
         vf = VideoFrame.from_ndarray(item.data, format="bgr24")
         vf.pts = self._next_pts_ms
         vf.time_base = fractions.Fraction(1, 1000)
+        if self._debug_frames:
+            arr = np.asarray(item.data)
+            mean = float(arr.mean()) if arr.size else 0.0
+            delta = 0.0 if self._debug_prev_mean is None else abs(mean - self._debug_prev_mean)
+            self._debug_prev_mean = mean
+            self._debug_recv_count += 1
+            if self._debug_recv_count <= 12 or self._debug_recv_count % 32 == 0:
+                log.info(
+                    "RTC video recv: n=%d ts=%.1f pts=%d q=%d shape=%s mean=%.2f dmean=%.2f",
+                    self._debug_recv_count,
+                    frame_ts_ms,
+                    self._next_pts_ms,
+                    self._queue.qsize(),
+                    tuple(arr.shape),
+                    mean,
+                    delta,
+                )
 
         if self._prev_source_ts_ms is None:
             delta_ms = int(round(1000.0 / max(1.0, self._fps)))

@@ -23,6 +23,7 @@ from opentalking.avatar.loader import load_avatar_bundle
 from apps.api.schemas.session import (
     CreateSessionRequest,
     CreateSessionResponse,
+    FasterLivePortraitConfigRequest,
     SpeakRequest,
     WebRTCOfferRequest,
 )
@@ -34,6 +35,9 @@ from opentalking.core.redis_keys import offline_bundle_job_key
 from opentalking.core.session_store import (
     apply_flashtalk_recording_start,
     apply_flashtalk_recording_stop,
+)
+from opentalking.avatar.fasterliveportrait_config import (
+    normalize_fasterliveportrait_runtime_config,
 )
 from opentalking.providers.stt.dashscope.adapter import (
     decode_audio_file_to_pcm_i16,
@@ -63,7 +67,7 @@ _BAILIAN_TTS = BAILIAN_TTS_PROVIDERS
 
 
 def _is_flashtalk_compatible_model(model: str | None) -> bool:
-    return (model or "").strip().lower() in {"flashtalk", "flashhead"}
+    return (model or "").strip().lower() in {"flashtalk", "flashhead", "fasterliveportrait"}
 
 
 async def _await_result(value: Awaitable[Any] | Any) -> Any:
@@ -168,7 +172,7 @@ async def _flashtalk_disk_recording_control(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="FlashTalk 兼容录制仅支持 flashtalk/flashhead 模型会话",
+            detail="FlashTalk 兼容录制仅支持 flashtalk/flashhead/fasterliveportrait 模型会话",
         )
     status = "stopped" if stop else "recording"
 
@@ -273,6 +277,14 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         tts_provider = normalize_tts_provider(body.tts_provider, default=None)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    try:
+        fasterliveportrait_config = (
+            normalize_fasterliveportrait_runtime_config(body.fasterliveportrait_config)
+            if body.model == "fasterliveportrait"
+            else {}
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     tts_voice = (body.tts_voice or "").strip() or None
 
     custom = _session_customizations(request).get(body.avatar_id, {})
@@ -290,6 +302,7 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         llm_system_prompt=llm_system_prompt,
         custom_ref_image_path=custom_ref_image_path,
         wav2lip_postprocess_mode=body.wav2lip_postprocess_mode,
+        fasterliveportrait_config=fasterliveportrait_config or None,
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").
@@ -470,6 +483,45 @@ async def start_session(session_id: str, request: Request) -> dict[str, str]:
     return {"session_id": session_id, "status": "ready"}
 
 
+@router.post("/{session_id}/fasterliveportrait-config")
+async def update_fasterliveportrait_config(
+    session_id: str,
+    body: FasterLivePortraitConfigRequest,
+    request: Request,
+) -> dict[str, object]:
+    r: redis.Redis = request.app.state.redis
+    s = await session_service.get_session(r, session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="session not found")
+    if (s.get("model") or "").strip() != "fasterliveportrait":
+        raise HTTPException(status_code=400, detail="session is not fasterliveportrait")
+    try:
+        config = normalize_fasterliveportrait_runtime_config(
+            body.model_dump(exclude_none=True)
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not config:
+        raise HTTPException(status_code=400, detail="no supported FasterLivePortrait config fields")
+
+    runners = getattr(request.app.state, "session_runners", None)
+    runner = runners.get(session_id) if isinstance(runners, dict) else None
+    if runner is None:
+        # Split API/worker mode: enqueue the update for the worker process.
+        await session_service.update_fasterliveportrait_config(r, session_id, config)
+        return {"session_id": session_id, "status": "queued", "updated": config}
+
+    update_fn = getattr(runner, "update_fasterliveportrait_runtime_config", None)
+    if not callable(update_fn):
+        raise HTTPException(status_code=400, detail="runner does not support FasterLivePortrait config updates")
+    try:
+        await update_fn(config)
+    except Exception as e:  # noqa: BLE001
+        log.exception("Failed to update FasterLivePortrait config: session=%s", session_id)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"session_id": session_id, "status": "updated", "updated": config}
+
+
 @router.post("/{session_id}/speak")
 async def speak(session_id: str, body: SpeakRequest, request: Request) -> dict[str, str]:
     r: redis.Redis = request.app.state.redis
@@ -596,9 +648,9 @@ async def speak_flashtalk_audio(
     request: Request,
     file: UploadFile = File(...),
 ) -> dict[str, str]:
-    """上传音频 → 解码为 16kHz mono PCM → 直接驱动 FlashTalk（不经语音识别、LLM、TTS）。
+    """上传音频 → 解码为 16kHz mono PCM → 直接驱动兼容音频数字人（不经语音识别、LLM、TTS）。
 
-    要求会话 ``model`` 为 ``flashtalk`` 或 ``flashhead``；``pcm_path`` 写入本机临时目录，需与 Worker 共享文件系统。
+    要求会话 ``model`` 为 ``flashtalk``、``flashhead`` 或 ``fasterliveportrait``。
     """
     r: redis.Redis = request.app.state.redis
     s = await session_service.get_session(r, session_id)
@@ -607,7 +659,7 @@ async def speak_flashtalk_audio(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="仅 flashtalk/flashhead 会话可使用本接口（上传音频直驱口型）",
+            detail="仅 flashtalk/flashhead/fasterliveportrait 会话可使用本接口（上传音频直驱口型）",
         )
 
     body = await file.read()
@@ -858,7 +910,7 @@ async def flashtalk_offline_bundle_enqueue(
 ) -> dict[str, str]:
     """上传音频 → 入队离线推理；完成后音视频对齐保存在服务端目录，并可下载。
 
-    需 **flashtalk/flashhead** 会话且 Worker 已加载该 session；PCM 临时文件须与 Worker 共享文件系统。
+    需 **flashtalk/flashhead/fasterliveportrait** 会话且 Worker 已加载该 session；PCM 临时文件须与 Worker 共享文件系统。
     进度与结果见 ``GET .../flashtalk-offline-bundle/{job_id}``。
     """
     r: redis.Redis = request.app.state.redis
@@ -868,7 +920,7 @@ async def flashtalk_offline_bundle_enqueue(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="仅 flashtalk/flashhead 会话可使用离线导出",
+            detail="仅 flashtalk/flashhead/fasterliveportrait 会话可使用离线导出",
         )
 
     body = await file.read()

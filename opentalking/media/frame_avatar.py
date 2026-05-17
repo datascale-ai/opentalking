@@ -22,7 +22,15 @@ def resize_reference_image_to_video(img: Image.Image, *, width: int, height: int
     target = (int(width), int(height))
     if target[0] <= 0 or target[1] <= 0 or img.size == target:
         return img
-    return img.resize(target, Image.Resampling.LANCZOS)
+    src_w, src_h = img.size
+    target_w, target_h = target
+    scale = max(target_w / src_w, target_h / src_h)
+    resized_w = max(target_w, int(round(src_w * scale)))
+    resized_h = max(target_h, int(round(src_h * scale)))
+    resized = img.resize((resized_w, resized_h), Image.Resampling.LANCZOS)
+    left = max(0, (resized_w - target_w) // 2)
+    top = max(0, (resized_h - target_h) // 2)
+    return resized.crop((left, top, left + target_w, top + target_h))
 
 
 def _load_images_from_dir(d: Path, manifest: AvatarManifest) -> list[np.ndarray]:

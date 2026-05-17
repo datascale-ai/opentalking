@@ -4,8 +4,10 @@ import { BailianVoiceClone } from "./components/BailianVoiceClone";
 import { ChatInput } from "./components/ChatInput";
 import { ChatMessages } from "./components/ChatMessages";
 import {
+  DEFAULT_FASTLIVEPORTRAIT_CONFIG,
   SETTINGS_DOCK_EXPANDED_KEY,
   SettingsPanel,
+  type FasterLivePortraitConfig,
   type Wav2LipPostprocessMode,
 } from "./components/SettingsPanel";
 import { TopBar } from "./components/TopBar";
@@ -130,9 +132,124 @@ const MESSAGE_STORAGE_KEY = "opentalking-chat-history";
 const LLM_SYSTEM_PROMPT_STORAGE_KEY = "opentalking-llm-system-prompt";
 const SESSION_PANEL_COLLAPSED_KEY = "opentalking-session-panel-collapsed";
 const CUSTOM_REFERENCE_NAME_KEY = "opentalking-custom-reference-name";
+const FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY = "opentalking-fasterliveportrait-config-v2";
+const LEGACY_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
+  head_motion_multiplier: 1.0,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 1.0,
+  mouth_open_multiplier: 1.0,
+  mouth_corner_multiplier: 1.0,
+  cheek_jaw_multiplier: 1.0,
+  driving_multiplier: 1.0,
+  cfg_scale: 4.0,
+};
+const CONSERVATIVE_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
+  head_motion_multiplier: 0.3,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 0.9,
+  mouth_open_multiplier: 1.0,
+  mouth_corner_multiplier: 1.0,
+  cheek_jaw_multiplier: 0.75,
+  driving_multiplier: 1.0,
+  cfg_scale: 3.0,
+};
+const INTERMEDIATE_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
+  head_motion_multiplier: 0.3,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 1.0,
+  mouth_open_multiplier: 1.3,
+  mouth_corner_multiplier: 1.0,
+  cheek_jaw_multiplier: 1.0,
+  driving_multiplier: 1.0,
+  cfg_scale: 4.0,
+};
+const OVERDRIVEN_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
+  head_motion_multiplier: 0.3,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 1.05,
+  mouth_open_multiplier: 1.5,
+  mouth_corner_multiplier: 1.0,
+  cheek_jaw_multiplier: 1.0,
+  driving_multiplier: 1.0,
+  cfg_scale: 5.0,
+};
 
 type SpeakAudioResponse = { session_id: string; status: string; text: string };
 type SessionRecord = { session_id: string; state?: string };
+
+function sanitizeFasterLivePortraitConfig(raw: unknown): FasterLivePortraitConfig {
+  const source = raw && typeof raw === "object" ? raw as Partial<Record<keyof FasterLivePortraitConfig, unknown>> : {};
+  const clamp = (key: Exclude<keyof FasterLivePortraitConfig, "animation_region">, min: number, max: number) => {
+    const value = Number(source[key] ?? DEFAULT_FASTLIVEPORTRAIT_CONFIG[key]);
+    if (!Number.isFinite(value)) return DEFAULT_FASTLIVEPORTRAIT_CONFIG[key];
+    return Math.min(max, Math.max(min, value));
+  };
+  return {
+    head_motion_multiplier: clamp("head_motion_multiplier", 0, 4),
+    pose_motion_multiplier: clamp("pose_motion_multiplier", 0, 4),
+    yaw_multiplier: clamp("yaw_multiplier", 0, 4),
+    pitch_multiplier: clamp("pitch_multiplier", 0, 4),
+    roll_multiplier: clamp("roll_multiplier", 0, 4),
+    animation_region:
+      source.animation_region === "all" ||
+      source.animation_region === "exp" ||
+      source.animation_region === "pose" ||
+      source.animation_region === "eyes"
+        ? source.animation_region
+        : DEFAULT_FASTLIVEPORTRAIT_CONFIG.animation_region,
+    expression_multiplier: clamp("expression_multiplier", 0, 4),
+    mouth_open_multiplier: clamp("mouth_open_multiplier", 0, 4),
+    mouth_corner_multiplier: clamp("mouth_corner_multiplier", 0, 4),
+    cheek_jaw_multiplier: clamp("cheek_jaw_multiplier", 0, 4),
+    driving_multiplier: clamp("driving_multiplier", 0, 4),
+    cfg_scale: clamp("cfg_scale", 0, 10),
+  };
+}
+
+function sameFasterLivePortraitConfig(a: FasterLivePortraitConfig, b: FasterLivePortraitConfig): boolean {
+  return (Object.keys(DEFAULT_FASTLIVEPORTRAIT_CONFIG) as (keyof FasterLivePortraitConfig)[]).every(
+    (key) => a[key] === b[key],
+  );
+}
+
+function readStoredFasterLivePortraitConfig(): FasterLivePortraitConfig {
+  try {
+    const raw = window.localStorage.getItem(FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_FASTLIVEPORTRAIT_CONFIG };
+    const parsed = JSON.parse(raw);
+    const missingAnimationRegion = !parsed || typeof parsed !== "object" || !("animation_region" in parsed);
+    const stored = sanitizeFasterLivePortraitConfig(parsed);
+    if (
+      missingAnimationRegion ||
+      sameFasterLivePortraitConfig(stored, LEGACY_FASTLIVEPORTRAIT_DEFAULT_CONFIG) ||
+      sameFasterLivePortraitConfig(stored, CONSERVATIVE_FASTLIVEPORTRAIT_DEFAULT_CONFIG) ||
+      sameFasterLivePortraitConfig(stored, INTERMEDIATE_FASTLIVEPORTRAIT_DEFAULT_CONFIG) ||
+      sameFasterLivePortraitConfig(stored, OVERDRIVEN_FASTLIVEPORTRAIT_DEFAULT_CONFIG)
+    ) {
+      window.localStorage.removeItem(FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY);
+      return { ...DEFAULT_FASTLIVEPORTRAIT_CONFIG };
+    }
+    return stored;
+  } catch {
+    return { ...DEFAULT_FASTLIVEPORTRAIT_CONFIG };
+  }
+}
 
 /** From Vite env: max bubbles to show (most recent). 0 = show full history. */
 function readChatMaxVisible(): number {
@@ -159,8 +276,8 @@ function pickInitialAvatar(
 ): AvatarSummary | null {
   if (!avatars.length) return null;
   const available = new Set(registeredModels);
-  // Prefer QuickTalk for the OpenTalking V3 demo, then fall back to the other demos.
   return (
+    avatars.find((a) => a.id === "anime-handsome-guy" && available.has("fasterliveportrait")) ??
     avatars.find((a) => a.id === "quicktalk-daytime" && available.has("quicktalk")) ??
     avatars.find((a) => a.model_type === "quicktalk" && available.has("quicktalk")) ??
     avatars.find((a) => a.model_type === "flashhead" && available.has("flashhead")) ??
@@ -171,8 +288,28 @@ function pickInitialAvatar(
   );
 }
 
+function pickInitialModel(
+  currentModel: string,
+  registeredModels: string[],
+  statuses: ModelStatus[],
+  initialAvatar: AvatarSummary | null,
+): string {
+  const available = new Set(registeredModels);
+  const connected = new Set(
+    statuses.filter((status) => modelConnectionBadge(status).connected).map((status) => status.id),
+  );
+  if (available.has(currentModel) && connected.has(currentModel)) return currentModel;
+  const avatarModel = initialAvatar?.model_type;
+  if (avatarModel && available.has(avatarModel) && connected.has(avatarModel)) return avatarModel;
+  for (const preferred of ["fasterliveportrait", "quicktalk", "mock"]) {
+    if (available.has(preferred) && connected.has(preferred)) return preferred;
+  }
+  const firstConnected = registeredModels.find((id) => connected.has(id));
+  return firstConnected ?? registeredModels[0] ?? avatarModel ?? currentModel;
+}
+
 function isFlashRenderer(model: string): boolean {
-  return model === "flashtalk" || model === "flashhead";
+  return model === "flashtalk" || model === "flashhead" || model === "fasterliveportrait";
 }
 
 function usesCompactSquareStage(model: string): boolean {
@@ -181,6 +318,7 @@ function usesCompactSquareStage(model: string): boolean {
 
 const MODEL_LABELS_FOR_STAGE: Record<string, string> = {
   flashhead: "FlashHead",
+  fasterliveportrait: "FasterLivePortrait",
   flashtalk: "FlashTalk",
   mock: "无驱动模式",
   musetalk: "MuseTalk",
@@ -216,6 +354,13 @@ export default function App() {
   const [avatarId, setAvatarId] = useState("singer");
   const [model, setModel] = useState("flashtalk");
   const [wav2lipPostprocessMode, setWav2lipPostprocessMode] = useState<Wav2LipPostprocessMode>("auto");
+  const [fasterliveportraitConfig, setFasterliveportraitConfig] = useState<FasterLivePortraitConfig>(
+    readStoredFasterLivePortraitConfig,
+  );
+  const [fasterliveportraitAppliedConfig, setFasterliveportraitAppliedConfig] = useState<FasterLivePortraitConfig>(
+    readStoredFasterLivePortraitConfig,
+  );
+  const [fasterliveportraitApplying, setFasterliveportraitApplying] = useState(false);
 
   // Connection
   const [connection, setConnection] = useState<ConnectionStatus>("idle");
@@ -326,6 +471,17 @@ export default function App() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, tone === "error" ? 5200 : 3600);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY,
+        JSON.stringify(fasterliveportraitConfig),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [fasterliveportraitConfig]);
 
   useEffect(() => {
     try {
@@ -543,11 +699,12 @@ export default function App() {
         ]);
         setAvatars(av);
         setModels(mo.models);
-        setModelStatuses(mo.statuses ?? mo.models.map((id) => ({ id, connected: true })));
+        const statuses = mo.statuses ?? mo.models.map((id) => ({ id, connected: true }));
+        setModelStatuses(statuses);
         const initialAvatar = pickInitialAvatar(av, mo.models);
         if (initialAvatar) {
           setAvatarId(initialAvatar.id);
-          setModel((prev) => (mo.models.includes(prev) ? prev : mo.models[0] ?? initialAvatar.model_type));
+          setModel((prev) => pickInitialModel(prev, mo.models, statuses, initialAvatar));
         }
       } catch {
         setConnection("error");
@@ -742,9 +899,14 @@ export default function App() {
         tts_voice: isEdgeTts(ttsProvider) ? edgeVoice : ttsProvider === "sambert" ? undefined : qwenVoice,
         wav2lip_postprocess_mode:
           model === "wav2lip" && wav2lipPostprocessMode !== "auto" ? wav2lipPostprocessMode : undefined,
+        fasterliveportrait_config:
+          model === "fasterliveportrait" ? fasterliveportraitConfig : undefined,
       });
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
+      if (model === "fasterliveportrait") {
+        setFasterliveportraitAppliedConfig(fasterliveportraitConfig);
+      }
 
       // Some backends return before the heavy model/avatar prepare is complete.
       if (created.status === "queued" || created.status === "initializing") {
@@ -806,8 +968,40 @@ export default function App() {
     resetLiveState,
     ttsProvider,
     waitForSessionReady,
+    fasterliveportraitConfig,
     wav2lipPostprocessMode,
   ]);
+
+  const handleFasterLivePortraitConfigChange = useCallback((config: FasterLivePortraitConfig) => {
+    setFasterliveportraitConfig(sanitizeFasterLivePortraitConfig(config));
+  }, []);
+
+  const handleResetFasterLivePortraitConfig = useCallback(() => {
+    setFasterliveportraitConfig({ ...DEFAULT_FASTLIVEPORTRAIT_CONFIG });
+  }, []);
+
+  const handleApplyFasterLivePortraitConfig = useCallback(async () => {
+    const next = sanitizeFasterLivePortraitConfig(fasterliveportraitConfig);
+    setFasterliveportraitConfig(next);
+    const sid = sessionIdRef.current;
+    if (model !== "fasterliveportrait" || !sid || connection === "idle" || connection === "error") {
+      setFasterliveportraitAppliedConfig(next);
+      notify("FasterLivePortrait 配置已保存，下次启动生效。", "success");
+      return;
+    }
+    setFasterliveportraitApplying(true);
+    try {
+      await apiPost(`/sessions/${sid}/fasterliveportrait-config`, next);
+      setFasterliveportraitAppliedConfig(next);
+      notify("FasterLivePortrait 参数已应用，下一段音频块生效。", "success");
+    } catch (error) {
+      console.warn("Failed to update FasterLivePortrait config", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `应用参数失败：${detail}` : "应用参数失败，请查看后端日志。", "error");
+    } finally {
+      setFasterliveportraitApplying(false);
+    }
+  }, [connection, fasterliveportraitConfig, model, notify]);
 
   const handleSavePrompt = useCallback(async () => {
     setPromptSaving(true);
@@ -935,7 +1129,7 @@ export default function App() {
       resetLiveState(true);
       setConnection("idle");
     })();
-  }, [releaseSession, resetLiveState]);
+  }, [avatars, releaseSession, resetLiveState]);
 
   const handlePreviewTts = useCallback(async () => {
     const text = ttsPreviewText.trim();
@@ -1250,6 +1444,10 @@ export default function App() {
 
   const handleModelChange = useCallback((newModel: string) => {
     setModel(newModel);
+    if (newModel === "fasterliveportrait") {
+      const preferred = avatars.find((a) => a.id === "anime-handsome-guy") ?? avatars.find((a) => a.id === "ancient-beauty");
+      if (preferred) setAvatarId(preferred.id);
+    }
     void (async () => {
       const sid = sessionIdRef.current;
       if (sid) {
@@ -1258,7 +1456,7 @@ export default function App() {
       resetLiveState();
       setConnection("idle");
     })();
-  }, [releaseSession, resetLiveState]);
+  }, [avatars, releaseSession, resetLiveState]);
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -1294,6 +1492,8 @@ export default function App() {
   const selectedModelBadge = modelConnectionBadge(selectedModelStatus, models.includes(model));
   const selectedModelConnected = selectedModelBadge.connected;
   const wav2lipPostprocessModeLocked = sessionId !== null && connection !== "idle" && connection !== "error";
+  const fasterliveportraitDirty = JSON.stringify(fasterliveportraitConfig) !== JSON.stringify(fasterliveportraitAppliedConfig);
+  const fasterliveportraitLive = model === "fasterliveportrait" && sessionId !== null && connection !== "idle" && connection !== "error";
   const selectedVoiceLabel = isEdgeTts(ttsProvider)
     ? EDGE_ZH_VOICES.find((voice) => voice.id === edgeVoice)?.label ?? edgeVoice
     : bailianVoices.find((voice) => voice.id === qwenVoice)?.label ?? (qwenVoice || "暂无音色");
@@ -1371,9 +1571,16 @@ export default function App() {
             modelConnected={selectedModelConnected}
             wav2lipPostprocessMode={wav2lipPostprocessMode}
             wav2lipPostprocessModeLocked={wav2lipPostprocessModeLocked}
+            fasterliveportraitConfig={fasterliveportraitConfig}
+            fasterliveportraitApplying={fasterliveportraitApplying}
+            fasterliveportraitDirty={fasterliveportraitDirty}
+            fasterliveportraitLive={fasterliveportraitLive}
             onAvatarChange={handleAvatarChange}
             onModelChange={handleModelChange}
             onWav2LipPostprocessModeChange={setWav2lipPostprocessMode}
+            onFasterLivePortraitConfigChange={handleFasterLivePortraitConfigChange}
+            onApplyFasterLivePortraitConfig={() => void handleApplyFasterLivePortraitConfig()}
+            onResetFasterLivePortraitConfig={handleResetFasterLivePortraitConfig}
             edgeVoice={edgeVoice}
             onEdgeVoiceChange={setEdgeVoice}
             edgeVoiceOptions={EDGE_ZH_VOICES}
@@ -1431,6 +1638,9 @@ export default function App() {
                   </span>
                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
                     {MODEL_LABELS_FOR_STAGE[model] ?? model}
+                  </span>
+                  <span className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                    {currentAvatar?.name ?? currentAvatar?.id ?? "未选形象"}
                   </span>
                 </div>
                 <button

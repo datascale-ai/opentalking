@@ -13,6 +13,10 @@ endpoints:
     base_url: ${OMNIRT_ENDPOINT}
     task: audio2video
     model: wav2lip
+  fasterliveportrait:
+    base_url: ${OMNIRT_ENDPOINT}
+    task: audio2video
+    model: fasterliveportrait
   cosyvoice:
     base_url: ${OMNIRT_ENDPOINT}
     task: streaming_tts

@@ -78,6 +78,10 @@ class InMemoryRedis:
         self._purge_if_expired(name)
         return dict(self._hash.get(name, {}))
 
+    async def hget(self, name: str, key: str) -> str | None:
+        self._purge_if_expired(name)
+        return self._hash.get(name, {}).get(str(key))
+
     async def delete(self, *names: str) -> int:
         n = 0
         for name in names:

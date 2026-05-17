@@ -44,6 +44,7 @@ flowchart LR
 | First real lip-sync model | [Wav2Lip](wav2lip.md) |
 | Existing MuseTalk runtime | [MuseTalk](musetalk.md) |
 | Local realtime adapter | [QuickTalk](quicktalk.md) |
+| Single-GPU realtime portrait with pasteback | [FasterLivePortrait](fasterliveportrait.md) |
 | High-quality heavy model | [FlashTalk](flashtalk.md) |
 | Standalone FlashHead service | [FlashHead](flashhead.md) |
 

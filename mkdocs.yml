@@ -166,6 +166,7 @@ nav:
           - Wav2Lip: model-deployment/wav2lip.md
           - MuseTalk: model-deployment/musetalk.md
           - QuickTalk: model-deployment/quicktalk.md
+          - FasterLivePortrait: model-deployment/fasterliveportrait.md
           - FlashTalk: model-deployment/flashtalk.md
           - FlashHead: model-deployment/flashhead.md
       - Deployment: model-deployment/deployment.md

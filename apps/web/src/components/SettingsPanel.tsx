@@ -5,11 +5,41 @@ import type { TtsProviderExtended } from "../constants/ttsBailian";
 
 type VoiceOpt = { id: string; label: string; targetModel?: string | null };
 export type Wav2LipPostprocessMode = "auto" | "basic" | "opentalking_improved" | "easy_improved" | "easy_enhanced";
+export type FasterLivePortraitConfig = {
+  head_motion_multiplier: number;
+  pose_motion_multiplier: number;
+  yaw_multiplier: number;
+  pitch_multiplier: number;
+  roll_multiplier: number;
+  animation_region: "lip" | "all" | "exp" | "pose" | "eyes";
+  expression_multiplier: number;
+  mouth_open_multiplier: number;
+  mouth_corner_multiplier: number;
+  cheek_jaw_multiplier: number;
+  driving_multiplier: number;
+  cfg_scale: number;
+};
+
+export const DEFAULT_FASTLIVEPORTRAIT_CONFIG: FasterLivePortraitConfig = {
+  head_motion_multiplier: 0.3,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 1.0,
+  mouth_open_multiplier: 1.25,
+  mouth_corner_multiplier: 0.85,
+  cheek_jaw_multiplier: 0.9,
+  driving_multiplier: 1.0,
+  cfg_scale: 4.0,
+};
 
 export const SETTINGS_DOCK_EXPANDED_KEY = "opentalking-settings-dock-expanded";
 
 const MODEL_LABELS: Record<string, string> = {
   flashhead: "FlashHead",
+  fasterliveportrait: "FasterLivePortrait",
   flashtalk: "FlashTalk",
   mock: "无驱动模式",
   musetalk: "MuseTalk",
@@ -38,6 +68,37 @@ const WAV2LIP_POSTPROCESS_OPTIONS: { id: Wav2LipPostprocessMode; label: string }
   { id: "easy_improved", label: "Easy-Wav2Lip 优化" },
 ];
 
+const FASTERLIVEPORTRAIT_CONTROLS: {
+  key: Exclude<keyof FasterLivePortraitConfig, "animation_region">;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}[] = [
+  { key: "head_motion_multiplier", label: "整体头部", min: 0, max: 2, step: 0.05 },
+  { key: "pose_motion_multiplier", label: "姿态晃动", min: 0, max: 2, step: 0.05 },
+  { key: "yaw_multiplier", label: "左右摇头", min: 0, max: 2, step: 0.05 },
+  { key: "pitch_multiplier", label: "上下点头", min: 0, max: 2, step: 0.05 },
+  { key: "roll_multiplier", label: "左右歪头", min: 0, max: 2, step: 0.05 },
+  { key: "expression_multiplier", label: "表情唇形", min: 0, max: 3, step: 0.05 },
+  { key: "mouth_open_multiplier", label: "张嘴开合", min: 0, max: 3, step: 0.05 },
+  { key: "mouth_corner_multiplier", label: "嘴角牵动", min: 0, max: 3, step: 0.05 },
+  { key: "cheek_jaw_multiplier", label: "脸颊下颌", min: 0, max: 3, step: 0.05 },
+  { key: "driving_multiplier", label: "整体驱动", min: 0, max: 2, step: 0.05 },
+  { key: "cfg_scale", label: "音频跟随", min: 0, max: 10, step: 0.25 },
+];
+
+const FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS: {
+  id: FasterLivePortraitConfig["animation_region"];
+  label: string;
+}[] = [
+  { id: "lip", label: "只驱动嘴部" },
+  { id: "all", label: "全表情" },
+  { id: "exp", label: "表情" },
+  { id: "pose", label: "姿态" },
+  { id: "eyes", label: "眼睛" },
+];
+
 interface SettingsPanelProps {
   /** 展开时显示表单；收起时仅保留右侧竖条入口 */
   expanded: boolean;
@@ -50,6 +111,13 @@ interface SettingsPanelProps {
   modelConnected: boolean;
   wav2lipPostprocessMode: Wav2LipPostprocessMode;
   wav2lipPostprocessModeLocked: boolean;
+  fasterliveportraitConfig: FasterLivePortraitConfig;
+  fasterliveportraitApplying?: boolean;
+  fasterliveportraitDirty?: boolean;
+  fasterliveportraitLive?: boolean;
+  onFasterLivePortraitConfigChange: (config: FasterLivePortraitConfig) => void;
+  onApplyFasterLivePortraitConfig: () => void;
+  onResetFasterLivePortraitConfig: () => void;
   onAvatarChange: (id: string) => void;
   onModelChange: (m: string) => void;
   onWav2LipPostprocessModeChange: (mode: Wav2LipPostprocessMode) => void;
@@ -259,6 +327,13 @@ export function SettingsPanel({
   modelConnected,
   wav2lipPostprocessMode,
   wav2lipPostprocessModeLocked,
+  fasterliveportraitConfig,
+  fasterliveportraitApplying = false,
+  fasterliveportraitDirty = false,
+  fasterliveportraitLive = false,
+  onFasterLivePortraitConfigChange,
+  onApplyFasterLivePortraitConfig,
+  onResetFasterLivePortraitConfig,
   onModelChange,
   onWav2LipPostprocessModeChange,
   edgeVoice,
@@ -365,6 +440,18 @@ export function SettingsPanel({
     setVoiceView("providers");
   };
 
+  const updateFasterLivePortraitValue = (
+    key: Exclude<keyof FasterLivePortraitConfig, "animation_region">,
+    rawValue: string,
+  ) => {
+    const numeric = Number(rawValue);
+    if (!Number.isFinite(numeric)) return;
+    onFasterLivePortraitConfigChange({
+      ...fasterliveportraitConfig,
+      [key]: numeric,
+    });
+  };
+
   return (
     <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-slate-50/70 lg:h-full lg:w-[360px] lg:shrink-0 lg:overflow-hidden">
       <div className="shrink-0 p-4 pb-3">
@@ -462,6 +549,89 @@ export function SettingsPanel({
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            ) : null}
+            {model === "fasterliveportrait" ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                  <p className="text-xs font-semibold text-slate-500">FasterLivePortrait 幅度</p>
+                  <span className="text-[11px] font-medium text-slate-400">
+                    {fasterliveportraitLive ? "运行中可应用" : "下次启动生效"}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <div className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                    <p className="mb-1.5 text-xs font-semibold text-slate-700">驱动区域</p>
+                    <div className="grid grid-cols-2 gap-1">
+                      {FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS.map((option) => {
+                        const selected = fasterliveportraitConfig.animation_region === option.id;
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => onFasterLivePortraitConfigChange({
+                              ...fasterliveportraitConfig,
+                              animation_region: option.id,
+                            })}
+                            className={`rounded-md border px-2 py-1.5 text-left text-xs font-semibold transition ${
+                              selected
+                                ? "border-cyan-300 bg-cyan-50 text-cyan-800"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-cyan-200 hover:text-cyan-700"
+                            }`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {FASTERLIVEPORTRAIT_CONTROLS.map((control) => {
+                    const value = fasterliveportraitConfig[control.key];
+                    return (
+                      <label key={control.key} className="block rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                        <span className="mb-1.5 flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-semibold text-slate-700">{control.label}</span>
+                          <input
+                            type="number"
+                            min={control.min}
+                            max={control.max}
+                            step={control.step}
+                            value={value}
+                            onChange={(e) => updateFasterLivePortraitValue(control.key, e.target.value)}
+                            className="h-7 w-20 rounded-md border border-slate-200 bg-slate-50 px-2 text-right text-xs font-semibold text-slate-700 outline-none focus:border-cyan-300"
+                          />
+                        </span>
+                        <input
+                          type="range"
+                          min={control.min}
+                          max={control.max}
+                          step={control.step}
+                          value={value}
+                          onChange={(e) => updateFasterLivePortraitValue(control.key, e.target.value)}
+                          className="w-full accent-cyan-600"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={onApplyFasterLivePortraitConfig}
+                    disabled={fasterliveportraitApplying || !fasterliveportraitDirty}
+                    className="min-h-9 flex-1 rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {fasterliveportraitApplying ? "应用中..." : fasterliveportraitLive ? "实时应用" : "应用配置"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onResetFasterLivePortraitConfig}
+                    disabled={fasterliveportraitApplying}
+                    className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    重置
+                  </button>
                 </div>
               </div>
             ) : null}

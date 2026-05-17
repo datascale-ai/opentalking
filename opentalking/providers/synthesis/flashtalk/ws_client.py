@@ -20,6 +20,9 @@ except ImportError:
     websockets = None  # type: ignore[assignment]
 
 from opentalking.core.types.frames import VideoFrameData
+from opentalking.avatar.fasterliveportrait_config import (
+    normalize_fasterliveportrait_runtime_config,
+)
 
 log = logging.getLogger(__name__)
 
@@ -176,7 +179,41 @@ class FlashTalkWSClient:
         if quicktalk_face_cache is not None:
             payload["quicktalk_face_cache"] = str(quicktalk_face_cache)
         if video_config:
-            for key in ("width", "height", "fps", "frame_num", "motion_frames_num", "slice_len"):
+            for key in (
+                "width",
+                "height",
+                "fps",
+                "frame_num",
+                "motion_frames_num",
+                "slice_len",
+                "chunk_samples",
+                "emit_frames_per_chunk",
+                "render_keyframes_per_chunk",
+                "disable_frame_interpolation",
+                "head_motion_multiplier",
+                "pose_motion_multiplier",
+                "yaw_multiplier",
+                "pitch_multiplier",
+                "roll_multiplier",
+                "animation_region",
+                "expression_multiplier",
+                "mouth_open_multiplier",
+                "mouth_corner_multiplier",
+                "cheek_jaw_multiplier",
+                "driving_multiplier",
+                "cfg_scale",
+                "cfg_cond",
+                "flag_stitching",
+                "flag_normalize_lip",
+                "flag_relative_motion",
+                "flag_lip_retargeting",
+                "lip_retargeting_multiplier",
+                "lip_retargeting_min",
+                "lip_retargeting_max",
+                "lip_retargeting_noise_floor",
+                "head_only_pasteback",
+                "lookahead_ms",
+            ):
                 value = video_config.get(key)
                 if value is not None:
                     payload[key] = value
@@ -194,13 +231,35 @@ class FlashTalkWSClient:
         self.fps = resp["fps"]
         self.height = resp["height"]
         self.width = resp["width"]
-        self.audio_chunk_samples = self.slice_len * self.sample_rate // self.fps
+        self.audio_chunk_samples = int(resp.get("chunk_samples") or (self.slice_len * self.sample_rate // self.fps))
         log.info(
             "%s session init OK: %dx%d, %d fps, slice_len=%d, chunk_samples=%d",
             self._backend_name,
             self.width, self.height, self.fps, self.slice_len, self.audio_chunk_samples,
         )
         return resp
+
+    async def update_runtime_config(self, config: dict[str, Any]) -> dict[str, Any]:
+        if self._ws is None:
+            await self.connect()
+        normalized = normalize_fasterliveportrait_runtime_config(config)
+        await self._ws.send(
+            json.dumps(
+                {
+                    "type": "config_update",
+                    "config": normalized,
+                }
+            )
+        )
+        resp = await self._ws.recv()
+        if not isinstance(resp, str):
+            raise RuntimeError("FlashTalk config update returned a binary response")
+        msg = json.loads(resp)
+        if msg.get("type") == "error":
+            raise RuntimeError(f"FlashTalk config update failed: {msg.get('message')}")
+        if msg.get("type") != "config_ok":
+            raise RuntimeError(f"Unexpected FlashTalk config update response: {msg}")
+        return msg
 
     async def generate(self, audio_pcm: np.ndarray) -> list[VideoFrameData]:
         """Send an audio chunk and receive generated video frames.
@@ -267,16 +326,22 @@ class FlashTalkWSClient:
                 height=bgr.shape[0],
                 timestamp_ms=0.0,
             ))
+        wait_s = t_recv - t0
+        parse_s = t_parse - t_recv
+        decode_s = t_decode - t_parse
+        total_s = max(wait_s + parse_s + decode_s, 1e-6)
         log.info(
             "%s WS chunk: frames=%d payload=%dKB wait=%.2fs parse=%.3fs "
-            "decode=%.3fs workers=%d",
+            "decode=%.3fs workers=%d fps=%.2f kb_per_frame=%.1f",
             self._backend_name,
             frame_count,
             len(resp) // 1024,
-            t_recv - t0,
-            t_parse - t_recv,
-            t_decode - t_parse,
+            wait_s,
+            parse_s,
+            decode_s,
             JPEG_DECODE_WORKERS,
+            frame_count / total_s,
+            (len(resp) / 1024.0) / max(1, frame_count),
         )
         return frames
 

@@ -174,7 +174,7 @@ docker compose --profile gpu \
   -f docker-compose.gpu.yml \
   up -d --build
 docker compose ps
-curl -fsS http://127.0.0.1:9000/health
+curl -fsS http://127.0.0.1:9000/v1/audio2video/models
 curl -fsS http://127.0.0.1:8000/models
 ```
 
