@@ -1,0 +1,252 @@
+# Quick Start
+
+This page helps you quickly run OpenTalking. Start with **Mock mode** to validate the orchestration layer, LLM, TTS, subtitle events, and WebRTC playback. Then use the real model **QuickTalk** to validate real digital-human video rendering.
+
+- Mock mode: no model weights, no GPU, uses built-in static frames to validate the full interaction flow.
+- QuickTalk mode: uses a local CUDA GPU and QuickTalk weights to validate the real digital-human rendering path.
+- WebUI validation: select avatar, model, and voice in the page, then start a real-time conversation.
+
+## Mock Mode
+
+Mock mode is the recommended first path for OpenTalking. It does not require GPU, model weights, or an external inference service, but still validates the API, LLM, TTS, subtitle events, WebRTC, and browser playback path.
+
+Use it for:
+
+- First installation and environment validation.
+- Checking whether LLM / TTS configuration works.
+- Previewing WebUI and session flow on a machine without GPU.
+
+### Mock Mode Environment
+
+| Dependency | Recommended Version | Notes |
+| --- | --- | --- |
+| Python | `>= 3.10`, `3.11` recommended | Backend service and runtime. |
+| Node.js | `>= 18` | WebUI frontend. |
+| FFmpeg | Available as a system command | Audio/video processing dependency. |
+| GPU | Not required | Uses the built-in Mock static frame. |
+
+### 1. Clone Repository
+
+```bash
+export DIGITAL_HUMAN_HOME=/opt/digital_human
+mkdir -p "$DIGITAL_HUMAN_HOME"
+
+cd "$DIGITAL_HUMAN_HOME"
+git clone https://github.com/datascale-ai/opentalking.git
+cd opentalking
+```
+
+### 2. Install Basic Dependencies
+
+Using `uv` is recommended:
+
+```bash
+# Optional: use a China mainland PyPI mirror.
+export UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple
+
+uv sync --extra dev --python 3.11
+source .venv/bin/activate
+cp .env.example .env
+```
+
+If `uv` is not convenient in your environment, use the compatibility installation:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple -e ".[dev]"
+cp .env.example .env
+```
+
+### 3. Configure Minimal Environment Variables
+
+Edit `.env` and configure at least LLM and TTS. The example below uses an OpenAI-compatible endpoint and `edge` TTS:
+
+```env
+OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+OPENTALKING_LLM_API_KEY=sk-your-key
+OPENTALKING_LLM_MODEL=qwen-flash
+
+OPENTALKING_TTS_PROVIDER=edge
+OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+```
+
+`edge` TTS does not require an API key. If you use DashScope STT or DashScope TTS, configure `DASHSCOPE_API_KEY` as well.
+
+### 4. Start Mock Mode
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/start_unified.sh --mock
+```
+
+Default ports:
+
+- API / unified backend: `8000`
+- WebUI: `5173`
+
+To specify ports:
+
+```bash
+bash scripts/start_unified.sh --mock --api-port 8210 --web-port 5280
+```
+
+### 5. Open WebUI
+
+After startup, the terminal prints the WebUI URL. The default URL is:
+
+```text
+http://127.0.0.1:5173
+```
+
+<div class="ot-figure-placeholder">
+  <strong>Screenshot placeholder: Mock mode WebUI home</strong>
+  <span>Add later: WebUI after successful startup, highlighting avatar, model, voice, and conversation areas.</span>
+</div>
+
+### 6. Complete Your First Conversation
+
+In WebUI, select Mock / driverless mode, confirm LLM and TTS configuration, enter a short test sentence, and start the session. If the browser plays audio, shows subtitles, and displays the Mock frame, the base pipeline is working.
+
+<div class="ot-figure-placeholder">
+  <strong>Screenshot placeholder: first Mock conversation</strong>
+  <span>Add later: user input, subtitle events, playback status, and Mock video frame.</span>
+</div>
+
+## QuickTalk Mode
+
+QuickTalk mode is a faster path toward real digital-human output. It can load QuickTalk weights locally and is suitable for single-machine validation on consumer CUDA GPUs.
+
+Use it when:
+
+- You have an available NVIDIA GPU and CUDA environment.
+- You want to see real lip motion and avatar driving.
+
+### QuickTalk Mode Environment
+
+| Dependency | Recommended Version | Notes |
+| --- | --- | --- |
+| Python | `>= 3.10`, `3.11` recommended | Backend service and model dependencies. |
+| Node.js | `>= 18` | WebUI frontend. |
+| FFmpeg | Available as a system command | Audio/video processing dependency. |
+| GPU | NVIDIA CUDA GPU | Start with a 3090 / 4090 class machine if possible. |
+| Weights | QuickTalk, HuBERT, InsightFace `buffalo_l` | Download or sync offline according to this page. |
+
+### 1. Check GPU and System Environment
+
+QuickTalk mode requires a local CUDA GPU. Check:
+
+```bash
+nvidia-smi
+ffmpeg -version
+python --version
+node --version
+```
+
+### 2. Install Model Dependencies
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+uv sync --extra dev --extra models --python 3.11
+source .venv/bin/activate
+```
+
+### 3. Prepare QuickTalk Weights
+
+Place local QuickTalk weights and dependencies under repository-root `models/quicktalk/`.
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p models/quicktalk/checkpoints
+
+uv pip install -U "huggingface_hub[cli]"
+
+# Optional: use a Hugging Face mirror when the network is slow.
+export HF_ENDPOINT=https://hf-mirror.com
+
+hf download datascale-ai/quicktalk \
+  quicktalk.pth \
+  repair.npy \
+  --local-dir models/quicktalk/checkpoints
+```
+
+QuickTalk also needs HuBERT and InsightFace `buffalo_l`:
+
+```bash
+hf download TencentGameMate/chinese-hubert-large \
+  config.json \
+  preprocessor_config.json \
+  pytorch_model.bin \
+  --local-dir models/quicktalk/checkpoints/chinese-hubert-large
+
+mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
+curl -L \
+  -o /tmp/opentalking-insightface/buffalo_l.zip \
+  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
+unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
+  -d /tmp/opentalking-insightface
+rsync -a /tmp/opentalking-insightface/buffalo_l/ \
+  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
+```
+
+Check key files:
+
+```bash
+stat models/quicktalk/checkpoints/quicktalk.pth
+stat models/quicktalk/checkpoints/repair.npy
+stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
+stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
+```
+
+The directory layout should look like:
+
+```text
+models/
+  quicktalk/
+    checkpoints/
+      quicktalk.pth
+      repair.npy
+      chinese-hubert-large/
+        config.json
+        preprocessor_config.json
+        pytorch_model.bin
+      auxiliary/models/buffalo_l/
+        det_10g.onnx
+        ...
+```
+
+### 4. Prepare a Custom Avatar
+
+You can start with the built-in QuickTalk example avatar. Later, if you want to upload your own identity, use a clear frontal or half-body image and create a custom avatar in WebUI through “upload from local”.
+
+<div class="ot-figure-placeholder">
+  <strong>Screenshot placeholder: upload QuickTalk Avatar</strong>
+  <span>Add later: WebUI avatar library, upload entry, model selection, and preview result.</span>
+</div>
+
+### 5. Start QuickTalk Mode
+
+```bash
+export OPENTALKING_TORCH_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_QUICKTALK_WORKER_CACHE=1
+
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/start_unified.sh --backend local --model quicktalk
+```
+
+To specify ports:
+
+```bash
+bash scripts/start_unified.sh \
+  --backend local \
+  --model quicktalk \
+  --api-port 8210 \
+  --web-port 5280
+```
+
+The first startup may build face cache and worker state, so it can take longer than Mock mode.
+
+### 6. Select QuickTalk in WebUI
+
+After opening WebUI, select a `QuickTalk` avatar and the `quicktalk` model, then start a session. If the video frame is generated along with audio, the local QuickTalk rendering path is available.

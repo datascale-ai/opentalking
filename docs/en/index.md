@@ -1,218 +1,69 @@
 ---
 title: OpenTalking
-hide:
-  - navigation
 ---
 
 # OpenTalking
 
-**The open-source orchestration layer for real-time digital humans.**
-
-OpenTalking is *not* a talking-head model. It is the layer that integrates a
-talking-head model with everything else a production conversational digital human
-requires: streaming speech recognition, large language models, text-to-speech
-synthesis, WebRTC delivery, and per-session control. Plug in the model and provider
-combination that fits the deployment; the orchestration contract stays the same.
-
-[Get started in five minutes :material-rocket-launch:](tutorials/quickstart.md){ .md-button .md-button--primary }
-[Stable docs URL :material-open-in-new:](https://datascale-ai.github.io/opentalking/){ .md-button }
-[View on GitHub :material-github:](https://github.com/datascale-ai/opentalking){ .md-button }
-
-The site defaults to Chinese. English lives at <https://datascale-ai.github.io/opentalking/en/>.
-
----
-
-## What OpenTalking is for
-
-Building a digital human application that talks and listens in real time involves
-roughly a dozen moving parts: speech recognition with end-pointing, a streaming
-language model client, sentence-level text-to-speech synthesis, audio decoding,
-talking-head rendering, WebRTC track management, barge-in handling, and session
-state. OpenTalking implements all of these as a single FastAPI service, exposes a
-small REST and WebSocket interface, and delegates synthesis to the configured
-model backend for each session.
-
-If the question is "I have a wav2lip checkpoint, how do I serve a real-time chat
-experience on top?" — OpenTalking is the answer. If the question is "how should the
-model itself run?", choose a backend: local adapter, direct WebSocket service, OmniRT,
-or a mock path for tests.
-
-## Key capabilities
-
-<div class="grid cards" markdown>
-
--   :material-account-voice: **Realtime conversation pipeline**
-
-    ASR, LLM, TTS, talking-head rendering, and WebRTC delivery in one interruptible session loop.
-
--   :material-puzzle: **Pluggable model backends**
-
-    Resolve synthesis by `model + backend`: `mock`, `local`, `direct_ws`, or `omnirt`.
-
--   :material-api: **Unified API**
-
-    REST, SSE, WebSocket, and WebRTC signaling are exposed through one FastAPI service.
-
--   :material-tune: **Replaceable providers**
-
-    Use OpenAI-compatible LLM endpoints and switch TTS across Edge, DashScope, CosyVoice, or ElevenLabs.
-
--   :material-account-convert: **Avatar and voice assets**
-
-    Manage avatar bundles, custom portraits, voice catalog entries, and cloned voices.
-
--   :material-server-network: **Flexible deployment**
-
-    Run `unified`, split API/Worker, Docker Compose, or remote GPU/NPU model services.
-
-</div>
-
-## Pick your starting point
-
-<div class="grid cards" markdown>
-
--   :material-flash: **Quickstart**
-
-    ---
-
-    Five-minute walkthrough from source checkout to a working end-to-end session
-    using the mock synthesis path.
-
-    [Tutorials →](tutorials/index.md)
-
--   :material-cog: **Configuration**
-
-    ---
-
-    Reference for every environment variable and YAML field, with default values
-    and precedence rules.
-
-    [Configuration →](tutorials/configuration.md)
-
--   :material-server-network: **Model deployment**
-
-    ---
-
-    Model selection, weight downloads, backend configuration, and deployment
-    topologies in one place.
-
-    [Model deployment →](model-deployment/index.md)
-
--   :material-api: **Docs and API**
-
-    ---
-
-    Architecture, render pipeline, model adapters, and REST / SSE / WebSocket
-    interfaces.
-
-    [Docs →](docs/index.md)
-
--   :material-speedometer: **Benchmark**
-
-    ---
-
-    End-to-end metrics, the QuickTalk CLI, external inference baselines, and a
-    result template.
-
-    [Benchmark →](benchmark/index.md)
-
--   :material-account-group: **Community**
-
-    ---
-
-    Contribution paths, Issue/PR information, the QQ group, roadmap links, and a
-    feedback template.
-
-    [Community →](community/index.md)
-
-</div>
-
-## Minimal example
-
-```bash title="terminal"
-git clone https://github.com/datascale-ai/opentalking.git
-cd opentalking
-
-uv sync --extra dev --python 3.11
-source .venv/bin/activate
-cp .env.example .env
-
-# Configure OPENTALKING_LLM_API_KEY and DASHSCOPE_API_KEY in .env, then:
-bash scripts/quickstart/start_mock.sh
-```
-
-After startup, open <http://localhost:5173>, select the `demo-avatar` and `mock`
-model, and initiate a conversation. To enable real talking-head synthesis, configure
-the selected model's backend, for example:
-
-```yaml title="configs/default.yaml"
-models:
-  wav2lip:
-    backend: omnirt
-  quicktalk:
-    backend: local
-  flashhead:
-    backend: direct_ws
-```
-
-`OMNIRT_ENDPOINT` is required only for models using `backend: omnirt`; the
-client-side workflow remains unchanged.
-
-## System architecture
-
-```mermaid
-flowchart LR
-    Browser([Browser])
-    API[FastAPI<br/>HTTP / WS / WebRTC]
-    Worker[Pipeline driver<br/>LLM &rarr; TTS &rarr; synthesis]
-    Backend[(Synthesis backend<br/>local / direct_ws / OmniRT)]
-    LLM[(LLM endpoint<br/>OpenAI-compatible)]
-    TTS[(TTS<br/>Edge / DashScope / ElevenLabs)]
-
-    Browser -->|HTTP / SSE / WebRTC| API
-    API <-->|Redis or in-memory bus| Worker
-    Worker --> LLM
-    Worker --> TTS
-    Worker --> Backend
-```
-
-The complete system view — components, deployment topologies, session lifecycle,
-and event bus schema — is documented in [Architecture](docs/architecture.md).
-
-## Where OpenTalking fits
-
-| Concern | OpenTalking | Synthesis backend | Hosted LLM | TTS provider |
-|---------|:-----------:|:-----------------:|:----------:|:------------:|
-| Session lifecycle and state | ✓ | | | |
-| HTTP and WebSocket API | ✓ | | | |
-| WebRTC signaling and tracks | ✓ | | | |
-| Speech recognition (via DashScope) | ✓ | | | |
-| Sentence-level streaming pipeline | ✓ | | | |
-| Barge-in propagation | ✓ | | | |
-| Voice catalog and cloning | ✓ | | | |
-| Avatar bundle management | ✓ | | | |
-| Talking-head model weights and inference | | ✓ | | |
-| GPU and NPU scheduling and batching | | ✓ when backend supports it | | |
-| Chat completion inference | | | ✓ | |
-| Speech synthesis | | | | ✓ |
-
-## Use cases
-
-- **Conversational assistants** with a visual avatar for customer support, sales, or onboarding.
-- **Live broadcast applications** where the avatar responds to viewer interactions in real time.
-- **Educational software** that requires both speech recognition and synthesized speech feedback.
-- **Internal productivity tools** that pair a corporate language model with a digital human interface.
-- **Research and prototyping** for talking-head generation, where the orchestration layer is needed but not the focus of the work.
-
-## Community and support
-
-- **GitHub** — [datascale-ai/opentalking](https://github.com/datascale-ai/opentalking) for issues, pull requests, and discussions.
-- **QQ group** — `1103327938` (AI 数字人交流群), primarily Chinese-language community.
-- **Documentation** — [Tutorials](tutorials/index.md), [Model deployment](model-deployment/index.md), [Docs and API](docs/index.md).
-- **Contributing** — see [Community](community/index.md) for submission and feedback guidelines.
-
-## License
-
-OpenTalking is released under the Apache License, Version 2.0. Talking-head model
-weights and external model services are governed by their individual licenses;
-consult the respective model repositories or backend deployments for details.
+<p align="center">
+  <img src="/opentalking/assets/images/logo_white.png" alt="OpenTalking logo" width="200">
+</p>
+
+<p align="center">
+  <a href="https://github.com/datascale-ai/opentalking/stargazers"><img src="https://img.shields.io/github/stars/datascale-ai/opentalking?style=flat&label=stars" alt="GitHub stars"></a>
+  <a href="https://github.com/datascale-ai/opentalking/forks"><img src="https://img.shields.io/github/forks/datascale-ai/opentalking?style=flat&label=forks" alt="GitHub forks"></a>
+  <a href="https://github.com/datascale-ai/opentalking/issues"><img src="https://img.shields.io/github/issues/datascale-ai/opentalking?style=flat&label=open%20issues" alt="Open issues"></a>
+  <a href="https://github.com/datascale-ai/opentalking/issues?q=is%3Aissue+is%3Aclosed"><img src="https://img.shields.io/github/issues-closed/datascale-ai/opentalking?style=flat&label=issue%20resolution" alt="Issue resolution"></a>
+  <img src="https://img.shields.io/badge/PyPI-planned-lightgrey?style=flat" alt="PyPI planned">
+  <img src="https://img.shields.io/badge/python-%3E%3D3.10-blue?style=flat" alt="Python >= 3.10">
+  <a href="https://github.com/datascale-ai/opentalking/releases"><img src="https://img.shields.io/github/downloads/datascale-ai/opentalking/total?style=flat&label=downloads" alt="GitHub downloads"></a>
+  <img src="https://img.shields.io/badge/downloads-source-lightgrey?style=flat" alt="Source downloads">
+  <a href="https://modelscope.cn/models?name=OpenTalking"><img src="https://img.shields.io/badge/ModelScope-models-624aff?style=flat" alt="ModelScope"></a>
+  <a href="https://huggingface.co/models?search=OpenTalking"><img src="https://img.shields.io/badge/HuggingFace-models-ffcc4d?style=flat" alt="Hugging Face"></a>
+</p>
+
+## Project Introduction
+
+OpenTalking is an open-source orchestration framework for real-time digital-human
+applications. It connects frontend interaction, session state, LLM responses, TTS and
+voice settings, subtitle events, WebRTC audio/video playback, and local or remote
+digital-human synthesis backends.
+
+OpenTalking is not a single talking-head model. It sits between product experiences and
+model services, organizing LLM, speech recognition, speech synthesis, avatar rendering,
+event streaming, and browser playback into a unified runtime. Developers can start with
+Mock validation and then move to real models and inference backends such as Wav2Lip,
+QuickTalk, MuseTalk, FlashTalk, or OmniRT.
+
+It is designed for scenarios such as AI customer support, product demos, course presenters,
+news anchors, companion characters, and private digital-human deployments. If you are new to
+the project, start with [Quick Start](quick-start/index.md) and run the Mock path first. If
+you are already evaluating models, runtime backends, GPU/NPU resources, or OmniRT, continue
+with [Model Support](model-support/index.md).
+
+### Demo Video
+
+<video src="https://github.com/user-attachments/assets/a3abce76-12c0-4b8b-844f-bbc5c3227dc7" controls width="100%"></video>
+
+## Key Features
+
+- **Real-time conversation pipeline**: coordinates speech input, LLM response, TTS synthesis, subtitle events, avatar rendering, and WebRTC playback.
+- **Pluggable model backends**: supports backend modes such as `mock`, `local`, `direct_ws`, and `omnirt`, from local validation to remote inference services.
+- **Multiple model paths**: provides an evolving integration plan for Wav2Lip, QuickTalk, MuseTalk, FlashTalk, FlashHead, and related talking-head models.
+- **Open LLM/TTS configuration**: supports OpenAI-compatible LLM endpoints, including DashScope, DeepSeek, Ollama, vLLM, or internal model services.
+- **WebUI and command-line tools**: use WebUI for session validation, avatar selection, voice configuration, and model status; use CLI entrypoints for service startup and debugging.
+- **Production-oriented runtime modes**: supports local development, Mock validation, Docker, API / Worker split, and external inference-service integration.
+
+## User Guide
+
+- [Quick Start](quick-start/index.md): run OpenTalking for the first time with the `mock` backend.
+- [Usage](usage/index.md): learn command-line startup, WebUI usage, avatar configuration, and voice/TTS settings.
+- [Examples](examples/index.md): understand how OpenTalking applies to customer support, product demos, course presenters, and similar scenarios.
+- [Model Support](model-support/index.md): review models, runtime backends, and production topology such as Wav2Lip, QuickTalk, FlashTalk, and OmniRT.
+- [Reference Materials](reference/index.md): review benchmark metrics and changelog entries.
+- [FAQ](faq.md): troubleshoot installation, configuration, WebRTC, model backend, and runtime issues.
+
+## License Information
+
+OpenTalking is released under the Apache License 2.0. Talking-head models, model weights,
+TTS services, LLM services, and external inference backends may have their own licenses or
+terms of use. Check the corresponding project or service before deployment or commercial use.

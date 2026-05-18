@@ -1,0 +1,44 @@
+.md-sidebar--primary .md-nav__item > .md-nav__link {
+  line-height: 1.35;
+  margin-top: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.md-sidebar--primary
+  .md-nav__item--nested:not(.md-nav__item--section):not(.md-nav__item--active):not(
+    :has(> .md-nav__toggle:checked)
+  )
+  > .md-nav {
+  height: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.ot-figure-placeholder {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgb(127 127 127 / 8%) 25%, transparent 25%) 0 0 / 20px 20px,
+    linear-gradient(135deg, transparent 75%, rgb(127 127 127 / 8%) 75%) 0 0 / 20px 20px,
+    var(--md-code-bg-color);
+  border: 1px dashed var(--md-default-fg-color--lighter);
+  border-radius: 6px;
+  color: var(--md-default-fg-color--light);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  justify-content: center;
+  margin: 1rem 0;
+  min-height: 12rem;
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.ot-figure-placeholder strong {
+  color: var(--md-default-fg-color);
+}
+
+.ot-figure-placeholder span {
+  font-size: 0.8rem;
+}

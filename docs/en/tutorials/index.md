@@ -20,6 +20,9 @@ Verify orchestration with `mock` first, then connect a real talking-head backend
 | High-quality FlashTalk/OmniRT path | [FlashTalk integration](cases/flashtalk.md) |
 | Model, weight, and deployment selection | [Model deployment](../model-deployment/index.md) |
 
+These pages focus on low-level integration steps. If you want to start from business
+scenarios, see [Use Cases](../cases/index.md).
+
 ## Custom Avatar
 
 Start with [Custom Avatar](cases/custom-avatar.md) to learn how images, videos, and

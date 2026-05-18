@@ -33,15 +33,15 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: white
-      accent: teal
+      primary: black
+      accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: blue grey
-      accent: teal
+      primary: black
+      accent: indigo
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -52,6 +52,9 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/datascale-ai/opentalking
+
+extra_css:
+  - assets/stylesheets/navigation.css
 
 plugins:
   - search
@@ -64,13 +67,48 @@ plugins:
           build: true
           nav_translations:
             Home: 首页
-            Tutorials: 教程
-            Cases: 案例
+            Quick Start: 快速开始
+            Platform Notes: 平台说明
+            Docker Deployment: Docker 部署
+            Usage: 使用指南
+            Usage Overview: 使用概览
+            WebUI Usage: WebUI 使用
+            Basic Usage: 基础使用
+            Command Line Usage: 命令行使用
+            Examples: 案例教程
+            Examples Overview: 案例概览
+            AI Customer Support: AI 客服数字人
+            Product Demo and Live Sales: 商品讲解与直播导购
+            Course and News Presenter: 课程与新闻口播
+            Private Digital Human Assistant: 私有数字人助手
+            Custom Avatar: 自定义 Avatar
+            Voice and TTS: 音色与 TTS
+            Command Line Tools: 命令行工具
+            Advanced CLI Arguments: 命令行进阶参数
+            Model Support: 模型支持
+            Model Support Overview: 模型支持概览
+            Model and Backend Selection: 模型与后端选择
+            Runtime Backends: 推理后端
+            Local Adapter: Local Adapter
+            Direct WebSocket: Direct WebSocket
+            OmniRT: OmniRT
+            Supported Models: 支持的模型
+            Mock Backend: Mock Backend
+            FlashTalk with OmniRT: FlashTalk 与 OmniRT
+            Reference Materials: 参考资料
+            Reference Materials Overview: 资料概览
+            Benchmark: Benchmark
+            Changelog: 更新日志
+            FAQ: 常见问题
+            AI Customer Support: AI 客服数字人
+            Product Demo and Live Sales: 商品讲解与直播导购
+            Private Deployment: 企业私有化部署
             Model Deployment: 模型部署
             Docs: 文档
+            Concepts and API: 概念与 API
             API Interfaces: API 接口
             Quickstart: 快速上手
-            Installation: 安装
+            Platform Notes: 平台说明
             Configuration: 配置
             Mock E2E: Mock 端到端
             Wav2Lip Integration: Wav2Lip 接入
@@ -143,50 +181,83 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 nav:
-  - Home: index.md
-  - Tutorials:
-      - Overview: tutorials/index.md
-      - Quickstart: tutorials/quickstart.md
-      - Installation: tutorials/installation.md
-      - Configuration: tutorials/configuration.md
-      - Cases:
-          - Mock E2E: tutorials/cases/mock-e2e.md
-          - Wav2Lip Integration: tutorials/cases/wav2lip.md
-          - FlashTalk Integration: tutorials/cases/flashtalk.md
-          - Custom Avatar: tutorials/cases/custom-avatar.md
-  - Model Deployment:
-      - Overview: model-deployment/index.md
-      - Support Matrix: model-deployment/support-matrix.md
-      - LLM and STT: model-deployment/llm-stt.md
-      - Text-to-Speech: model-deployment/tts.md
-      - Avatar Assets: model-deployment/avatar.md
-      - Talking-Head Models:
-          - Overview: model-deployment/talking-head.md
-          - Mock: model-deployment/mock.md
-          - Wav2Lip: model-deployment/wav2lip.md
-          - MuseTalk: model-deployment/musetalk.md
-          - QuickTalk: model-deployment/quicktalk.md
-          - FasterLivePortrait: model-deployment/fasterliveportrait.md
-          - FlashTalk: model-deployment/flashtalk.md
-          - FlashHead: model-deployment/flashhead.md
-      - Deployment: model-deployment/deployment.md
-  - Docs:
-      - Overview: docs/index.md
-      - Architecture: docs/architecture.md
-      - Render Pipeline: docs/render-pipeline.md
-      - Avatar Format: docs/avatar-format.md
-      - Model Adapter: docs/model-adapter.md
-      - Developing: docs/developing.md
-      - API Interfaces:
-          - Overview: docs/api/index.md
-          - Health and Models: docs/api/health.md
-          - Avatars: docs/api/avatars.md
-          - Sessions: docs/api/sessions.md
-          - TTS and Voices: docs/api/tts-and-voices.md
-          - Events and Streaming: docs/api/events.md
-  - Benchmark:
-      - Overview: benchmark/index.md
-      - Metrics: benchmark/metrics.md
-      - Runbook: benchmark/runbook.md
-      - Results and Baselines: benchmark/results.md
-  - Community: community/index.md
+  - Home:
+      - Home: index.md
+      - Quick Start:
+          - Quick Start: quick-start/index.md
+          - Platform Notes: quick-start/platform-notes.md
+          - Docker Deployment: quick-start/docker-deployment.md
+      - Usage:
+          - Usage Overview: usage/index.md
+          - Command Line Usage:
+              - Command Line Tools: usage/cli.md
+              - Advanced CLI Arguments: usage/cli-advanced.md
+          - WebUI Usage:
+              - Basic Usage: usage/webui/basic.md
+              - Custom Avatar: usage/webui/custom-avatar.md
+              - Voice and TTS: usage/webui/voice-and-tts.md
+      - Examples:
+          - Examples Overview: examples/index.md
+          - AI Customer Support: examples/customer-support.md
+          - Product Demo and Live Sales: examples/product-demo-live-sales.md
+          - Course and News Presenter: examples/course-news-presenter.md
+          - Private Digital Human Assistant: examples/private-assistant.md
+      - Model Support:
+          - Model Support Overview: model-support/index.md
+          - Model and Backend Selection: model-support/selection.md
+          - Runtime Backends:
+              - Mock Backend: model-support/runtime-backends/mock.md
+              - Local Adapter: model-support/runtime-backends/local-adapter.md
+              - Direct WebSocket: model-support/runtime-backends/direct-websocket.md
+              - OmniRT: model-support/runtime-backends/omnirt.md
+          - Supported Models:
+              - Wav2Lip: model-support/models/wav2lip.md
+              - QuickTalk: model-support/models/quicktalk.md
+              - MuseTalk: model-support/models/musetalk.md
+              - FlashTalk: model-support/models/flashtalk.md
+              - FlashHead: model-support/models/flashhead.md
+      - Reference Materials:
+          - Reference Materials Overview: reference/index.md
+          - Benchmark: reference/benchmark.md
+          - Changelog: reference/changelog.md
+      - FAQ:
+          - FAQ: faq.md
+  - Quick Start:
+      - Quick Start: quick-start/index.md
+      - Platform Notes: quick-start/platform-notes.md
+      - Docker Deployment: quick-start/docker-deployment.md
+  - Usage:
+      - Usage Overview: usage/index.md
+      - Command Line Usage:
+          - Command Line Tools: usage/cli.md
+          - Advanced CLI Arguments: usage/cli-advanced.md
+      - WebUI Usage:
+          - Basic Usage: usage/webui/basic.md
+          - Custom Avatar: usage/webui/custom-avatar.md
+          - Voice and TTS: usage/webui/voice-and-tts.md
+  - Examples:
+      - Examples Overview: examples/index.md
+      - AI Customer Support: examples/customer-support.md
+      - Product Demo and Live Sales: examples/product-demo-live-sales.md
+      - Course and News Presenter: examples/course-news-presenter.md
+      - Private Digital Human Assistant: examples/private-assistant.md
+  - Model Support:
+      - Model Support Overview: model-support/index.md
+      - Model and Backend Selection: model-support/selection.md
+      - Runtime Backends:
+          - Mock Backend: model-support/runtime-backends/mock.md
+          - Local Adapter: model-support/runtime-backends/local-adapter.md
+          - Direct WebSocket: model-support/runtime-backends/direct-websocket.md
+          - OmniRT: model-support/runtime-backends/omnirt.md
+      - Supported Models:
+          - Wav2Lip: model-support/models/wav2lip.md
+          - QuickTalk: model-support/models/quicktalk.md
+          - MuseTalk: model-support/models/musetalk.md
+          - FlashTalk: model-support/models/flashtalk.md
+          - FlashHead: model-support/models/flashhead.md
+  - Reference Materials:
+      - Reference Materials Overview: reference/index.md
+      - Benchmark: reference/benchmark.md
+      - Changelog: reference/changelog.md
+  - FAQ:
+      - FAQ: faq.md

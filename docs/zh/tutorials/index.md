@@ -20,6 +20,9 @@
 | 高质量 FlashTalk/OmniRT 路径 | [FlashTalk 接入](cases/flashtalk.md) |
 | 选择模型、权重和部署拓扑 | [模型部署](../model-deployment/index.md) |
 
+这些页面偏底层接入步骤；如果想先看“能用在哪些业务场景”，请看
+[场景案例](../cases/index.md)。
+
 ## 自定义 Avatar
 
 从 [自定义 Avatar 案例](cases/custom-avatar.md) 开始，了解图片、视频和 `manifest.json` 如何
