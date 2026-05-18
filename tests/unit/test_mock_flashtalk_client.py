@@ -21,6 +21,7 @@ async def test_mock_flashtalk_client_accepts_audio2video_init_metadata(tmp_path:
         reference_mode="frames",
         ref_frame_dir=tmp_path,
         ref_frame_metadata_path=tmp_path / "metadata.json",
+        prepared_cache_dir=tmp_path / "wav2lip_preload_cache",
         preprocessed=True,
     )
 

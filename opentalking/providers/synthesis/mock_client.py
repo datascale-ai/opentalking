@@ -63,6 +63,7 @@ class MockFlashTalkClient:
         reference_mode: str | None = None,
         ref_frame_dir: str | Path | None = None,
         ref_frame_metadata_path: str | Path | None = None,
+        prepared_cache_dir: str | Path | None = None,
         preprocessed: bool | None = None,
         template_mode: str | None = None,
         template_video: str | Path | None = None,
@@ -70,7 +71,7 @@ class MockFlashTalkClient:
         quicktalk_face_cache: str | Path | None = None,
     ) -> dict:
         del prompt, seed, wav2lip_postprocess_mode, mouth_metadata
-        del reference_mode, ref_frame_dir, ref_frame_metadata_path, preprocessed
+        del reference_mode, ref_frame_dir, ref_frame_metadata_path, prepared_cache_dir, preprocessed
         del template_mode, template_video, template_frame_dir, quicktalk_face_cache
         if isinstance(ref_image, (str, Path)):
             ref_image = Path(ref_image).read_bytes()

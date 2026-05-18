@@ -321,6 +321,8 @@ class FlashTalkRunner:
             "source_image_hash": source_image_hash,
             "source_image_path": metadata.get("source_image_path"),
             "face_box": metadata.get("face_box"),
+            "model_crop": metadata.get("model_crop"),
+            "model_crop_source": metadata.get("model_crop_source"),
             "animation": animation,
         }
 
@@ -697,6 +699,11 @@ class FlashTalkRunner:
             log.warning("Ignoring missing wav2lip frame_metadata: %s", path)
             return None
         return path
+
+    def _wav2lip_prepared_cache_dir(self) -> Path | None:
+        if self._wav2lip_reference_mode() != "frames":
+            return None
+        return (self.avatar_path() / "wav2lip_preload_cache").resolve()
 
     def _wav2lip_preprocessed(self) -> bool:
         if self._wav2lip_reference_mode() != "frames":
@@ -1168,6 +1175,7 @@ class FlashTalkRunner:
             reference_mode=self._wav2lip_reference_mode(),
             ref_frame_dir=self._wav2lip_reference_frame_dir(),
             ref_frame_metadata_path=self._wav2lip_reference_frame_metadata_path(),
+            prepared_cache_dir=self._wav2lip_prepared_cache_dir(),
             preprocessed=self._wav2lip_preprocessed(),
             template_mode=self._quicktalk_template_mode(),
             template_video=self._quicktalk_template_video(),

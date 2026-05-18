@@ -5,6 +5,7 @@ import contextlib
 import inspect
 import json
 import logging
+import os
 import queue as sync_queue
 import tempfile
 import time
@@ -20,6 +21,12 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from opentalking.avatar import mouth_metadata
 from opentalking.avatar.loader import load_avatar_bundle
+from opentalking.avatar.wav2lip_preload import (
+    collect_wav2lip_preload_payloads,
+    filter_wav2lip_preload_payloads,
+    preload_wav2lip_avatar,
+    preload_wav2lip_payloads,
+)
 from apps.api.schemas.session import (
     CreateSessionRequest,
     CreateSessionResponse,
@@ -242,6 +249,219 @@ async def _wait_for_session_worker_ready(
     return False
 
 
+def _wav2lip_postprocess_mode_for_preload(raw: str | None) -> str:
+    value = (
+        (raw or "").strip()
+        or os.environ.get("OPENTALKING_WAV2LIP_POSTPROCESS_MODE", "easy_improved")
+    )
+    return value.strip().lower().replace("-", "_") or "easy_improved"
+
+
+def _wav2lip_preload_state(request: Request) -> tuple[set[str], set[str]]:
+    done = getattr(request.app.state, "wav2lip_preloaded_avatars", None)
+    if done is None:
+        done = set()
+        request.app.state.wav2lip_preloaded_avatars = done
+    scheduled = getattr(request.app.state, "wav2lip_preload_scheduled_avatars", None)
+    if scheduled is None:
+        scheduled = set()
+        request.app.state.wav2lip_preload_scheduled_avatars = scheduled
+    return done, scheduled
+
+
+async def _wav2lip_selected_preload_task(
+    *,
+    request: Request,
+    avatar_id: str,
+    postprocess_mode: str,
+) -> None:
+    settings = request.app.state.settings
+    await preload_wav2lip_avatar(
+        Path(getattr(settings, "avatars_dir")).resolve(),
+        avatar_id,
+        omnirt_endpoint=(getattr(settings, "omnirt_endpoint", "") or "").strip(),
+        postprocess_mode=postprocess_mode,
+        attempts=1,
+        retry_delay_seconds=0.0,
+    )
+
+
+async def _preload_selected_wav2lip_avatar(
+    *,
+    request: Request,
+    avatar_id: str,
+    model: str,
+    wav2lip_postprocess_mode: str | None,
+) -> None:
+    if model != "wav2lip":
+        return
+    settings = request.app.state.settings
+    endpoint = (getattr(settings, "omnirt_endpoint", "") or "").strip()
+    if not endpoint or not getattr(settings, "wav2lip_preload", True):
+        return
+
+    postprocess_mode = _wav2lip_postprocess_mode_for_preload(wav2lip_postprocess_mode)
+    done, scheduled = _wav2lip_preload_state(request)
+    key = f"{avatar_id}:{postprocess_mode}"
+    if key in done:
+        log.info("Selected Wav2Lip avatar preload skipped: avatar=%s cache_state=done", avatar_id)
+        return
+
+    tasks = getattr(request.app.state, "wav2lip_selected_preload_tasks", None)
+    if tasks is None:
+        tasks = {}
+        request.app.state.wav2lip_selected_preload_tasks = tasks
+    existing_task = tasks.get(key)
+    if existing_task is not None and not existing_task.done():
+        log.info("Selected Wav2Lip avatar preload join: avatar=%s", avatar_id)
+        try:
+            await existing_task
+            done.add(key)
+            done.add(avatar_id)
+        except Exception:
+            log.warning(
+                "Selected Wav2Lip avatar preload failed; continuing session init: avatar=%s",
+                avatar_id,
+                exc_info=True,
+            )
+        return
+    if key in scheduled:
+        return
+
+    scheduled.add(key)
+    task = None
+    try:
+        task = asyncio.create_task(
+            _wav2lip_selected_preload_task(
+                request=request,
+                avatar_id=avatar_id,
+                postprocess_mode=postprocess_mode,
+            )
+        )
+        tasks[key] = task
+        await task
+        done.add(key)
+        done.add(avatar_id)
+    except Exception:
+        log.warning(
+            "Selected Wav2Lip avatar preload failed; continuing session init: avatar=%s",
+            avatar_id,
+            exc_info=True,
+        )
+    finally:
+        scheduled.discard(key)
+        task = tasks.get(key)
+        if task is not None and task.done():
+            tasks.pop(key, None)
+
+
+def _wav2lip_preload_busy(request: Request) -> bool:
+    runners = getattr(request.app.state, "session_runners", None)
+    if not isinstance(runners, dict):
+        return False
+    for runner in list(runners.values()):
+        if bool(getattr(runner, "_speaking", False)):
+            return True
+        if bool(getattr(runner, "_speech_media_active", False)):
+            return True
+        speech_tasks = getattr(runner, "speech_tasks", None)
+        if isinstance(speech_tasks, set) and any(not task.done() for task in speech_tasks):
+            return True
+    return False
+
+
+async def _wait_for_wav2lip_preload_idle(
+    request: Request,
+    *,
+    avatar_id: str,
+) -> None:
+    poll_seconds = max(
+        0.2,
+        float(os.environ.get("OPENTALKING_WAV2LIP_BACKGROUND_PRELOAD_IDLE_POLL_SEC", "1.0")),
+    )
+    idle_grace_seconds = max(
+        0.0,
+        float(os.environ.get("OPENTALKING_WAV2LIP_BACKGROUND_PRELOAD_IDLE_GRACE_SEC", "3.0")),
+    )
+    logged = False
+    while True:
+        while _wav2lip_preload_busy(request):
+            if not logged:
+                log.info(
+                    "Background Wav2Lip preload waiting for speech idle: avatar=%s",
+                    avatar_id,
+                )
+                logged = True
+            await asyncio.sleep(poll_seconds)
+        if idle_grace_seconds <= 0:
+            return
+        await asyncio.sleep(idle_grace_seconds)
+        if not _wav2lip_preload_busy(request):
+            return
+
+
+def _schedule_background_wav2lip_preload(
+    *,
+    request: Request,
+    selected_avatar_id: str,
+    model: str,
+    wav2lip_postprocess_mode: str | None,
+) -> None:
+    if model != "wav2lip":
+        return
+    if os.environ.get("OPENTALKING_WAV2LIP_PRELOAD_OTHERS_DURING_SESSION", "0") != "1":
+        return
+    settings = request.app.state.settings
+    endpoint = (getattr(settings, "omnirt_endpoint", "") or "").strip()
+    if not endpoint or not getattr(settings, "wav2lip_preload", True):
+        return
+
+    done, scheduled = _wav2lip_preload_state(request)
+    postprocess_mode = _wav2lip_postprocess_mode_for_preload(wav2lip_postprocess_mode)
+    selected_key = f"{selected_avatar_id}:{postprocess_mode}"
+    done.add(selected_key)
+    done.add(selected_avatar_id)
+    avatars_root = Path(getattr(settings, "avatars_dir")).resolve()
+    payloads = filter_wav2lip_preload_payloads(
+        collect_wav2lip_preload_payloads(avatars_root, postprocess_mode=postprocess_mode),
+        exclude_avatar_ids=done | scheduled | {selected_avatar_id},
+    )
+    if not payloads:
+        return
+
+    scheduled.update(str(payload.get("avatar_id") or "") for payload in payloads)
+
+    async def _run() -> None:
+        try:
+            delay = float(os.environ.get("OPENTALKING_WAV2LIP_BACKGROUND_PRELOAD_DELAY_SEC", "20"))
+            if delay > 0:
+                await asyncio.sleep(delay)
+            for payload in payloads:
+                avatar_id = str(payload.get("avatar_id") or "")
+                await _wait_for_wav2lip_preload_idle(request, avatar_id=avatar_id)
+                await preload_wav2lip_payloads(
+                    [payload],
+                    omnirt_endpoint=endpoint,
+                    attempts=1,
+                    retry_delay_seconds=0.0,
+                )
+                done.add(avatar_id)
+                done.add(f"{avatar_id}:{postprocess_mode}")
+        except Exception:
+            log.warning("Background Wav2Lip preload failed", exc_info=True)
+        finally:
+            for payload in payloads:
+                scheduled.discard(str(payload.get("avatar_id") or ""))
+
+    task = asyncio.create_task(_run())
+    existing = getattr(request.app.state, "wav2lip_background_preload_tasks", None)
+    if existing is None:
+        existing = set()
+        request.app.state.wav2lip_background_preload_tasks = existing
+    existing.add(task)
+    task.add_done_callback(existing.discard)
+
+
 @router.post("", response_model=CreateSessionResponse)
 async def create_session(body: CreateSessionRequest, request: Request) -> CreateSessionResponse:
     r: redis.Redis = request.app.state.redis
@@ -293,6 +513,13 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
     if custom_ref_image_path and not Path(custom_ref_image_path).exists():
         custom_ref_image_path = None
 
+    await _preload_selected_wav2lip_avatar(
+        request=request,
+        avatar_id=body.avatar_id,
+        model=body.model,
+        wav2lip_postprocess_mode=body.wav2lip_postprocess_mode,
+    )
+
     sid = await session_service.create_session(
         r,
         avatar_id=body.avatar_id,
@@ -303,6 +530,12 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         custom_ref_image_path=custom_ref_image_path,
         wav2lip_postprocess_mode=body.wav2lip_postprocess_mode,
         fasterliveportrait_config=fasterliveportrait_config or None,
+    )
+    _schedule_background_wav2lip_preload(
+        request=request,
+        selected_avatar_id=body.avatar_id,
+        model=body.model,
+        wav2lip_postprocess_mode=body.wav2lip_postprocess_mode,
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").

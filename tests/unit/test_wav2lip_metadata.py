@@ -51,6 +51,47 @@ def test_wav2lip_mouth_metadata_is_ignored_when_hash_mismatches_reference(tmp_pa
     assert runner._wav2lip_mouth_metadata() is None
 
 
+def test_wav2lip_mouth_metadata_includes_asset_tuned_model_crop(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    reference = avatar_dir / "reference.png"
+    _write_png(reference, (255, 255, 255))
+    image_hash = image_file_sha256(reference)
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "avatar",
+                "model_type": "wav2lip",
+                "metadata": {
+                    "source_image_hash": image_hash,
+                    "model_crop": [0.27, 0.075, 0.75, 0.555],
+                    "model_crop_source": "asset_tuned",
+                    "animation": {
+                        "mouth_center": [0.5, 0.56],
+                        "mouth_rx": 0.06,
+                        "mouth_ry": 0.02,
+                        "outer_lip": [[0.45, 0.55], [0.5, 0.53], [0.55, 0.55]],
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "wav2lip"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+    runner._custom_ref_image_path = ""
+    runner._ref_image_path = reference
+
+    metadata = runner._wav2lip_mouth_metadata()
+
+    assert metadata is not None
+    assert metadata["model_crop"] == [0.27, 0.075, 0.75, 0.555]
+    assert metadata["model_crop_source"] == "asset_tuned"
+
+
 def test_wav2lip_postprocess_mode_prefers_avatar_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     avatar_dir = tmp_path / "avatar"
     avatar_dir.mkdir()
@@ -361,6 +402,7 @@ async def test_wav2lip_reset_session_preserves_frame_reference_args(tmp_path: Pa
     assert fake.kwargs["reference_mode"] == "frames"
     assert fake.kwargs["ref_frame_dir"] == frames_dir.resolve()
     assert fake.kwargs["ref_frame_metadata_path"] == metadata_path.resolve()
+    assert fake.kwargs["prepared_cache_dir"] == (avatar_dir / "wav2lip_preload_cache").resolve()
     assert fake.kwargs["preprocessed"] is True
 
 

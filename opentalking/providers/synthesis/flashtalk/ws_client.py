@@ -133,6 +133,7 @@ class FlashTalkWSClient:
         reference_mode: str | None = None,
         ref_frame_dir: str | Path | None = None,
         ref_frame_metadata_path: str | Path | None = None,
+        prepared_cache_dir: str | Path | None = None,
         preprocessed: bool | None = None,
         template_mode: str | None = None,
         template_video: str | Path | None = None,
@@ -168,6 +169,8 @@ class FlashTalkWSClient:
             payload["ref_frame_dir"] = str(ref_frame_dir)
         if ref_frame_metadata_path is not None:
             payload["ref_frame_metadata_path"] = str(ref_frame_metadata_path)
+        if prepared_cache_dir is not None:
+            payload["prepared_cache_dir"] = str(prepared_cache_dir)
         if preprocessed is not None:
             payload["preprocessed"] = bool(preprocessed)
         if template_mode:

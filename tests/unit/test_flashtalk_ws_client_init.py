@@ -226,6 +226,25 @@ async def test_init_session_sends_wav2lip_preprocessed_flag(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_init_session_sends_wav2lip_prepared_cache_dir(tmp_path: Path) -> None:
+    ref = tmp_path / "reference.png"
+    ref.write_bytes(b"image-bytes")
+    cache_dir = tmp_path / "wav2lip_preload_cache"
+    client = FlashTalkWSClient("ws://example.test/v1/avatar/wav2lip")
+    ws = FakeWebSocket()
+    client._ws = ws
+
+    await client.init_session(
+        ref_image=ref,
+        reference_mode="frames",
+        prepared_cache_dir=cache_dir,
+    )
+
+    sent = json.loads(ws.sent[0])
+    assert sent["prepared_cache_dir"] == str(cache_dir)
+
+
+@pytest.mark.asyncio
 async def test_init_session_sends_quicktalk_template_fields(tmp_path: Path) -> None:
     ref = tmp_path / "reference.png"
     ref.write_bytes(b"image-bytes")
@@ -249,6 +268,7 @@ async def test_init_session_sends_quicktalk_template_fields(tmp_path: Path) -> N
     assert sent["template_mode"] == "video"
     assert sent["template_video"] == str(template_video)
     assert sent["template_frame_dir"] == str(template_frames)
+
 
 @pytest.mark.asyncio
 async def test_init_session_sends_quicktalk_face_cache(tmp_path: Path) -> None:
