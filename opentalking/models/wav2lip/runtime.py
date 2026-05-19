@@ -67,7 +67,7 @@ class Wav2LipRuntimeError(RuntimeError):
 @dataclass
 class _PreparedFrame:
     base_frame: np.ndarray
-    face_input: np.ndarray
+    face_crop: np.ndarray
     coords: tuple[int, int, int, int]
     geometry: MouthGeometry | None
 
@@ -187,9 +187,14 @@ class Wav2LipRealtimeRuntime:
         prepared_for_chunk = [
             state.frame_at(state.emitted_frames + idx) for idx in range(len(mel_chunks))
         ]
-        face_batch = np.stack([frame.face_input for frame in prepared_for_chunk], axis=0)
+        face_crops = np.stack([frame.face_crop for frame in prepared_for_chunk], axis=0)
         mel_batch = np.stack(mel_chunks, axis=0)
-        img_tensor = torch.FloatTensor(np.transpose(face_batch, (0, 3, 1, 2))).to(self.device)
+        face_tensor = torch.from_numpy(
+            np.ascontiguousarray(np.transpose(face_crops, (0, 3, 1, 2)))
+        ).to(device=self.device, dtype=torch.float32).div_(255.0)
+        masked_tensor = face_tensor.clone()
+        masked_tensor[:, :, input_size // 2 :, :] = 0
+        img_tensor = torch.cat((masked_tensor, face_tensor), dim=1)
         mel_tensor = torch.FloatTensor(
             np.transpose(np.reshape(mel_batch, (len(mel_chunks), 80, MEL_STEP_SIZE, 1)), (0, 3, 1, 2))
         ).to(self.device)
@@ -436,9 +441,6 @@ class Wav2LipRealtimeRuntime:
             use_opentalking_improved=use_opentalking,
         )
         face = cv2.resize(frame[y1:y2, x1:x2].copy(), (input_size, input_size))
-        masked = face.copy()
-        masked[input_size // 2 :, :] = 0
-        face_input = np.concatenate((masked, face), axis=2).astype(np.float32) / 255.0
         geometry = (
             self._geometry_from_metadata(
                 metadata,
@@ -465,7 +467,7 @@ class Wav2LipRealtimeRuntime:
         )
         return _PreparedFrame(
             base_frame=frame,
-            face_input=face_input,
+            face_crop=np.ascontiguousarray(face),
             coords=(y1, y2, x1, x2),
             geometry=geometry,
         )

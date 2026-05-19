@@ -291,8 +291,9 @@ async def test_preload_wav2lip_assets_retries_when_omnirt_is_not_ready(tmp_path:
     assert sleeps == [0.25]
 
 
-def test_unified_preload_only_targets_omnirt_wav2lip_backend() -> None:
+def test_unified_does_not_start_all_wav2lip_preload() -> None:
     source = Path(unified_main.__file__).read_text(encoding="utf-8")
 
-    assert "resolve_model_backend(\"wav2lip\", settings).backend" in source
-    assert "== \"omnirt\"" in source
+    assert "preload_wav2lip_assets(" not in source
+    assert "resolve_model_backend(\"wav2lip\", settings).backend" not in source
+    assert "_schedule_background_wav2lip_preload" not in source
