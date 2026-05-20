@@ -311,6 +311,7 @@ class Settings(BaseSettings):
     # Max seconds a single session may hold the FlashTalk slot (0 = unlimited)
     # When exceeded the session is force-closed and the slot is released.
     flashtalk_max_session_sec: int = 600
+    benchmark_timing: bool = False
 
     @classmethod
     def settings_customise_sources(

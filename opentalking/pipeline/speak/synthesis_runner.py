@@ -1879,6 +1879,10 @@ class FlashTalkRunner:
                         if not seen_audio:
                             seen_audio = True
                             first_pcm_ms = (_t.monotonic() - t0) * 1000.0
+                            if "ttfa_ms" not in timing:
+                                timing["ttfa_ms"] = (
+                                    time.perf_counter() - t_speak_wall0
+                                ) * 1000.0
                             pcm = _fade_head_i16(pcm, sample_rate, boundary_fade_ms)
 
                         if hold_samples > 1:
@@ -2139,11 +2143,19 @@ class FlashTalkRunner:
                         break
                     await self._wait_media_backpressure()
                     g0 = time.perf_counter()
+                    if "first_model_request_ms" not in timing:
+                        timing["first_model_request_ms"] = (
+                            g0 - t_speak_wall0
+                        ) * 1000.0
                     frames = await self._generate_flashtalk_frames(pcm_chunk)
-                    flashtalk_gen_sum_s += time.perf_counter() - g0
+                    g1 = time.perf_counter()
+                    flashtalk_gen_sum_s += g1 - g0
+                    timing.setdefault("model_chunk_latency_ms", []).append(
+                        (g1 - g0) * 1000.0
+                    )
                     if "first_flashtalk_return_ms" not in timing:
                         timing["first_flashtalk_return_ms"] = (
-                            time.perf_counter() - t_speak_wall0
+                            g1 - t_speak_wall0
                         ) * 1000.0
                     flashtalk_chunks += 1
                     generated += 1
@@ -2220,6 +2232,68 @@ class FlashTalkRunner:
                 self._speak_enqueue_unix = None
 
             timing["speak_wall_ms"] = (time.perf_counter() - t_speak_wall0) * 1000.0
+            if get_settings().benchmark_timing:
+                chunk_latencies = [
+                    float(v) for v in timing.get("model_chunk_latency_ms", [])
+                ]
+                first_webrtc_queue_ms = timing.get("first_webrtc_queue_ms")
+                ttfa_ms = timing.get("ttfa_ms")
+                first_model_return_ms = timing.get("first_flashtalk_return_ms")
+                ttfv_ms = None
+                if ttfa_ms is not None and first_webrtc_queue_ms is not None:
+                    ttfv_ms = max(0.0, first_webrtc_queue_ms - ttfa_ms)
+                model_chunks = int(timing.get("flashtalk_chunks", 0.0))
+                audio_duration_s = (
+                    model_chunks * chunk_samples / float(sample_rate)
+                    if model_chunks > 0
+                    else 0.0
+                )
+                model_generate_s = timing.get("flashtalk_generate_sum_ms", 0.0) / 1000.0
+                await publish_event(
+                    self.redis,
+                    self.session_id,
+                    "speech.timing",
+                    {
+                        "session_id": self.session_id,
+                        "model": self.model_type,
+                        "api_enqueue_to_speak_enter_ms": timing.get(
+                            "api_enqueue_to_speak_enter_wall_ms"
+                        ),
+                        "ttfa_ms": ttfa_ms,
+                        "ttfv_ms": ttfv_ms,
+                        "e2e_first_response_ms": timing.get(
+                            "first_frame_from_api_wall_ms"
+                        ),
+                        "first_model_request_ms": timing.get(
+                            "first_model_request_ms"
+                        ),
+                        "first_model_return_ms": first_model_return_ms,
+                        "first_webrtc_queue_ms": first_webrtc_queue_ms,
+                        "chunk_latency_ms": chunk_latencies,
+                        "steady_fps": (
+                            model_chunks * float(self.flashtalk.fps)
+                            / model_generate_s
+                            if model_generate_s > 0
+                            else None
+                        ),
+                        "rtf": (
+                            model_generate_s / audio_duration_s
+                            if audio_duration_s > 0
+                            else None
+                        ),
+                        "model_generate_sum_ms": timing.get(
+                            "flashtalk_generate_sum_ms"
+                        ),
+                        "model_chunks": model_chunks,
+                        "audio_duration_seconds": audio_duration_s,
+                        "output_width": int(getattr(self.flashtalk, "width", 0) or 0),
+                        "output_height": int(getattr(self.flashtalk, "height", 0) or 0),
+                        "output_fps": float(getattr(self.flashtalk, "fps", 0) or 0),
+                        "chunk_samples": int(chunk_samples),
+                        "sample_rate": int(sample_rate),
+                        "speak_wall_ms": timing.get("speak_wall_ms"),
+                    },
+                )
             _tc = len((full_response or "").strip())
             log.info(
                 "Speak pipeline timing: session=%s speak_wall_ms=%.0f parallel_total_ms=%.0f "

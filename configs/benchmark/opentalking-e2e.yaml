@@ -1,0 +1,50 @@
+tester: ""
+test_date: ""
+api_base_url: "http://127.0.0.1:8010"
+api_port: 8010
+web_port: 5184
+host: "0.0.0.0"
+backend: "omnirt"
+model: "musetalk"
+avatar_id: "office-woman"
+technical_route: "portrait animation"
+input_type: "audio+image"
+prompt: "你好，介绍下你自己吧！"
+tts_provider: "edge"
+tts_voice: "zh-CN-XiaoxiaoNeural"
+tts_model: ""
+gpu_index: 0
+device: "cuda"
+input:
+  ref_image: "configs/benchmark/input/reference.png"
+  audio_path: "configs/benchmark/input/ttsmaker-file.mp3"
+  audio_duration_seconds: 2.0
+models:
+  wav2lip:
+    backend: "omnirt"
+    omnirt: "http://127.0.0.1:9015"
+    gpu: 3
+    technical_route: "2D lip-sync"
+    width: 416
+    height: 704
+    fps: 25
+    chunk_size: "1120ms"
+  musetalk:
+    backend: "omnirt"
+    omnirt: "http://127.0.0.1:9014"
+    gpu: 2
+    musetalk_port: 8766
+    technical_route: "portrait animation"
+    width: 416
+    height: 704
+    fps: 25
+    chunk_size: "1000ms"
+  quicktalk:
+    backend: "omnirt"
+    omnirt: "http://127.0.0.1:9013"
+    gpu: 1
+    technical_route: "portrait animation"
+    width: 720
+    height: 900
+    fps: 25
+    chunk_size: "1000ms"
