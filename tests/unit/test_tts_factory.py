@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from opentalking.providers.tts.factory import build_tts_adapter, create_tts_adapter
+from opentalking.providers.tts.dashscope_qwen.adapter import _qwen_cantonese_voice_override, _qwen_language_type
+from opentalking.providers.tts.qwen_tts_voices import normalize_optional_qwen_voice
 
 
 def _settings(**overrides):
@@ -61,3 +63,22 @@ def test_create_tts_adapter_builds_elevenlabs_for_request_override(monkeypatch):
 
     assert adapter.__class__.__name__ == "ElevenLabsTTSAdapter"
     assert adapter.default_voice == "request-voice"
+
+
+def test_qwen_tts_normalizes_cantonese_voice_aliases():
+    assert normalize_optional_qwen_voice("kiki") == "Kiki"
+    assert normalize_optional_qwen_voice("rocky") == "Rocky"
+
+
+def test_qwen_tts_cantonese_env_uses_chinese_language_type(monkeypatch):
+    monkeypatch.setenv("OPENTALKING_QWEN_TTS_LANGUAGE", "cantonese")
+
+    assert _qwen_language_type() == "Chinese"
+    assert _qwen_cantonese_voice_override() == "Kiki"
+
+
+def test_qwen_tts_cantonese_voice_override_can_select_rocky(monkeypatch):
+    monkeypatch.setenv("OPENTALKING_QWEN_TTS_DIALECT", "yue")
+    monkeypatch.setenv("OPENTALKING_QWEN_TTS_CANTONESE_VOICE", "rocky")
+
+    assert _qwen_cantonese_voice_override() == "Rocky"

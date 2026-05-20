@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 
+QWEN_VOICE_ALIASES = {
+    "kiki": "Kiki",
+    "kiki（粤语女声）": "Kiki",
+    "kiki(粤语女声)": "Kiki",
+    "rocky": "Rocky",
+    "rocky（粤语男声）": "Rocky",
+    "rocky(粤语男声)": "Rocky",
+}
+
+QWEN_CANTONESE_VOICES = frozenset({"Kiki", "Rocky"})
+
 
 def normalize_optional_qwen_voice(raw: str | None) -> str | None:
     """校验百炼系 TTS 的 voice 参数（CosyVoice 等含空格、括号亦可）。"""
@@ -15,7 +26,7 @@ def normalize_optional_qwen_voice(raw: str | None) -> str | None:
     for c in s:
         if ord(c) < 32:
             raise ValueError(f"unsupported control character in TTS voice: {s!r}")
-    return s
+    return QWEN_VOICE_ALIASES.get(s.lower(), s)
 
 
 def sanitize_qwen_model(raw: str | None) -> str | None:

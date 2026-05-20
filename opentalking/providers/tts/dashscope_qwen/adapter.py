@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 
 from opentalking.core.types.frames import AudioChunk
+from opentalking.providers.tts.qwen_tts_voices import QWEN_CANTONESE_VOICES, normalize_optional_qwen_voice
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,27 @@ def _env_bool(name: str, default: bool) -> bool:
     if raw is None or not str(raw).strip():
         return default
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _qwen_language_type() -> str:
+    raw = _env_str("OPENTALKING_QWEN_TTS_LANGUAGE", "Chinese")
+    if raw.lower() in {"cantonese", "yue", "粤语", "廣東話", "广东话"}:
+        return "Chinese"
+    return raw
+
+
+def _qwen_cantonese_voice_override() -> str | None:
+    dialect = os.environ.get("OPENTALKING_QWEN_TTS_DIALECT", "").strip().lower()
+    language = os.environ.get("OPENTALKING_QWEN_TTS_LANGUAGE", "").strip().lower()
+    if dialect not in {"cantonese", "yue", "粤语", "廣東話", "广东话"} and language not in {
+        "cantonese",
+        "yue",
+        "粤语",
+        "廣東話",
+        "广东话",
+    }:
+        return None
+    return normalize_optional_qwen_voice(os.environ.get("OPENTALKING_QWEN_TTS_CANTONESE_VOICE")) or "Kiki"
 
 
 def _split_pcm_chunks(pcm: np.ndarray, sr: int, chunk_ms: float) -> list[AudioChunk]:
@@ -103,7 +125,9 @@ class DashScopeQwenTTSAdapter:
         self.chunk_ms = chunk_ms
         # 与 ``AudioFormat.PCM_24000HZ_MONO_16BIT`` 及 DashScope ``update_session`` 要求一致
         self._wire_sr = _QWEN_REALTIME_WIRE_SR
-        self.default_voice = default_voice or _env_str("OPENTALKING_TTS_VOICE", "Cherry")
+        self.default_voice = normalize_optional_qwen_voice(default_voice) or normalize_optional_qwen_voice(
+            _env_str("OPENTALKING_TTS_VOICE", "Cherry"),
+        ) or "Cherry"
         self._model = (model.strip() if model and str(model).strip() else None) or _env_str(
             "OPENTALKING_QWEN_TTS_MODEL",
             "qwen3-tts-flash-realtime",
@@ -154,7 +178,11 @@ class DashScopeQwenTTSAdapter:
     ) -> AsyncIterator[AudioChunk]:
         if not text.strip():
             return
-        v = voice or self.default_voice
+        v = normalize_optional_qwen_voice(voice) or self.default_voice
+        cantonese_voice = _qwen_cantonese_voice_override()
+        if cantonese_voice is not None and v not in QWEN_CANTONESE_VOICES:
+            log.info("Qwen TTS Cantonese mode overriding voice %r -> %r", v, cantonese_voice)
+            v = cantonese_voice
         api_key = self._ensure_api_key()
 
         try:
@@ -218,7 +246,7 @@ class DashScopeQwenTTSAdapter:
                     response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
                     mode=self._mode,
                     sample_rate=self._wire_sr,
-                    language_type=_env_str("OPENTALKING_QWEN_TTS_LANGUAGE", "Chinese"),
+                    language_type=_qwen_language_type(),
                 )
                 self._session_voice = v
                 self._client = client
@@ -229,7 +257,7 @@ class DashScopeQwenTTSAdapter:
                     response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
                     mode=self._mode,
                     sample_rate=self._wire_sr,
-                    language_type=_env_str("OPENTALKING_QWEN_TTS_LANGUAGE", "Chinese"),
+                    language_type=_qwen_language_type(),
                 )
                 self._session_voice = v
 
@@ -281,7 +309,7 @@ class DashScopeQwenTTSAdapter:
                 response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
                 mode=self._mode,
                 sample_rate=self._wire_sr,
-                language_type=_env_str("OPENTALKING_QWEN_TTS_LANGUAGE", "Chinese"),
+                language_type=_qwen_language_type(),
             )
             client_holder["c"] = client
             client.append_text(text)

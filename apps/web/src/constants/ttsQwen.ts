@@ -10,6 +10,8 @@ export const QWEN_TTS_MODEL_OPTIONS: { id: string; label: string }[] = [
 /** 常用音色 short name；完整列表请在百炼控制台查看 */
 export const QWEN_TTS_VOICE_OPTIONS: { id: string; label: string }[] = [
   { id: "Cherry", label: "Cherry" },
+  { id: "Kiki", label: "Kiki（粤语女声）" },
+  { id: "Rocky", label: "Rocky（粤语男声）" },
   { id: "Serena", label: "Serena" },
   { id: "Ethan", label: "Ethan" },
   { id: "Chelsie", label: "Chelsie" },
