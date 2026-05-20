@@ -48,6 +48,18 @@ def resolve_path(value: str, repo: Path) -> str:
     return str((repo / path).resolve())
 
 
+E2E_TECHNICAL_ROUTE_BY_MODEL = {
+    "wav2lip": "mouth inpainting",
+    "musetalk": "mouth inpainting",
+    "quicktalk": "mouth inpainting",
+}
+
+
+def technical_route_for_model(model: str, model_cfg: dict[str, Any], cfg: dict[str, Any]) -> str:
+    normalized = model.strip().lower()
+    return E2E_TECHNICAL_ROUTE_BY_MODEL.get(normalized) or str(model_cfg.get("technical_route") or cfg.get("technical_route") or "")
+
+
 def percentile(values: list[float], q: float) -> float | None:
     if not values:
         return None
@@ -608,6 +620,32 @@ def normalize_webrtc_sample(path: Path) -> bool:
     return media_file_has_streams(path)
 
 
+def prepare_benchmark_avatar(repo: Path, base_avatar_id: str, *, model: str, timestamp: str) -> tuple[str, Path]:
+    avatars_root = repo / "examples" / "avatars"
+    base_dir = (avatars_root / base_avatar_id).resolve()
+    try:
+        base_dir.relative_to(avatars_root.resolve())
+    except ValueError as exc:
+        raise RuntimeError(f"invalid base avatar id: {base_avatar_id}") from exc
+    if not base_dir.is_dir() or not (base_dir / "manifest.json").is_file():
+        raise RuntimeError(f"base avatar not found: {base_avatar_id}")
+    safe_model = re.sub(r"[^A-Za-z0-9_-]+", "-", model).strip("-") or "model"
+    avatar_id = f"benchmark-{timestamp}-{safe_model}"
+    target_dir = avatars_root / avatar_id
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+    shutil.copytree(base_dir, target_dir, ignore=shutil.ignore_patterns("reference_custom.*"))
+    manifest_path = target_dir / "manifest.json"
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    metadata = dict(raw.get("metadata") or {})
+    metadata["base_avatar_id"] = raw.get("id") or base_avatar_id
+    raw["id"] = avatar_id
+    raw["name"] = f"Benchmark {base_avatar_id} {safe_model}"
+    raw["metadata"] = metadata
+    manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return avatar_id, target_dir
+
+
 def load_audio_duration(path: Path, target_path: Path, seconds: float) -> float:
     cp = run(["ffmpeg", "-y", "-i", str(path), "-t", str(seconds), "-ac", "1", "-ar", "16000", "-f", "wav", str(target_path)])
     if cp.returncode:
@@ -891,7 +929,8 @@ async def run_once(args: argparse.Namespace) -> None:
         service_ready_proc_vram = retry_gpu_process_mem_gb(pids, gpu_index=gpu_index)
 
 
-        avatar_id = str(args.avatar_id or cfg.get("avatar_id", "office-woman"))
+        base_avatar_id = str(args.avatar_id or cfg.get("avatar_id", "office-woman"))
+        avatar_id, benchmark_avatar_dir = prepare_benchmark_avatar(repo, base_avatar_id, model=model, timestamp=timestamp)
         try:
             upload_reference(api_base_url, avatar_id, ref_src)
         except Exception as exc:
@@ -1017,7 +1056,7 @@ async def run_once(args: argparse.Namespace) -> None:
             "测试日期": cfg.get("test_date") or datetime.now().strftime("%Y-%m-%d"),
             "测试人": tester,
             "模型": model,
-            "技术路线": model_cfg.get("technical_route") or cfg.get("technical_route"),
+            "技术路线": technical_route_for_model(model, model_cfg, cfg),
             "backend": backend,
             "硬件": hardware.get("name"),
             "OS": platform.platform(),
@@ -1072,6 +1111,7 @@ async def run_once(args: argparse.Namespace) -> None:
                 "nvidia_smi_process_records": gpu_process_mem_records(sampler.latest_pids or pids, gpu_index=gpu_index) or [],
                 "nvidia_smi_snapshot": run(["nvidia-smi"]).stdout,
             },
+            "avatar": {"base_avatar_id": base_avatar_id, "benchmark_avatar_id": avatar_id, "benchmark_avatar_dir": str(benchmark_avatar_dir)},
             "input": {"audio": str(audio_src), "reference": str(ref_src), "duration_seconds": audio_duration},
             "output_video_frames_observed": video_frames.get("count", 0),
             "output_sample_path": "",
@@ -1102,6 +1142,8 @@ async def run_once(args: argparse.Namespace) -> None:
         sse_task.cancel()
         print(json.dumps({"output_dir": str(out_dir), "result": result, "raw": str(out_dir / "result.json")}, ensure_ascii=False, indent=2))
     finally:
+        if "benchmark_avatar_dir" in locals():
+            shutil.rmtree(benchmark_avatar_dir, ignore_errors=True)
         stop_opentalking(repo, cfg)
         if process.poll() is None:
             try:
