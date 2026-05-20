@@ -229,7 +229,7 @@ async def test_init_session_sends_wav2lip_preprocessed_flag(tmp_path: Path) -> N
 async def test_init_session_sends_wav2lip_prepared_cache_dir(tmp_path: Path) -> None:
     ref = tmp_path / "reference.png"
     ref.write_bytes(b"image-bytes")
-    cache_dir = tmp_path / "wav2lip_preload_cache"
+    cache_dir = tmp_path / "wav2lip"
     client = FlashTalkWSClient("ws://example.test/v1/avatar/wav2lip")
     ws = FakeWebSocket()
     client._ws = ws

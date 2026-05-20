@@ -59,7 +59,7 @@ def test_collect_wav2lip_preload_payloads_selects_only_preprocessed_frame_assets
             "avatar_id": "good",
             "ref_frame_dir": str(frames.resolve()),
             "ref_frame_metadata_path": str(metadata.resolve()),
-            "prepared_cache_dir": str((good / "wav2lip_preload_cache").resolve()),
+            "prepared_cache_dir": str((good / "wav2lip").resolve()),
             "width": 24,
             "height": 32,
             "fps": 30,
@@ -104,7 +104,7 @@ def test_collect_wav2lip_preload_payload_for_avatar_selects_requested_avatar_onl
     assert payload is not None
     assert payload["avatar_id"] == "man"
     assert payload["ref_frame_dir"] == str((tmp_path / "man" / "frames").resolve())
-    assert payload["prepared_cache_dir"] == str((tmp_path / "man" / "wav2lip_preload_cache").resolve())
+    assert payload["prepared_cache_dir"] == str((tmp_path / "man" / "wav2lip").resolve())
 
 
 def test_filter_wav2lip_preload_payloads_excludes_already_warmed_avatars() -> None:
@@ -191,7 +191,7 @@ async def test_preload_wav2lip_assets_posts_payloads(tmp_path: Path) -> None:
 
     assert posts[0][0] == "http://127.0.0.1:18765/v1/audio2video/wav2lip/preload"
     assert posts[0][1]["avatar_id"] == "avatar"
-    assert posts[0][1]["prepared_cache_dir"] == str((avatar / "wav2lip_preload_cache").resolve())
+    assert posts[0][1]["prepared_cache_dir"] == str((avatar / "wav2lip").resolve())
     assert posts[0][1]["wav2lip_postprocess_mode"] == "basic"
 
 

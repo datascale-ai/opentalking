@@ -402,7 +402,7 @@ async def test_wav2lip_reset_session_preserves_frame_reference_args(tmp_path: Pa
     assert fake.kwargs["reference_mode"] == "frames"
     assert fake.kwargs["ref_frame_dir"] == frames_dir.resolve()
     assert fake.kwargs["ref_frame_metadata_path"] == metadata_path.resolve()
-    assert fake.kwargs["prepared_cache_dir"] == (avatar_dir / "wav2lip_preload_cache").resolve()
+    assert fake.kwargs["prepared_cache_dir"] == (avatar_dir / "wav2lip").resolve()
     assert fake.kwargs["preprocessed"] is True
 
 

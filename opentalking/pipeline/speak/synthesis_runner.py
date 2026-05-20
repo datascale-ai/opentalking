@@ -703,7 +703,7 @@ class FlashTalkRunner:
     def _wav2lip_prepared_cache_dir(self) -> Path | None:
         if self._wav2lip_reference_mode() != "frames":
             return None
-        return (self.avatar_path() / "wav2lip_preload_cache").resolve()
+        return (self.avatar_path() / "wav2lip").resolve()
 
     def _wav2lip_preprocessed(self) -> bool:
         if self._wav2lip_reference_mode() != "frames":

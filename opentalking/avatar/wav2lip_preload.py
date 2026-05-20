@@ -42,7 +42,7 @@ def _payload_from_manifest_path(
         log.warning("Skipping preprocessed wav2lip avatar without frame_metadata: %s", avatar_id)
         return None
     frame_metadata_path = (manifest_path.parent / str(frame_metadata)).resolve()
-    prepared_cache_dir = (manifest_path.parent / "wav2lip_preload_cache").resolve()
+    prepared_cache_dir = (manifest_path.parent / "wav2lip").resolve()
     if not frame_dir.is_dir() or not frame_metadata_path.is_file():
         log.warning("Skipping incomplete preprocessed wav2lip avatar: %s", avatar_id)
         return None
