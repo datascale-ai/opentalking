@@ -132,8 +132,7 @@ echo "  log:     $log_file"
 (
   cd "$omnirt_dir"
   if [[ "$backend" == "ascend" ]]; then
-    # shellcheck disable=SC1090
-    source "${ASCEND_SET_ENV:-/usr/local/Ascend/ascend-toolkit/set_env.sh}"
+    quickstart_source_ascend_env "${ASCEND_SET_ENV:-/usr/local/Ascend/ascend-toolkit/set_env.sh}"
   fi
   source .venv/bin/activate
 

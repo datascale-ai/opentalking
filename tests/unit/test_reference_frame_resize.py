@@ -103,6 +103,29 @@ def test_fasterliveportrait_playback_backpressure_defaults(monkeypatch) -> None:
     assert runner._playback_backpressure_config() == (8, 24, 900.0)
 
 
+def test_wav2lip_and_quicktalk_playback_backpressure_defaults(monkeypatch) -> None:
+    monkeypatch.delenv("AUDIO2VIDEO_PLAYBACK_TARGET_QUEUE_FRAMES", raising=False)
+    monkeypatch.delenv("AUDIO2VIDEO_PLAYBACK_MAX_QUEUE_FRAMES", raising=False)
+    monkeypatch.delenv("AUDIO2VIDEO_PLAYBACK_MAX_WAIT_MS", raising=False)
+
+    for model_type in ("wav2lip", "quicktalk"):
+        runner = FlashTalkRunner.__new__(FlashTalkRunner)
+        runner.model_type = model_type
+
+        assert runner._playback_backpressure_config() == (8, 32, 1200.0)
+
+
+def test_wav2lip_and_quicktalk_playback_backpressure_accept_env(monkeypatch) -> None:
+    monkeypatch.setenv("AUDIO2VIDEO_PLAYBACK_TARGET_QUEUE_FRAMES", "3")
+    monkeypatch.setenv("AUDIO2VIDEO_PLAYBACK_MAX_QUEUE_FRAMES", "7")
+    monkeypatch.setenv("AUDIO2VIDEO_PLAYBACK_MAX_WAIT_MS", "80")
+
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "quicktalk"
+
+    assert runner._playback_backpressure_config() == (3, 7, 80.0)
+
+
 @pytest.mark.asyncio
 async def test_fasterliveportrait_waits_when_playback_queue_is_high(monkeypatch) -> None:
     monkeypatch.setenv("FLP_PLAYBACK_TARGET_QUEUE_FRAMES", "1")

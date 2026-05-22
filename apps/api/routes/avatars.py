@@ -313,6 +313,86 @@ def _quicktalk_rebuild(settings: Any):
     )
 
 
+class _QuickTalkCacheBuilder:
+    def __init__(self, settings: Any) -> None:
+        import torch
+        from opentalking.models.quicktalk.runtime_v2 import ImageProcessor
+
+        asset_root = _settings_quicktalk_model_root(settings)
+        checkpoints = asset_root / "checkpoints"
+        aux_min = checkpoints / "auxiliary_min"
+        aux_root = aux_min if aux_min.exists() else (checkpoints / "auxiliary")
+        device = str(
+            getattr(settings, "quicktalk_face_cache_device", None)
+            or getattr(settings, "quicktalk_device", None)
+            or os.environ.get("OPENTALKING_QUICKTALK_FACE_CACHE_DEVICE")
+            or os.environ.get("OPENTALKING_QUICKTALK_DEVICE")
+            or os.environ.get("OMNIRT_QUICKTALK_DEVICE")
+            or "cuda:0"
+        )
+        torch_device = torch.device(device)
+        dtype = torch.float32
+        self.image_processor = ImageProcessor(
+            aux_root,
+            checkpoints / "repair.npy",
+            256,
+            torch_device,
+            dtype,
+        )
+
+    def read_frames(self, video_path: Path, max_seconds: float | None = None):
+        import cv2
+
+        cap = cv2.VideoCapture(str(video_path))
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        if fps <= 0:
+            cap.release()
+            raise RuntimeError(f"Invalid FPS from video: {video_path}")
+        frames = []
+        frame_limit = None if max_seconds is None else int(max_seconds * fps)
+        idx = 0
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frames.append(frame)
+                idx += 1
+                if frame_limit is not None and idx >= frame_limit:
+                    break
+        finally:
+            cap.release()
+        return frames, fps
+
+    def face_detect_frames(self, frames: Any):
+        import cv2
+        import numpy as np
+
+        results = []
+        for frame in frames:
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            crop = self.image_processor.affine_transform(rgb)
+            face_hwc = crop.face_chw.permute(1, 2, 0).cpu().numpy().astype(np.uint8)
+            face_bgr = cv2.cvtColor(face_hwc, cv2.COLOR_RGB2BGR)
+            results.append((face_bgr, crop.box, crop.affine_matrix))
+        return results
+
+    def save_face_cache(self, cache_path: Path, results: Any) -> None:
+        import numpy as np
+
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        faces = np.stack([item[0] for item in results], axis=0).astype(np.uint8)
+        boxes = np.asarray([item[1] for item in results], dtype=np.int32)
+        affines = np.stack([item[2] for item in results], axis=0).astype(np.float32)
+        tmp_path = cache_path.with_suffix(".tmp.npz")
+        np.savez(str(tmp_path), faces=faces, boxes=boxes, affines=affines)
+        tmp_path.replace(cache_path)
+
+
+def _quicktalk_cache_builder(settings: Any) -> _QuickTalkCacheBuilder:
+    return _QuickTalkCacheBuilder(settings)
+
+
 def _quicktalk_cache_hit_result(
     avatar_dir: Path,
     manifest: dict[str, Any],
@@ -660,7 +740,7 @@ def _prepare_quicktalk_prewarm(
         cache = _prepare_quicktalk_asset(
             avatar_dir=avatar_dir,
             manifest=manifest,
-            rebuild=_quicktalk_rebuild(settings),
+            rebuild=_quicktalk_cache_builder(settings),
             max_long_edge=max_long_edge,
             max_template_seconds=_settings_float(
                 settings,

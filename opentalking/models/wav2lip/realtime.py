@@ -123,12 +123,12 @@ def _max_long_edge() -> int:
     raw = (
         os.environ.get("OPENTALKING_WAV2LIP_MAX_LONG_EDGE")
         or os.environ.get("OMNIRT_WAV2LIP_MAX_LONG_EDGE")
-        or "832"
+        or "0"
     ).strip()
     try:
         return max(0, int(raw))
     except ValueError:
-        return 832
+        return 0
 
 
 def _scale_video_to_max_long_edge(video: AvatarVideoSpec) -> AvatarVideoSpec:

@@ -125,7 +125,12 @@ def test_quicktalk_avatar_prewarm_generates_cache_and_calls_omnirt(
                 affines=np.zeros((2, 2, 3), dtype=np.float32),
             )
 
-    monkeypatch.setattr(avatars, "_quicktalk_rebuild", lambda settings: FakeRebuild())
+    def fail_full_rebuild(settings):
+        del settings
+        raise AssertionError("omnirt quicktalk prewarm must not load full QuickTalk runtime")
+
+    monkeypatch.setattr(avatars, "_quicktalk_rebuild", fail_full_rebuild)
+    monkeypatch.setattr(avatars, "_quicktalk_cache_builder", lambda settings: FakeRebuild())
 
     calls: list[tuple[str, dict]] = []
 

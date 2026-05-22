@@ -74,6 +74,25 @@ quickstart_source_env() {
   return "$status"
 }
 
+quickstart_source_ascend_env() {
+  local env_file="$1"
+  local restore_nounset=1
+  local status=0
+
+  case "$-" in
+    *u*) restore_nounset=0 ;;
+  esac
+
+  set +u
+  # Ascend's set_env.sh may append to unset variables like LD_LIBRARY_PATH.
+  # shellcheck disable=SC1090
+  source "$env_file" || status=$?
+  if [[ "$restore_nounset" == "0" ]]; then
+    set -u
+  fi
+  return "$status"
+}
+
 quickstart_port_in_use() {
   local port="$1"
 

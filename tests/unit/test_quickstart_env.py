@@ -55,3 +55,21 @@ bash -c 'test "$OPENTALKING_TEST_DEFAULT" = from_quickstart_env'
 """
 
     subprocess.run(["bash", "-lc", script], cwd=REPO_ROOT, check=True)
+
+
+def test_quickstart_source_ascend_env_tolerates_unset_ld_library_path(tmp_path: Path) -> None:
+    ascend_env = tmp_path / "set_env.sh"
+    ascend_env.write_text(
+        'export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/mock/ascend/lib64"\n',
+        encoding="utf-8",
+    )
+
+    script = f"""
+set -euo pipefail
+unset LD_LIBRARY_PATH
+source scripts/quickstart/_helpers.sh
+quickstart_source_ascend_env {ascend_env}
+bash -c 'case "$LD_LIBRARY_PATH" in *:/mock/ascend/lib64) exit 0 ;; *) exit 1 ;; esac'
+"""
+
+    subprocess.run(["bash", "-lc", script], cwd=REPO_ROOT, check=True)

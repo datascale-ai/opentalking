@@ -397,6 +397,11 @@ class Wav2LipRealtimeRuntime:
             if session.ref_frame_metadata_path
             else json.dumps(session.mouth_metadata or {}, sort_keys=True, ensure_ascii=True)
         )
+        gfpgan_checkpoint_sig = (
+            str(self.gfpgan_checkpoint)
+            if session.wav2lip_postprocess_mode == "easy_enhanced"
+            else ""
+        )
         return "::".join(
             [
                 str(Path(session.ref_frame_dir or "").expanduser().resolve()),
@@ -410,8 +415,7 @@ class Wav2LipRealtimeRuntime:
                 str(self.easy_mask_dilation),
                 str(self.easy_mask_feathering),
                 str(bool(self.easy_debug_mask)),
-                str(self.gfpgan_checkpoint),
-                "model_crop_only",
+                gfpgan_checkpoint_sig,
                 metadata_stat,
                 mouth_metadata_sig,
                 "|".join(frame_sig),

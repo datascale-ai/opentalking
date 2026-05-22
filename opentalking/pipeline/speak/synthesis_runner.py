@@ -36,9 +36,11 @@ from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatible
 from opentalking.providers.llm.openai_compatible.sentence_splitter import SentenceSplitter
 from opentalking.providers.llm.openai_compatible.conversation import ConversationHistory
 from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
+from opentalking.providers.synthesis.audio2video_client import Audio2VideoClient, OmniRTAudio2VideoClient
 from opentalking.providers.rtc.aiortc.adapter import WebRTCSession
 from opentalking.providers.tts.factory import create_tts_adapter, tts_log_profile
 from opentalking.runtime.bus import publish_event
+from opentalking.pipeline.speak.audio2video_runner import Audio2VideoRunner
 from opentalking.pipeline.speak.text_sanitize import sanitize_tts_text, strip_emoji
 
 log = logging.getLogger(__name__)
@@ -211,6 +213,7 @@ class FlashTalkRunner:
         redis: Any,
         flashtalk_ws_url: str | None = None,
         flashtalk_client: Any | None = None,
+        audio2video_client: Audio2VideoClient | None = None,
         custom_ref_image_path: str = "",
         llm_base_url: str = "",
         llm_api_key: str = "",
@@ -235,10 +238,18 @@ class FlashTalkRunner:
         from opentalking.providers.synthesis.omnirt import auth_headers as _omnirt_auth_headers
         self._extra_ws_headers = _omnirt_auth_headers(get_settings())
 
-        self.flashtalk = flashtalk_client or FlashTalkWSClient(
-            self._flashtalk_ws_url,
-            extra_headers=self._extra_ws_headers,
-        )
+        self.audio2video_runner: Audio2VideoRunner | None = None
+        if audio2video_client is None:
+            ws_client = flashtalk_client or FlashTalkWSClient(
+                self._flashtalk_ws_url,
+                extra_headers=self._extra_ws_headers,
+            )
+            audio2video_client = OmniRTAudio2VideoClient(ws_client)
+        self.audio2video = audio2video_client
+        # Legacy alias: most of the realtime runner still references
+        # ``self.flashtalk``. Keep it pointing at the unified client until the
+        # next migration phase moves call sites to ``self.audio2video``.
+        self.flashtalk = self.audio2video
         # Remote FlashTalk serves a single active session; a second background
         # init for idle-cache building can replace the live session underneath us.
         self._allow_background_idle_cache = flashtalk_client is not None and self.model_type == "flashtalk"
@@ -786,8 +797,17 @@ class FlashTalkRunner:
         self._ref_image_path = ref_image_path
 
         # Connect and init FlashTalk session
-        await self.flashtalk.connect()
+        connect = getattr(self.flashtalk, "connect", None)
+        if callable(connect):
+            await connect()
         await self._init_flashtalk_session(ref_image_path)
+        self.audio2video_runner = Audio2VideoRunner(
+            session_id=self.session_id,
+            avatar_id=self.avatar_id,
+            model_type=self.model_type,
+            avatars_root=self.avatars_root,
+            audio2video_client=self.audio2video,
+        )
 
         # Create WebRTC session matching FlashTalk output
         self.webrtc = WebRTCSession(
@@ -1187,6 +1207,7 @@ class FlashTalkRunner:
     async def _init_flashtalk_session(self, ref_image_path: Path) -> None:
         video_config = self._fasterliveportrait_video_config(ref_image_path) or self._wav2lip_video_config()
         await self.flashtalk.init_session(
+            avatar_path=self.avatar_path(),
             ref_image=self._fasterliveportrait_ref_image_payload(ref_image_path, video_config),
             wav2lip_postprocess_mode=self._wav2lip_postprocess_mode(),
             mouth_metadata=self._wav2lip_mouth_metadata(),
@@ -1534,12 +1555,18 @@ class FlashTalkRunner:
         return max(1, int(getattr(get_settings(), "flashtalk_prebuffer_chunks", 1)))
 
     def _playback_backpressure_config(self) -> tuple[int, int, float]:
-        if self.model_type != "fasterliveportrait":
-            return (0, 0, 0.0)
-        target = max(0, _env_int("FLP_PLAYBACK_TARGET_QUEUE_FRAMES", 8))
-        max_frames = max(target, _env_int("FLP_PLAYBACK_MAX_QUEUE_FRAMES", 24))
-        max_wait_ms = max(0.0, _env_float("FLP_PLAYBACK_MAX_WAIT_MS", 900.0))
-        return (target, max_frames, max_wait_ms)
+        model_type = str(getattr(self, "model_type", "") or "").strip().lower()
+        if model_type == "fasterliveportrait":
+            target = max(0, _env_int("FLP_PLAYBACK_TARGET_QUEUE_FRAMES", 8))
+            max_frames = max(target, _env_int("FLP_PLAYBACK_MAX_QUEUE_FRAMES", 24))
+            max_wait_ms = max(0.0, _env_float("FLP_PLAYBACK_MAX_WAIT_MS", 900.0))
+            return (target, max_frames, max_wait_ms)
+        if model_type in {"quicktalk", "wav2lip"}:
+            target = max(0, _env_int("AUDIO2VIDEO_PLAYBACK_TARGET_QUEUE_FRAMES", 8))
+            max_frames = max(target, _env_int("AUDIO2VIDEO_PLAYBACK_MAX_QUEUE_FRAMES", 32))
+            max_wait_ms = max(0.0, _env_float("AUDIO2VIDEO_PLAYBACK_MAX_WAIT_MS", 1200.0))
+            return (target, max_frames, max_wait_ms)
+        return (0, 0, 0.0)
 
     async def _wait_for_playback_capacity(
         self,

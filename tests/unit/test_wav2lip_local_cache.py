@@ -34,8 +34,8 @@ def test_local_wav2lip_uses_omnirt_max_long_edge_default(monkeypatch):
         config={"width": 830, "height": 1108},
     )
 
-    assert session.video.width == 622
-    assert session.video.height == 832
+    assert session.video.width == 830
+    assert session.video.height == 1108
 
 
 def test_local_wav2lip_accepts_omnirt_max_long_edge_env(monkeypatch):
@@ -88,6 +88,68 @@ def test_local_wav2lip_face_detection_accepts_omnirt_env(monkeypatch):
     monkeypatch.setenv("OMNIRT_WAV2LIP_FACE_DET_DEVICE", "cuda:0")
 
     assert Wav2LipRealtimeRuntime._resolve_face_detection_device("cuda:6") == "cuda:0"
+
+
+def test_local_wav2lip_cache_key_matches_omnirt_contract(tmp_path):
+    frame_dir = tmp_path / "frames"
+    frame_dir.mkdir()
+    frame_path = frame_dir / "frame_00000.png"
+    _write_png(frame_path)
+    metadata_path = frame_dir / "mouth_metadata.json"
+    metadata_path.write_text(json.dumps({"frames": {"frame_00000.png": {}}}), encoding="utf-8")
+
+    runtime = Wav2LipRealtimeRuntime(device="cpu")
+    runtime.checkpoint = (tmp_path / "wav2lip384.pth").resolve()
+    runtime.gfpgan_checkpoint = (tmp_path / "GFPGANv1.4.pth").resolve()
+    session = RealtimeAvatarSession(
+        session_id="local-cache-key-test",
+        trace_id="trace",
+        model="wav2lip",
+        backend="local",
+        prompt="",
+        reference_mode="frames",
+        ref_frame_dir=str(frame_dir),
+        ref_frame_metadata_path=str(metadata_path),
+        audio=AvatarAudioSpec(sample_rate=16000, chunk_samples=17920),
+        video=AvatarVideoSpec(fps=25, width=12, height=10),
+        preprocessed=True,
+        wav2lip_postprocess_mode="easy_improved",
+    )
+
+    key = runtime._frame_sequence_cache_key(session, [frame_path])
+
+    assert "model_crop_only" not in key.split("::")
+
+
+def test_local_wav2lip_cache_key_ignores_gfpgan_for_easy_improved(tmp_path):
+    frame_dir = tmp_path / "frames"
+    frame_dir.mkdir()
+    frame_path = frame_dir / "frame_00000.png"
+    _write_png(frame_path)
+
+    session = RealtimeAvatarSession(
+        session_id="local-cache-gfpgan-test",
+        trace_id="trace",
+        model="wav2lip",
+        backend="local",
+        prompt="",
+        reference_mode="frames",
+        ref_frame_dir=str(frame_dir),
+        audio=AvatarAudioSpec(sample_rate=16000, chunk_samples=17920),
+        video=AvatarVideoSpec(fps=25, width=12, height=10),
+        wav2lip_postprocess_mode="easy_improved",
+    )
+    first = Wav2LipRealtimeRuntime(device="cpu")
+    first.checkpoint = (tmp_path / "wav2lip384.pth").resolve()
+    first.gfpgan_checkpoint = (tmp_path / "one" / "GFPGANv1.4.pth").resolve()
+    second = Wav2LipRealtimeRuntime(device="cpu")
+    second.checkpoint = first.checkpoint
+    second.gfpgan_checkpoint = (tmp_path / "two" / "GFPGANv1.4.pth").resolve()
+
+    assert first._frame_sequence_cache_key(session, [frame_path]) == second._frame_sequence_cache_key(
+        session,
+        [frame_path],
+    )
 
 
 def test_local_wav2lip_preload_writes_and_reuses_prepared_cache(tmp_path, monkeypatch):

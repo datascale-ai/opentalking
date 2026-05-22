@@ -16,7 +16,14 @@ from opentalking.core.redis_keys import TASK_QUEUE
 from opentalking.core.session_store import set_session_state
 from opentalking.runtime.bus import publish_event
 from opentalking.pipeline.session.runner import SessionRunner
+from opentalking.pipeline.speak.synthesis_runner import FlashTalkRunner
+from opentalking.models.registry import get_adapter
+from opentalking.providers.synthesis.audio2video_client import (
+    LocalAudio2VideoClient,
+    OmniRTAudio2VideoClient,
+)
 from opentalking.providers.synthesis.backends import resolve_model_backend
+from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
 
 log = logging.getLogger(__name__)
 
@@ -111,7 +118,7 @@ def _create_runner(
     avatars_root: Path,
     device: str,
 ) -> AnyRunner:
-    """Factory: pick FlashTalkRunner or regular SessionRunner."""
+    """Factory: pick the realtime runner backend for the requested model."""
     model = str(task.get("model", ""))
     sid = str(task["session_id"])
     avatar_id = str(task["avatar_id"])
@@ -122,36 +129,38 @@ def _create_runner(
     # Selected explicitly when the user picks model=mock in the UI.
     mock_mode = backend.backend == "mock"
 
-    if mock_mode or backend.backend in {"omnirt", "direct_ws"}:
-        from opentalking.pipeline.speak.synthesis_runner import FlashTalkRunner
-
-        flashtalk_client = None
+    local_audio2video_models = {"quicktalk", "wav2lip"}
+    if mock_mode or backend.backend in {"omnirt", "direct_ws"} or (
+        backend.backend == "local" and model in local_audio2video_models
+    ):
+        audio2video_client = None
         flashtalk_ws_url: str | None = None
 
         if mock_mode:
             from opentalking.providers.synthesis.mock_client import MockFlashTalkClient
 
-            flashtalk_client = MockFlashTalkClient()
+            audio2video_client = OmniRTAudio2VideoClient(MockFlashTalkClient())
             effective_model = "mock"
         elif model == "flashhead":
             from opentalking.providers.synthesis.flashhead import FlashHeadWSClient
 
-            flashtalk_client = FlashHeadWSClient(
-                ws_url=backend.ws_url or settings.flashhead_ws_url,
-                model=settings.flashhead_model,
-                config={
-                    "fps": int(settings.flashhead_fps),
-                    "sample_rate": int(settings.flashhead_sample_rate),
-                    "width": int(settings.flashhead_width),
-                    "height": int(settings.flashhead_height),
-                    "frame_num": int(settings.flashhead_frame_num),
-                    "chunk_samples": int(settings.flashhead_chunk_samples),
-                },
+            audio2video_client = OmniRTAudio2VideoClient(
+                FlashHeadWSClient(
+                    ws_url=backend.ws_url or settings.flashhead_ws_url,
+                    model=settings.flashhead_model,
+                    config={
+                        "fps": int(settings.flashhead_fps),
+                        "sample_rate": int(settings.flashhead_sample_rate),
+                        "width": int(settings.flashhead_width),
+                        "height": int(settings.flashhead_height),
+                        "frame_num": int(settings.flashhead_frame_num),
+                        "chunk_samples": int(settings.flashhead_chunk_samples),
+                    },
+                )
             )
             effective_model = "flashhead"
-        else:
+        elif backend.backend in {"omnirt", "direct_ws"}:
             from opentalking.providers.synthesis.omnirt import auth_headers as omnirt_auth_headers
-            from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
 
             if backend.backend == "direct_ws":
                 flashtalk_ws_url = backend.ws_url
@@ -162,14 +171,20 @@ def _create_runner(
 
                 flashtalk_ws_url = resolve_synthesis_ws_url(model, settings)
             headers = omnirt_auth_headers(settings)
-            if headers:
-                # Prebuild client so we can pass auth headers; FlashTalkRunner
-                # accepts a ready-made client and will use it instead of a URL.
-                flashtalk_client = FlashTalkWSClient(flashtalk_ws_url, extra_headers=headers)
+            audio2video_client = OmniRTAudio2VideoClient(
+                FlashTalkWSClient(flashtalk_ws_url, extra_headers=headers or None)
+            )
             # Preserve the user's chosen model name (flashtalk / musetalk / wav2lip / fasterliveportrait).
             # FlashTalkRunner only branches on model_type for model-specific
             # features; musetalk / wav2lip / fasterliveportrait just skip
             # those features without breaking the speak pipeline.
+            effective_model = model
+        else:
+            local_device = _local_runner_device(model, settings, device)
+            audio2video_client = LocalAudio2VideoClient(
+                get_adapter(model),
+                device=local_device,
+            )
             effective_model = model
 
         return FlashTalkRunner(
@@ -178,7 +193,7 @@ def _create_runner(
             avatars_root=avatars_root,
             redis=r,
             flashtalk_ws_url=flashtalk_ws_url,
-            flashtalk_client=flashtalk_client,
+            audio2video_client=audio2video_client,
             custom_ref_image_path=str(task.get("custom_ref_image_path", "") or ""),
             llm_base_url=settings.llm_base_url,
             llm_api_key=settings.llm_api_key,

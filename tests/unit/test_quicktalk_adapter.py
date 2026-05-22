@@ -54,6 +54,57 @@ def test_quicktalk_adapter_prefers_env_asset_root(
     assert adapter._asset_root == asset_root.resolve()
 
 
+def test_quicktalk_adapter_falls_back_to_model_root_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset_root = tmp_path / "models" / "quicktalk"
+    _write_quicktalk_pth_assets(asset_root)
+    avatar_dir = tmp_path / "avatars" / "anchor"
+    quicktalk_dir = avatar_dir / "quicktalk"
+    quicktalk_dir.mkdir(parents=True)
+    template = quicktalk_dir / "template_512x512.mp4"
+    template.write_bytes(b"video")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "anchor",
+                "model_type": "quicktalk",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 512,
+                "height": 512,
+                "version": "1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, Path] = {}
+
+    class FakeWorker:
+        fps = 25
+
+        def __init__(self, *, asset_root: Path, template_video: Path, **_: object) -> None:
+            captured["asset_root"] = asset_root
+            captured["template_video"] = template_video
+
+        def make_state(self) -> object:
+            return object()
+
+    fake_runtime = types.ModuleType("opentalking.models.quicktalk.runtime")
+    fake_runtime.RealtimeV3Worker = FakeWorker
+    monkeypatch.setitem(sys.modules, "opentalking.models.quicktalk.runtime", fake_runtime)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_ASSET_ROOT", raising=False)
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_MODEL_ROOT", str(asset_root))
+
+    adapter = QuickTalkAdapter()
+    adapter.load_avatar(str(avatar_dir))
+
+    assert captured["asset_root"] == asset_root.resolve()
+    assert captured["template_video"] == template.resolve()
+
+
 def test_quicktalk_adapter_accepts_avatar_with_quicktalk_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

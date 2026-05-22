@@ -783,3 +783,30 @@ def test_quicktalk_template_video_can_come_from_quicktalk_metadata(tmp_path: Pat
 
     assert runner._quicktalk_template_mode() == "video"
     assert runner._quicktalk_template_video() == template.resolve()
+
+
+@pytest.mark.asyncio
+async def test_local_audio2video_init_session_receives_avatar_path(tmp_path: Path) -> None:
+    avatar_dir = tmp_path / "avatar"
+    avatar_dir.mkdir()
+    reference = avatar_dir / "reference.png"
+    _write_png(reference, (255, 255, 255))
+
+    class FakeAudio2Video:
+        def __init__(self) -> None:
+            self.kwargs = None
+
+        async def init_session(self, **kwargs) -> dict:
+            self.kwargs = kwargs
+            return {"type": "init_ok"}
+
+    fake = FakeAudio2Video()
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "wav2lip"
+    runner.avatar_id = "avatar"
+    runner.avatars_root = tmp_path
+    runner.flashtalk = fake
+
+    await runner._init_flashtalk_session(reference)
+
+    assert fake.kwargs["avatar_path"] == avatar_dir.resolve()

@@ -166,6 +166,14 @@ def _optional_env_path(name: str) -> Path | None:
     return Path(raw).expanduser().resolve()
 
 
+def _quicktalk_asset_root_env() -> Path | None:
+    return (
+        _optional_env_path("OPENTALKING_QUICKTALK_ASSET_ROOT")
+        or _optional_env_path("OPENTALKING_QUICKTALK_MODEL_ROOT")
+        or _optional_env_path("OMNIRT_QUICKTALK_MODEL_ROOT")
+    )
+
+
 def _even(value: int) -> int:
     value = max(2, int(value))
     return value - (value % 2)
@@ -264,7 +272,7 @@ def _validate_asset_root(asset_root: Path) -> None:
         formatted = "\n  - ".join(str(path) for path in missing)
         raise FileNotFoundError(
             "QuickTalk local assets are incomplete. "
-            "OPENTALKING_QUICKTALK_ASSET_ROOT must point to a QuickTalk local "
+            "OPENTALKING_QUICKTALK_ASSET_ROOT or OPENTALKING_QUICKTALK_MODEL_ROOT must point to a QuickTalk local "
             "asset directory containing checkpoints/quicktalk.pth or checkpoints/256.onnx, checkpoints/repair.npy, "
             "checkpoints/chinese-hubert-large/ and checkpoints/auxiliary/.\n"
             f"Current asset root: {asset_root}\n"
@@ -285,7 +293,7 @@ class QuickTalkAdapter:
         self._hubert_device = (
             _env_value("OPENTALKING_QUICKTALK_HUBERT_DEVICE") or None
         )
-        self._asset_root = _optional_env_path("OPENTALKING_QUICKTALK_ASSET_ROOT")
+        self._asset_root = _quicktalk_asset_root_env()
         self._output_transform = _env_value(
             "OPENTALKING_QUICKTALK_OUTPUT_TRANSFORM",
             "bgr",

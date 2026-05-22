@@ -88,7 +88,6 @@ echo "  cann:    $ascend_env"
 echo "  device:  $OMNIRT_WAV2LIP_DEVICE"
 echo "  face det: $OMNIRT_WAV2LIP_FACE_DET_DEVICE"
 
-# shellcheck disable=SC1090
-source "$ascend_env"
+quickstart_source_ascend_env "$ascend_env"
 
 bash "$quickstart_dir/start_omnirt_wav2lip.sh" --device npu "${forward_args[@]}"
