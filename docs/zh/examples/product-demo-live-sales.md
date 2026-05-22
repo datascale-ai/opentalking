@@ -34,7 +34,7 @@
 
 打开 OpenTalking Studio 后，顶部选择 **“实时对话”**。页面左侧是当前工作流、数字人形象、驱动模型、角色和参考图配置区域；中间是数字人形象库和预览区；右侧是会话面板。
 
-![截图 1：进入实时对话工作流。](/root/lyf/forgit/opentalking/docs/assets/images/product-demo-live-sales/01_enter_realtime.jpeg)
+![截图 1：进入实时对话工作流。](../../assets/images/product-demo-live-sales/01_enter_realtime.jpeg)
 
 *截图 1：进入实时对话工作流。*
 
