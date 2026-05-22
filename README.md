@@ -217,7 +217,7 @@ source .venv/bin/activate
 
 #### 2. 准备 QuickTalk 权重
 
-本地权重、第三方 HuBERT / InsightFace 依赖和缓存统一放到仓库根目录 `models/quicktalk/`。QuickTalk 权重可从 Hugging Face 下载：
+本地权重、第三方 HuBERT / InsightFace 依赖和缓存统一放到仓库根目录 `models/quicktalk/`。QuickTalk 权重和 HuBERT 依赖可从 Hugging Face 下载：
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
@@ -231,20 +231,16 @@ export HF_ENDPOINT=https://hf-mirror.com
 hf download datascale-ai/quicktalk \
   quicktalk.pth \
   repair.npy \
+  chinese-hubert-large/config.json \
+  chinese-hubert-large/preprocessor_config.json \
+  chinese-hubert-large/pytorch_model.bin \
   --local-dir models/quicktalk/checkpoints
 ```
 
-QuickTalk 还需要 HuBERT 与 InsightFace `buffalo_l` 依赖权重。它们不包含在 `datascale-ai/quicktalk` 中，需要按各自来源和许可单独准备：
+QuickTalk 权重和 HuBERT 文件已经包含在 `datascale-ai/quicktalk` 中。QuickTalk 仍需要单独准备 InsightFace `buffalo_l` 依赖权重：
 
 ```bash
-# HuBERT
-hf download TencentGameMate/chinese-hubert-large \
-  config.json \
-  preprocessor_config.json \
-  pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints/chinese-hubert-large
-
-# InsightFace buffalo_l
+# 下载并解压 InsightFace buffalo_l 到 QuickTalk auxiliary 目录。
 mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
 curl -L \
   -o /tmp/opentalking-insightface/buffalo_l.zip \
@@ -272,6 +268,16 @@ models/
       auxiliary/models/buffalo_l/
         det_10g.onnx
         ...
+```
+
+建议校验关键文件 SHA256：
+
+```text
+quicktalk.pth: fc8a7ea025c99a471ef00738874be5ecb6b5dfaf88ff6a1255a5d45a05d73001
+repair.npy: 9ea50edde851bf3b12aa22d67b6f0db4f2930f3d9b7b3febcbd383e14117bfca
+chinese-hubert-large/config.json: 8511d73054ac289ef47a527efdfd6738d2cb60f69f2973fdc9277492d9ff854b
+chinese-hubert-large/preprocessor_config.json: 6334d6e0c5f2084c9a99b85ddff243cbc79dbaa4aa790bcddf8c41c496fab6fb
+chinese-hubert-large/pytorch_model.bin: 9cf43abec3f0410ad6854afa4d376c69ccb364b48ddddfd25c4c5aa16398eab0
 ```
 
 检查关键文件（若文件不存在会提示No such file or directory）：

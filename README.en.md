@@ -219,7 +219,7 @@ source .venv/bin/activate
 
 #### 2. Prepare QuickTalk Weights
 
-Local weights, third-party HuBERT / InsightFace dependencies, and caches are organized under repository-root `models/quicktalk/`. QuickTalk weights can be downloaded from Hugging Face:
+Local weights, third-party HuBERT / InsightFace dependencies, and caches are organized under repository-root `models/quicktalk/`. QuickTalk weights and HuBERT dependencies can be downloaded from Hugging Face:
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
@@ -233,20 +233,16 @@ export HF_ENDPOINT=https://hf-mirror.com
 hf download datascale-ai/quicktalk \
   quicktalk.pth \
   repair.npy \
+  chinese-hubert-large/config.json \
+  chinese-hubert-large/preprocessor_config.json \
+  chinese-hubert-large/pytorch_model.bin \
   --local-dir models/quicktalk/checkpoints
 ```
 
-QuickTalk also needs HuBERT and InsightFace `buffalo_l` dependency weights. They are not included in `datascale-ai/quicktalk` and must be prepared separately according to their own sources and licenses:
+QuickTalk weights and HuBERT files are included in `datascale-ai/quicktalk`. QuickTalk still needs the InsightFace `buffalo_l` dependency weights prepared separately:
 
 ```bash
-# HuBERT
-hf download TencentGameMate/chinese-hubert-large \
-  config.json \
-  preprocessor_config.json \
-  pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints/chinese-hubert-large
-
-# InsightFace buffalo_l
+# Download and unpack InsightFace buffalo_l into the QuickTalk auxiliary directory.
 mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
 curl -L \
   -o /tmp/opentalking-insightface/buffalo_l.zip \
@@ -272,6 +268,16 @@ models/
       auxiliary/models/buffalo_l/
         det_10g.onnx
         ...
+```
+
+Recommended SHA256 checks:
+
+```text
+quicktalk.pth: fc8a7ea025c99a471ef00738874be5ecb6b5dfaf88ff6a1255a5d45a05d73001
+repair.npy: 9ea50edde851bf3b12aa22d67b6f0db4f2930f3d9b7b3febcbd383e14117bfca
+chinese-hubert-large/config.json: 8511d73054ac289ef47a527efdfd6738d2cb60f69f2973fdc9277492d9ff854b
+chinese-hubert-large/preprocessor_config.json: 6334d6e0c5f2084c9a99b85ddff243cbc79dbaa4aa790bcddf8c41c496fab6fb
+chinese-hubert-large/pytorch_model.bin: 9cf43abec3f0410ad6854afa4d376c69ccb364b48ddddfd25c4c5aa16398eab0
 ```
 
 Check key files. Missing files will show `No such file or directory`:
