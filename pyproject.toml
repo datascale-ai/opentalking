@@ -71,6 +71,7 @@ models = [
   "scipy>=1.10",
   "tqdm>=4.65",
   "diffusers>=0.34",
+  "accelerate>=1.0",
   "openai-whisper>=20240930",
 ]
 ascend = ["torch-npu>=2.1"]

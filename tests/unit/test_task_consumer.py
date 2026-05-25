@@ -271,16 +271,27 @@ def test_create_runner_wraps_musetalk_omnirt_in_audio2video_client(
     assert captured["audio2video_client"].ws_client.ws_url == "ws://omnirt.test/v1/audio2video/musetalk"
 
 
-def test_create_runner_keeps_local_musetalk_on_legacy_session_runner(
+def test_create_runner_wraps_local_musetalk_adapter_in_audio2video_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
 
-    class FakeSessionRunner:
+    class FakeFlashTalkRunner:
         def __init__(self, **kwargs: object) -> None:
             captured.update(kwargs)
 
-    monkeypatch.setattr(task_consumer, "SessionRunner", FakeSessionRunner)
+    class FakeLocalAudio2VideoClient:
+        def __init__(self, adapter: object, *, device: str) -> None:
+            self.adapter = adapter
+            self.device = device
+
+    fake_adapter = object()
+
+    monkeypatch.setenv("OPENTALKING_MUSETALK_DEVICE", "cuda:7")
+    monkeypatch.setenv("OPENTALKING_TORCH_DEVICE", "cpu")
+    monkeypatch.setattr("opentalking.runtime.task_consumer.FlashTalkRunner", FakeFlashTalkRunner)
+    monkeypatch.setattr("opentalking.runtime.task_consumer.LocalAudio2VideoClient", FakeLocalAudio2VideoClient)
+    monkeypatch.setattr("opentalking.runtime.task_consumer.get_adapter", lambda model: fake_adapter)
     monkeypatch.setattr(
         task_consumer,
         "resolve_model_backend",
@@ -294,7 +305,11 @@ def test_create_runner_keeps_local_musetalk_on_legacy_session_runner(
         "cpu",
     )
 
-    assert isinstance(runner, FakeSessionRunner)
+    assert isinstance(runner, FakeFlashTalkRunner)
+    audio2video_client = captured["audio2video_client"]
+    assert isinstance(audio2video_client, FakeLocalAudio2VideoClient)
+    assert audio2video_client.adapter is fake_adapter
+    assert audio2video_client.device == "cuda:7"
     assert captured["model_type"] == "musetalk"
 
 

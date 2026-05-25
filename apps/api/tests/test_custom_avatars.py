@@ -18,6 +18,10 @@ def _png_bytes(size: tuple[int, int] = (8, 8)) -> bytes:
     return out.getvalue()
 
 
+def _path_has_suffix(path: str, *suffix: str) -> bool:
+    return Path(path).parts[-len(suffix):] == suffix
+
+
 def test_create_custom_avatar_adds_listed_asset_with_preview(tmp_path):
     base = tmp_path / "base-avatar"
     base.mkdir()
@@ -169,8 +173,8 @@ def test_quicktalk_avatar_prewarm_generates_cache_and_calls_omnirt(
     path, sent = calls[0]
     assert path == "/v1/audio2video/quicktalk/preload"
     assert sent["template_mode"] == "video"
-    assert sent["template_video"].endswith("/singer/quicktalk/template_16x24.mp4")
-    assert sent["quicktalk_face_cache"].endswith("/singer/quicktalk/face_cache_v3_16x24.npz")
+    assert _path_has_suffix(sent["template_video"], "singer", "quicktalk", "template_16x24.mp4")
+    assert _path_has_suffix(sent["quicktalk_face_cache"], "singer", "quicktalk", "face_cache_v3_16x24.npz")
     assert (avatar / "quicktalk" / "template_16x24.mp4").is_file()
     assert (avatar / "quicktalk" / "face_cache_v3_16x24.npz").is_file()
 
@@ -371,7 +375,7 @@ def test_wav2lip_avatar_prewarm_uses_avatar_cache_dir_and_omnirt(
     path, sent = calls[0]
     assert path == "/v1/audio2video/wav2lip/preload"
     assert sent["avatar_id"] == "singer"
-    assert sent["prepared_cache_dir"].endswith("/singer/wav2lip")
+    assert _path_has_suffix(sent["prepared_cache_dir"], "singer", "wav2lip")
     assert sent["wav2lip_postprocess_mode"] == "opentalking_improved"
 
 

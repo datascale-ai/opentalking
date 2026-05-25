@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_quickstart_source_env_exports_plain_assignments(tmp_path: Path) -> None:
+    if shutil.which("bash") is None:
+        pytest.skip("bash is not available")
     env_file = tmp_path / "quickstart.env"
     env_file.write_text(
         "OPENTALKING_TEST_PLAIN_ASSIGNMENT=from_quickstart_env\n",
@@ -38,6 +43,8 @@ def test_quickstart_entrypoints_use_exporting_env_loader() -> None:
 
 
 def test_quickstart_source_env_preserves_calling_environment(tmp_path: Path) -> None:
+    if shutil.which("bash") is None:
+        pytest.skip("bash is not available")
     env_file = tmp_path / "quickstart.env"
     env_file.write_text(
         "OPENTALKING_TEST_OVERRIDE=from_quickstart_env\n"
@@ -58,6 +65,8 @@ bash -c 'test "$OPENTALKING_TEST_DEFAULT" = from_quickstart_env'
 
 
 def test_quickstart_source_ascend_env_tolerates_unset_ld_library_path(tmp_path: Path) -> None:
+    if shutil.which("bash") is None:
+        pytest.skip("bash is not available")
     ascend_env = tmp_path / "set_env.sh"
     ascend_env.write_text(
         'export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/mock/ascend/lib64"\n',

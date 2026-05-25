@@ -109,6 +109,16 @@ def _local_runner_device(model: str, settings: Any, default_device: str) -> str:
             or os.environ.get("DEVICE")
             or default_device
         )
+    if model == "musetalk":
+        return str(
+            os.environ.get("OPENTALKING_MUSETALK_DEVICE")
+            or os.environ.get("OPENTALKING_TORCH_DEVICE")
+            or getattr(settings, "torch_device", "")
+            or os.environ.get("OPENTALKING_DEVICE")
+            or getattr(settings, "device", "")
+            or os.environ.get("DEVICE")
+            or default_device
+        )
     return default_device
 
 
@@ -129,7 +139,7 @@ def _create_runner(
     # Selected explicitly when the user picks model=mock in the UI.
     mock_mode = backend.backend == "mock"
 
-    local_audio2video_models = {"quicktalk", "wav2lip"}
+    local_audio2video_models = {"musetalk", "quicktalk", "wav2lip"}
     if mock_mode or backend.backend in {"omnirt", "direct_ws"} or (
         backend.backend == "local" and model in local_audio2video_models
     ):

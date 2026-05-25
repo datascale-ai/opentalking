@@ -27,9 +27,10 @@ Mock 不代表真实模型效果，也不能用于评估口型质量和推理延
 
 ### 高质量模型
 
-优先选择 `flashtalk`、`musetalk` 或 `flashhead`。
+优先选择 `musetalk`、`flashtalk` 或 `flashhead`。
 
-这类模型通常更依赖 GPU、NPU 或独立推理服务。建议通过 OmniRT 或独立服务接入，而不是把所有依赖放进 OpenTalking API 进程。
+MuseTalk 可以用 `local` 在单机 CUDA 环境中验证效果，OpenTalking 会在会话初始化前运行官方头像预处理。
+如果需要服务隔离或生产化部署，仍建议通过 OmniRT 或独立服务接入。FlashTalk 和 FlashHead 通常更适合独立推理服务。
 
 ### 生产服务化
 
@@ -52,6 +53,7 @@ Mock 不代表真实模型效果，也不能用于评估口型质量和推理延
 
 - Wav2Lip local。
 - QuickTalk local。
+- MuseTalk local。
 - MuseTalk / Wav2Lip / QuickTalk 的 OmniRT 单模型服务。
 
 如果显存有限，优先减少分辨率、batch size、缓存窗口和并发会话数。

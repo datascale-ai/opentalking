@@ -447,7 +447,15 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
                     raise HTTPException(status_code=503, detail="FlashTalk init timed out.")
                 return CreateSessionResponse(session_id=sid, status="created")
 
-        if body.model == "quicktalk":
+        backend_name = ""
+        try:
+            from opentalking.providers.synthesis.backends import resolve_model_backend
+
+            backend_name = resolve_model_backend(body.model, settings).backend
+        except Exception:
+            log.warning("Failed to resolve model backend for session wait policy: model=%s", body.model, exc_info=True)
+
+        if body.model == "quicktalk" or (body.model == "musetalk" and backend_name == "local"):
             return CreateSessionResponse(session_id=sid, status="initializing")
 
         # Non-FlashTalk: wait synchronously until runner is ready (fast, local model).

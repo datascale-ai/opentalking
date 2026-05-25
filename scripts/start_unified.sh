@@ -181,6 +181,14 @@ if [[ -n "$omnirt_url" && "$backend" != "omnirt" ]]; then
   export OMNIRT_ENDPOINT="$omnirt_url"
 fi
 
+if [[ "$backend" == "local" && "$model" == "musetalk" ]]; then
+  export OMNIRT_ENDPOINT=""
+  export OPENTALKING_OMNIRT_ENDPOINT=""
+  export OPENTALKING_MUSETALK_DEVICE="${OPENTALKING_MUSETALK_DEVICE:-cuda:0}"
+  export OPENTALKING_TORCH_DEVICE="${OPENTALKING_TORCH_DEVICE:-$OPENTALKING_MUSETALK_DEVICE}"
+  bash "$quickstart_dir/prepare_local_musetalk.sh"
+fi
+
 bash "$quickstart_dir/start_opentalking.sh" "${start_args[@]}"
 bash "$quickstart_dir/start_frontend.sh" "${web_args[@]}"
 

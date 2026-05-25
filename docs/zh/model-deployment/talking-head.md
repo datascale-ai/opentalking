@@ -9,7 +9,7 @@
 |------|---------|----------|----------|------|
 | `mock` | `mock` | 首次运行、CI、排查 API/WebRTC | 已内置，已验证 | [Mock](mock.md) |
 | `wav2lip` | `local` / `omnirt` | 第一个真实唇形模型 | local adapter 已内置；OmniRT 路径已验证 | [Local](wav2lip-local.md) / [OmniRT](wav2lip.md) |
-| `musetalk` | `omnirt` / `direct_ws` / 未来 `local` | 已有 MuseTalk 服务或后续本地 adapter | 已文档化 | [MuseTalk](musetalk.md) |
+| `musetalk` | `local` / `omnirt` / `direct_ws` | 使用进程内启动或外部服务获得 MuseTalk 质量 | local adapter 已内置；OmniRT/direct_ws 路径已文档化 | [MuseTalk](musetalk.md) |
 | `quicktalk` | `local` | 本地实时 adapter 与开发参考 | 已内置，已验证 | [QuickTalk](quicktalk.md) |
 | `fasterliveportrait` | `omnirt` | 单卡实时音频驱动头像并贴回原始资产图 | 已文档化 | [FasterLivePortrait](fasterliveportrait.md) |
 | `flashtalk` | `omnirt` | 高质量私有化、GPU/NPU 重模型 | OmniRT/Ascend 路径已验证 | [FlashTalk](flashtalk.md) |
@@ -20,7 +20,7 @@
 | Backend | OpenTalking 期望什么 | 典型模型 |
 |---------|----------------------|----------|
 | `mock` | 无外部 runtime，始终可用。 | `mock` |
-| `local` | 本进程可 import adapter，依赖满足。 | `wav2lip`、`quicktalk`，未来本地 MuseTalk |
+| `local` | 本进程可 import adapter，依赖满足。 | `wav2lip`、`quicktalk`、`musetalk` |
 | `direct_ws` | 模型服务提供专属 WebSocket URL。 | `flashhead`、自定义单模型服务 |
 | `omnirt` | OmniRT 暴露 `/v1/audio2video/{model}`。 | `wav2lip`、`musetalk`、`fasterliveportrait`、`flashtalk` |
 

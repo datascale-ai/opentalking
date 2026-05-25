@@ -10,7 +10,7 @@ inference throughput belong to the selected backend.
 |-------|---------|----------|----------------|---------|
 | `mock` | `mock` | First run, CI, API/WebRTC debugging | Built in, verified | [Mock](mock.md) |
 | `wav2lip` | `local` / `omnirt` | First real lip-sync model | Local adapter is built in; OmniRT path verified | [Local](wav2lip-local.md) / [OmniRT](wav2lip.md) |
-| `musetalk` | `omnirt` / `direct_ws` / future `local` | Existing MuseTalk service or future local adapter | Documented | [MuseTalk](musetalk.md) |
+| `musetalk` | `local` / `omnirt` / `direct_ws` | MuseTalk quality with either in-process startup or an external service | Local adapter is built in; OmniRT/direct_ws paths documented | [MuseTalk](musetalk.md) |
 | `quicktalk` | `local` | Local realtime adapter and development reference | Built in, verified | [QuickTalk](quicktalk.md) |
 | `fasterliveportrait` | `omnirt` | Single-GPU realtime audio-driven portrait with pasteback | Documented | [FasterLivePortrait](fasterliveportrait.md) |
 | `flashtalk` | `omnirt` | High-quality private GPU/NPU deployment | OmniRT/Ascend path verified | [FlashTalk](flashtalk.md) |
@@ -21,7 +21,7 @@ inference throughput belong to the selected backend.
 | Backend | What OpenTalking expects | Typical models |
 |---------|--------------------------|----------------|
 | `mock` | No external runtime; always available. | `mock` |
-| `local` | Adapter can be imported in-process and dependencies are satisfied. | `wav2lip`, `quicktalk`, future local MuseTalk |
+| `local` | Adapter can be imported in-process and dependencies are satisfied. | `wav2lip`, `quicktalk`, `musetalk` |
 | `direct_ws` | The model service exposes its own WebSocket URL. | `flashhead`, custom single-model services |
 | `omnirt` | OmniRT exposes `/v1/audio2video/{model}`. | `wav2lip`, `musetalk`, `fasterliveportrait`, `flashtalk` |
 

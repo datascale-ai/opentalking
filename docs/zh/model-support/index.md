@@ -50,7 +50,7 @@ models:
   quicktalk:
     backend: omnirt
   musetalk:
-    backend: omnirt
+    backend: local
 ```
 
 也可以用环境变量覆盖：
@@ -58,9 +58,10 @@ models:
 ```bash
 export OPENTALKING_QUICKTALK_BACKEND=local
 export OPENTALKING_WAV2LIP_BACKEND=omnirt
+export OPENTALKING_MUSETALK_BACKEND=local
 ```
 
-同一个 OpenTalking 实例可以让不同模型走不同后端。例如 Wav2Lip 用本地进程内推理，FlashTalk 和 MuseTalk 走远端 OmniRT。
+同一个 OpenTalking 实例可以让不同模型走不同后端。例如 Wav2Lip 和 MuseTalk 用本地进程内推理，FlashTalk 走远端 OmniRT。
 
 ## 典型链路
 
@@ -88,7 +89,7 @@ flowchart LR
 | Mock | `mock` | 安装验证、WebUI 流程验证 |
 | Wav2Lip | `local` / `omnirt` | 轻量口型同步、Avatar 资产验证 |
 | QuickTalk | `local` / `omnirt` | 快速实时口播、低延迟验证 |
-| MuseTalk | `omnirt` / `direct_ws` | 更高质量口型同步 |
+| MuseTalk | `local` / `omnirt` / `direct_ws` | 更高质量口型同步；local 模式会在会话初始化前运行官方头像预处理 |
 | FlashTalk | `omnirt` | 高质量实时数字人，适合服务化部署 |
 | FlashHead | `direct_ws` / HTTP adapter | 片段式生成、离线或准实时链路 |
 

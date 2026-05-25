@@ -195,8 +195,14 @@ def test_wav2lip_adapter_uses_local_runtime_and_preprocessed_metadata(monkeypatc
     session = fake_runtime.instances[-1].sessions[-1]
     assert session.reference_mode == "frames"
     assert session.preprocessed is True
-    assert session.ref_frame_dir.endswith("examples/avatars/singer/frames")
-    assert session.ref_frame_metadata_path.endswith("examples/avatars/singer/frames/mouth_metadata.json")
+    assert Path(session.ref_frame_dir).parts[-4:] == ("examples", "avatars", "singer", "frames")
+    assert Path(session.ref_frame_metadata_path).parts[-5:] == (
+        "examples",
+        "avatars",
+        "singer",
+        "frames",
+        "mouth_metadata.json",
+    )
     assert session.wav2lip_postprocess_mode == "easy_improved"
     assert session.video.width == 574
     assert session.video.height == 768

@@ -3,7 +3,12 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import inspect
+import json
+import logging
+import os
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
@@ -11,6 +16,8 @@ import numpy as np
 from opentalking.core.interfaces.model_adapter import ModelAdapter
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.pipeline.speak.render_pipeline import render_audio_chunk_sync
+
+logger = logging.getLogger(__name__)
 
 
 def make_audio_chunk(audio_pcm: np.ndarray, *, sample_rate: int = 16000) -> AudioChunk:
@@ -156,8 +163,12 @@ class LocalAudio2VideoClient:
             if callable(setter):
                 await self._run_sync(setter, wav2lip_postprocess_mode)
 
+        resolved_avatar_path = Path(avatar_path)
+        if self._is_musetalk_adapter():
+            await self._run_sync(self._ensure_musetalk_avatar_prepared, resolved_avatar_path)
+
         await self._run_sync(self.adapter.load_model, self.device)
-        self.avatar_state = await self._run_sync(self.adapter.load_avatar, str(avatar_path))
+        self.avatar_state = await self._run_sync(self.adapter.load_avatar, str(resolved_avatar_path))
         self.frame_index = 0
         self.speech_frame_index = 0
         self.closed = False
@@ -172,6 +183,109 @@ class LocalAudio2VideoClient:
             "width": self.width,
             "chunk_samples": self.audio_chunk_samples,
         }
+
+    def _ensure_musetalk_avatar_prepared(self, avatar_path: Path) -> None:
+        if not self._musetalk_auto_prepare_enabled():
+            return
+        avatar_path = avatar_path.expanduser().resolve()
+        if self._official_musetalk_prepared_ready(avatar_path):
+            logger.info("MuseTalk official prepared assets already exist for %s", avatar_path)
+            return
+
+        repo_root = Path(__file__).resolve().parents[3]
+        script_path = repo_root / "scripts" / "prepare_musetalk_avatar_asset.py"
+        if not script_path.is_file():
+            raise FileNotFoundError(f"MuseTalk avatar preprocessing script not found: {script_path}")
+
+        models_dir = self._resolve_musetalk_models_dir(repo_root)
+        prepared_dir = avatar_path / "prepared"
+        command = [
+            sys.executable,
+            str(script_path),
+            "--avatar",
+            str(avatar_path),
+            "--models-dir",
+            str(models_dir),
+            "--device",
+            self.device,
+            "--out",
+            str(prepared_dir),
+            "--force",
+            "--require-official",
+            "--skip-if-ready",
+        ]
+        env = os.environ.copy()
+        digital_home = env.get("DIGITAL_HUMAN_HOME")
+        if digital_home:
+            tmp_dir = Path(digital_home) / "tmp"
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            env.setdefault("TMPDIR", str(tmp_dir))
+            env.setdefault("TEMP", str(tmp_dir))
+            env.setdefault("TMP", str(tmp_dir))
+
+        logger.info("Preparing MuseTalk official avatar assets before session: %s", avatar_path)
+        cp = subprocess.run(
+            command,
+            cwd=str(repo_root),
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        if cp.returncode != 0:
+            raise RuntimeError(
+                "MuseTalk official avatar preprocessing failed before session "
+                f"for {avatar_path}.\nSTDOUT:\n{cp.stdout}\nSTDERR:\n{cp.stderr}"
+            )
+        if cp.stdout.strip():
+            logger.info("MuseTalk avatar preprocessing output: %s", cp.stdout.strip())
+        if not self._official_musetalk_prepared_ready(avatar_path):
+            raise RuntimeError(f"MuseTalk official preprocessing did not produce ready assets under {prepared_dir}")
+
+    @staticmethod
+    def _musetalk_auto_prepare_enabled() -> bool:
+        raw = os.environ.get("OPENTALKING_MUSETALK_AUTO_PREPARE", "1")
+        return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+    @staticmethod
+    def _resolve_musetalk_models_dir(repo_root: Path) -> Path:
+        raw = (
+            os.environ.get("OPENTALKING_MUSETALK_MODEL_ROOT")
+            or os.environ.get("OPENTALKING_MODEL_ROOT")
+            or os.environ.get("OPENTALKING_MODELS_DIR")
+        )
+        if raw:
+            return Path(raw).expanduser().resolve()
+        digital_home = os.environ.get("DIGITAL_HUMAN_HOME")
+        if digital_home:
+            return (Path(digital_home) / "models").expanduser().resolve()
+        sibling_models = (repo_root.parent / "models").resolve()
+        if sibling_models.exists():
+            return sibling_models
+        return (repo_root / "models").resolve()
+
+    @staticmethod
+    def _official_musetalk_prepared_ready(avatar_path: Path) -> bool:
+        prepared_dir = avatar_path / "prepared"
+        metadata_path = prepared_dir / "prepared_info.json"
+        required_files = [
+            prepared_dir / "coords.pkl",
+            prepared_dir / "infer_coords.pkl",
+            prepared_dir / "mask_coords.pkl",
+            prepared_dir / "latents.pt",
+        ]
+        mask_dir = prepared_dir / "mask"
+        if not metadata_path.is_file() or not all(path.is_file() for path in required_files):
+            return False
+        if not mask_dir.is_dir() or not any(mask_dir.glob("*.png")):
+            return False
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+        return (
+            metadata.get("source_preprocess") == "musetalk_official"
+            or metadata.get("format") == "opentalking-musetalk-official-prepared-v1"
+        )
 
     def _sync_attrs_from_state(self) -> None:
         state = self.avatar_state
@@ -210,8 +324,31 @@ class LocalAudio2VideoClient:
                 1,
                 int(round(float(self.sample_rate) * float(self.slice_len) / max(1, self.fps))),
             )
+        elif self._is_musetalk_adapter():
+            try:
+                from opentalking.core.model_config import get_model_config
+
+                context_ms = float(get_model_config("musetalk").get("context_ms", 320.0) or 320.0)
+            except Exception:
+                context_ms = 320.0
+            self.audio_chunk_samples = max(
+                1,
+                int(round(float(self.sample_rate) * max(40.0, context_ms) / 1000.0)),
+            )
+            self.slice_len = max(1, int(round(self.audio_chunk_samples * self.fps / self.sample_rate)))
         if self.slice_len <= 0:
             self.slice_len = max(1, int(round(self.audio_chunk_samples * self.fps / self.sample_rate)))
+
+    def _is_musetalk_adapter(self) -> bool:
+        adapter_model_type = str(getattr(self.adapter, "model_type", "") or "").strip().lower()
+        if adapter_model_type == "musetalk":
+            return True
+        state = self.avatar_state
+        manifest = getattr(state, "manifest", None)
+        manifest_model_type = str(getattr(manifest, "model_type", "") or "").strip().lower()
+        if manifest_model_type == "musetalk":
+            return True
+        return self.adapter.__class__.__name__.lower().startswith("musetalk")
 
     def _is_quicktalk_adapter(self) -> bool:
         adapter_model_type = str(getattr(self.adapter, "model_type", "") or "").strip().lower()

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import cv2
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,16 @@ def detect_mouth_landmarks(frame: Any) -> AvatarMouthLandmarks | None:
     )
 
 
+def _read_image_color(path: Path) -> Any:
+    try:
+        buffer = np.fromfile(str(path), dtype=np.uint8)
+    except OSError:
+        return cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if buffer.size == 0:
+        return None
+    return cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+
+
 def update_manifest_mouth_metadata(
     manifest_path: Path,
     image_path: Path,
@@ -158,7 +169,7 @@ def update_manifest_mouth_metadata(
     except ValueError:
         metadata["source_image_path"] = str(image_path)
 
-    frame = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    frame = _read_image_color(image_path)
     if frame is None:
         _clear_mouth_metadata(metadata)
         raw["metadata"] = metadata
