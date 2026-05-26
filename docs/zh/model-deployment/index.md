@@ -21,7 +21,7 @@ flowchart LR
 | 层级 | 首次运行默认值 | 何时替换 |
 |------|----------------|----------|
 | LLM | DashScope OpenAI-compatible endpoint | 已有 OpenAI、vLLM、Ollama、DeepSeek 等标准服务时替换。 |
-| STT | DashScope Paraformer realtime | 需要接入其它实时 ASR provider 时替换。 |
+| STT | DashScope Paraformer realtime | 需要接入其它实时 STT provider 时替换。 |
 | TTS | Edge TTS | 生产音色、声音复刻或更高质量语音时切换 DashScope、CosyVoice、ElevenLabs。 |
 | Avatar 资产 | 内置 examples | 选择 Wav2Lip、QuickTalk、FlashHead、FlashTalk 前准备模型匹配资产。 |
 | Talking-head backend | 先用 `mock`，再跑 Wav2Lip local 路径 | 需要 QuickTalk / FlashTalk OmniRT、FlashHead direct WS 或其它模型服务时替换。 |
@@ -42,6 +42,7 @@ flowchart LR
 |------|------|
 | 无权重端到端自测 | [Mock](mock.md) |
 | 第一个真实唇形模型 | [Wav2Lip Local](wav2lip-local.md) |
+| 本地 STT/TTS + QuickTalk | [本地 STT/TTS + QuickTalk](local-quicktalk-audio.md) |
 | 已有 MuseTalk runtime | [MuseTalk](musetalk.md) |
 | 本地实时 adapter | [QuickTalk](quicktalk.md) |
 | 单卡实时头像贴回链路 | [FasterLivePortrait](fasterliveportrait.md) |

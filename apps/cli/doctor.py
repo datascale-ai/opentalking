@@ -118,13 +118,13 @@ def _check_env_file() -> CheckResult:
 
 
 def _check_llm_key() -> CheckResult:
-    key = os.environ.get("OPENTALKING_LLM_API_KEY") or os.environ.get("DASHSCOPE_API_KEY")
+    key = os.environ.get("OPENTALKING_LLM_API_KEY")
     if not key:
         return CheckResult(
             "LLM API key",
             "warn",
-            "neither OPENTALKING_LLM_API_KEY nor DASHSCOPE_API_KEY set",
-            "Set one in .env (DashScope/Bailian or any OpenAI-compatible endpoint).",
+            "OPENTALKING_LLM_API_KEY is not set",
+            "Set OPENTALKING_LLM_API_KEY in .env for the configured OpenAI-compatible endpoint.",
         )
     masked = key[:6] + "…" + key[-4:] if len(key) > 12 else "***"
     return CheckResult("LLM API key", "ok", f"set ({masked})")

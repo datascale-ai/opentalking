@@ -1,4 +1,5 @@
 import { buildTTSPreviewPayload } from "./ttsPreview";
+import type { TtsProviderExtended } from "../constants/ttsBailian";
 
 const qwenPayload = buildTTSPreviewPayload({
   text: "  你好  ",
@@ -10,9 +11,18 @@ const qwenPayload = buildTTSPreviewPayload({
 qwenPayload satisfies {
   text: string;
   voice?: string;
-  tts_provider: "dashscope" | "edge" | "cosyvoice" | "sambert";
+  tts_provider: TtsProviderExtended;
   tts_model?: string;
 };
+
+const localPayload = buildTTSPreviewPayload({
+  text: "你好",
+  voice: "local-default",
+  provider: "local_cosyvoice",
+  model: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+});
+
+localPayload satisfies { tts_provider: TtsProviderExtended; tts_model?: string };
 
 const edgePayload = buildTTSPreviewPayload({
   text: "你好",

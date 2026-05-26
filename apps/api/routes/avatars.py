@@ -145,13 +145,42 @@ async def _read_upload_image(upload: UploadFile) -> Image.Image:
     return image.convert("RGB")
 
 
-def _write_custom_avatar_manifest(base_manifest_path: Path, target_manifest_path: Path, *, avatar_id: str, name: str) -> None:
+def _normalize_custom_avatar_model(model: str | None, fallback: str) -> str:
+    value = (model or "").strip().lower()
+    if value in {"fasterliveportrait", "flashhead", "flashtalk", "mock", "musetalk", "quicktalk", "wav2lip"}:
+        return value
+    return fallback
+
+
+def _write_custom_avatar_manifest(
+    base_manifest_path: Path,
+    target_manifest_path: Path,
+    *,
+    avatar_id: str,
+    name: str,
+    model: str | None = None,
+) -> None:
     raw = json.loads(base_manifest_path.read_text(encoding="utf-8"))
+    base_avatar_id = raw.get("id")
     raw["id"] = avatar_id
     raw["name"] = name
+    raw["model_type"] = _normalize_custom_avatar_model(model, str(raw.get("model_type") or ""))
     metadata = dict(raw.get("metadata") or {})
+    for key in (
+        "frame_dir",
+        "preprocessed",
+        "preprocess_version",
+        "quicktalk",
+        "source_video",
+        "template_video",
+        "video",
+    ):
+        metadata.pop(key, None)
     metadata["custom_avatar"] = True
-    metadata["base_avatar_id"] = json.loads(base_manifest_path.read_text(encoding="utf-8")).get("id")
+    metadata["base_avatar_id"] = base_avatar_id
+    metadata["idle_mode"] = "static"
+    metadata["reference_mode"] = "image"
+    metadata["source_image"] = "source/source.png"
     raw["metadata"] = metadata
     target_manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -219,15 +248,38 @@ def _prepare_quicktalk_custom_assets(manifest_path: Path, image: Image.Image) ->
     metadata = dict(raw.get("metadata") or {})
     quicktalk = metadata.get("quicktalk")
     quicktalk_dir = manifest_path.parent / "quicktalk"
-    if not isinstance(quicktalk, dict) and not quicktalk_dir.is_dir():
+    if raw.get("model_type") != "quicktalk" and not isinstance(quicktalk, dict) and not quicktalk_dir.is_dir():
         return
 
+    if quicktalk_dir.exists():
+        shutil.rmtree(quicktalk_dir)
     template_rel = "quicktalk/template_900.mp4"
     template_path = manifest_path.parent / template_rel
     _write_static_quicktalk_template(image, template_path, fps=int(raw.get("fps") or 25))
     metadata.pop("quicktalk", None)
     raw["metadata"] = metadata
     _write_manifest(manifest_path, raw)
+
+
+def _reset_custom_avatar_runtime_assets(target_dir: Path) -> None:
+    for name in ("quicktalk", "source", "frames", "wav2lip"):
+        path = target_dir / name
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+    for pattern in (
+        "idle.mp4",
+        "idle.webm",
+        "idle.mov",
+        "idle.avi",
+        "source.mp4",
+        "source.webm",
+        "source.mov",
+        "source.avi",
+        ".flashtalk_idle_cache_v*.npz",
+    ):
+        for path in target_dir.glob(pattern):
+            if path.is_file():
+                path.unlink(missing_ok=True)
 
 
 def _endpoint_to_http_url(endpoint: str, path: str) -> str:
@@ -773,6 +825,7 @@ async def create_custom_avatar(
     request: Request,
     base_avatar_id: str = Form(...),
     name: str = Form(...),
+    model: str | None = Form(default=None),
     image: UploadFile = File(...),
 ) -> AvatarSummary:
     display_name = name.strip()
@@ -798,17 +851,22 @@ async def create_custom_avatar(
             target_dir,
             ignore=shutil.ignore_patterns("reference_custom.*"),
         )
+        _reset_custom_avatar_runtime_assets(target_dir)
         _write_custom_avatar_manifest(
             base_dir / "manifest.json",
             target_dir / "manifest.json",
             avatar_id=avatar_id,
             name=display_name,
+            model=model,
         )
         max_w, max_h = _custom_avatar_max_size()
         fitted_image = _resize_uploaded_avatar_image(image_rgb, max_width=max_w, max_height=max_h)
         _update_manifest_dimensions(target_dir / "manifest.json", fitted_image)
         fitted_image.save(target_dir / "preview.png", format="PNG")
         fitted_image.save(target_dir / "reference.png", format="PNG")
+        source_dir = target_dir / "source"
+        source_dir.mkdir(parents=True, exist_ok=True)
+        fitted_image.save(source_dir / "source.png", format="PNG")
         mouth_metadata.update_manifest_mouth_metadata(
             target_dir / "manifest.json",
             target_dir / "reference.png",
@@ -820,6 +878,11 @@ async def create_custom_avatar(
             frames_dir.mkdir(parents=True, exist_ok=True)
             frame_path = frames_dir / "frame_00000.png"
             fitted_image.save(frame_path, format="PNG")
+            raw = _read_manifest(target_dir / "manifest.json")
+            metadata = dict(raw.get("metadata") or {})
+            metadata["frame_dir"] = "frames"
+            raw["metadata"] = metadata
+            _write_manifest(target_dir / "manifest.json", raw)
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(target_dir, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"failed to create custom avatar: {exc}") from exc

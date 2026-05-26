@@ -59,8 +59,8 @@ flowchart LR
 
 ```env title=".env"
 OPENTALKING_LLM_SYSTEM_PROMPT=你是一个直播导购数字人。回答要自然、有节奏，每次不超过 80 个中文字。介绍商品时先讲用户收益，再讲功能。遇到价格、库存、售后政策时，以业务系统返回为准，不要编造。
-OPENTALKING_TTS_PROVIDER=edge
-OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
+OPENTALKING_TTS_EDGE_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
 如果你已经有商品检索服务，建议由业务层先把商品资料拼入 LLM 请求，再交给 OpenTalking 负责语音、

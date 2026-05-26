@@ -61,8 +61,8 @@ Promotion:
 
 ```env title=".env"
 OPENTALKING_LLM_SYSTEM_PROMPT=You are a live product-demo digital human. Speak naturally and rhythmically. Keep each answer under 80 Chinese characters when speaking Chinese. Explain user benefits before features. For price, inventory, and after-sales policies, rely on the business system and do not invent facts.
-OPENTALKING_TTS_PROVIDER=edge
-OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
+OPENTALKING_TTS_EDGE_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
 If you already have a product retrieval service, let the business layer assemble the

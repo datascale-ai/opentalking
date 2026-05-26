@@ -25,15 +25,39 @@ OPENTALKING_LLM_MODEL=qwen-flash
 
 ## STT
 
-默认语音识别后端为 DashScope Paraformer realtime。
+STT provider 通过 `OPENTALKING_STT_DEFAULT_PROVIDER` 指定。前端也可以在创建会话前选择本地 STT 或 API STT；选择 API STT 时必须配置该 provider 对应的 key，不会从 LLM key 自动 fallback。
+
+### DashScope Paraformer realtime
 
 ```env title=".env"
-DASHSCOPE_API_KEY=<dashscope-api-key>
-OPENTALKING_STT_MODEL=paraformer-realtime-v2
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DASHSCOPE_MODEL=paraformer-realtime-v2
 ```
 
-DashScope 部署中，`DASHSCOPE_API_KEY` 与 `OPENTALKING_LLM_API_KEY` 可以使用同一把 key。
-如果文本对话正常但麦克风输入失败，优先检查这个 key。
+DashScope 部署中，LLM 与 STT 可以使用同一把实际 key，但必须分别写入
+`OPENTALKING_LLM_API_KEY` 与 `OPENTALKING_STT_DASHSCOPE_API_KEY`。如果文本对话正常但麦克风输入失败，优先检查 STT 模块 key。
+
+### 本地 SenseVoiceSmall
+
+```env title=".env"
+OPENTALKING_STT_DEFAULT_PROVIDER=sensevoice
+OPENTALKING_STT_ENABLED_PROVIDERS=sensevoice,dashscope
+OPENTALKING_STT_SENSEVOICE_MODEL=iic/SenseVoiceSmall
+OPENTALKING_STT_SENSEVOICE_MODEL_DIR=./models/local-audio/iic__SenseVoiceSmall
+OPENTALKING_STT_SENSEVOICE_DEVICE=cpu
+```
+
+SenseVoiceSmall 走本地 FunASR adapter，支持上传音频和 WebSocket PCM 语音输入。短句场景下 CPU 通常可以满足实时交互，适合和 QuickTalk local 组合使用。
+
+下载权重：
+
+```bash title="终端"
+uv sync --extra dev --extra models --extra local-audio --python 3.11
+python scripts/download_local_audio_models.py \
+  --root ./models/local-audio \
+  --model sensevoice-small
+```
 
 ## 验证
 

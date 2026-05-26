@@ -56,8 +56,9 @@ pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple -e ".[dev]"
 ```env title=".env"
 OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 OPENTALKING_LLM_API_KEY=<your-key>
-DASHSCOPE_API_KEY=<your-key>
-OPENTALKING_TTS_PROVIDER=edge
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<your-key>
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
 OPENTALKING_AVATARS_DIR=./examples/avatars
 OPENTALKING_VOICES_DIR=./var/voices
 OPENTALKING_SQLITE_PATH=./data/opentalking.sqlite3

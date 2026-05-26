@@ -123,11 +123,28 @@ async def _stream_decode_mp3_to_pcm_chunks(
     target_sr: int,
     chunk_ms: float,
 ) -> AsyncIterator[AudioChunk]:
-    """Decode incoming MP3 bytes through ffmpeg stdin and yield PCM as it arrives."""
+    async for chunk in _stream_decode_audio_to_pcm_chunks(
+        audio_iter,
+        target_sr,
+        chunk_ms,
+        input_format="mp3",
+    ):
+        yield chunk
+
+
+async def _stream_decode_audio_to_pcm_chunks(
+    audio_iter: AsyncIterator[bytes],
+    target_sr: int,
+    chunk_ms: float,
+    *,
+    input_format: str | None = None,
+) -> AsyncIterator[AudioChunk]:
+    """Decode incoming compressed/container audio through ffmpeg into PCM chunks."""
     chunk_bytes = max(2, int(target_sr * (chunk_ms / 1000.0)) * 2)
     if chunk_bytes % 2:
         chunk_bytes += 1
     read_size = max(4096, min(chunk_bytes, 65536))
+    input_args = ["-f", input_format] if input_format else []
 
     proc = await asyncio.create_subprocess_exec(
         os.environ.get("OPENTALKING_FFMPEG_BIN", "ffmpeg"),
@@ -142,8 +159,7 @@ async def _stream_decode_mp3_to_pcm_chunks(
         "1024",
         "-analyzeduration",
         "0",
-        "-f",
-        "mp3",
+        *input_args,
         "-i",
         "pipe:0",
         "-vn",

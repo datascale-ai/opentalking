@@ -29,11 +29,12 @@ opentalking/
 
 ## 配置项
 
-至少配置 LLM/STT key：
+至少配置 LLM 与 STT 模块 key：
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
 ## 启动命令
@@ -58,6 +59,6 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="mock")'
 
 | 现象 | 处理 |
 |------|------|
-| LLM 返回 401 | 检查 `.env` 中两处 DashScope key。 |
+| LLM 返回 401 | 分别检查 `OPENTALKING_LLM_API_KEY` 与 `OPENTALKING_STT_DASHSCOPE_API_KEY`。 |
 | 浏览器没有视频 | 使用 Chromium 内核浏览器并检查 WebRTC/CORS 报错。 |
 | 端口占用 | 使用 `bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180`。 |

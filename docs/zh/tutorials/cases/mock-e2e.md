@@ -8,7 +8,7 @@ NPU 或 talking-head 权重，适合首次验收安装结果。
 ## 前置条件
 
 - 已完成 [安装](../installation.md)。
-- `.env` 中已配置 `OPENTALKING_LLM_API_KEY` 与 `DASHSCOPE_API_KEY`。
+- `.env` 中已配置 `OPENTALKING_LLM_API_KEY` 与 `OPENTALKING_STT_DASHSCOPE_API_KEY`。
 - 本机可用端口 `8000` 与 `5173`，或准备自定义端口。
 
 ## 步骤

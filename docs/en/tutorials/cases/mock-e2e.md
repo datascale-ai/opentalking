@@ -8,7 +8,7 @@ synthesis backend. This path does not require GPU, NPU, or talking-head weights.
 ## Prerequisites
 
 - [Installation](../installation.md) is complete.
-- `.env` contains `OPENTALKING_LLM_API_KEY` and `DASHSCOPE_API_KEY`.
+- `.env` contains `OPENTALKING_LLM_API_KEY` and `OPENTALKING_STT_DASHSCOPE_API_KEY`.
 - Ports `8000` and `5173` are available, or custom ports are prepared.
 
 ## Steps

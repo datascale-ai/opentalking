@@ -544,6 +544,72 @@ def test_session_runner_llm_helpers_import_provider_dependencies() -> None:
     assert conversation.get_messages()[0]["content"].startswith("system prompt")
 
 
+def test_session_runner_splits_first_complete_long_sentence_at_soft_punctuation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_CHAT_FIRST_SENT_MIN_CHARS", "6")
+    monkeypatch.setenv("OPENTALKING_CHAT_FIRST_SENT_MAX_CHARS", "20")
+
+    splitter = SessionRunner._build_first_sentence_splitter()
+
+    parts = splitter("这是一个完整但比较长的回答，我们先讲结论，然后再补充细节。")
+
+    assert parts == ["这是一个完整但比较长的回答，", "我们先讲结论，然后再补充细节。"]
+
+
+def test_session_runner_forces_first_complete_long_sentence_split_at_max_chars(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_CHAT_FIRST_SENT_MIN_CHARS", "6")
+    monkeypatch.setenv("OPENTALKING_CHAT_FIRST_SENT_MAX_CHARS", "10")
+
+    splitter = SessionRunner._build_first_sentence_splitter()
+
+    parts = splitter("这是一个没有软标点但很长的回答。")
+
+    assert parts == ["这是一个没有软标点但", "很长的回答。"]
+
+
+@pytest.mark.asyncio
+async def test_session_runner_prewarm_tts_consumes_first_audio_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeManifest:
+        sample_rate = 16000
+
+    class FakeTTS:
+        async def synthesize_stream(self, text: str):
+            calls.append({"text": text})
+            yield object()
+            raise AssertionError("prewarm should stop after the first audio chunk")
+
+    runner = object.__new__(SessionRunner)
+    runner.avatar_state = type("FakeState", (), {"manifest": FakeManifest()})()
+    runner._tts_settings = object()
+    runner._tts_prewarm_text = "预热"
+    runner._speech_chunk_ms = lambda: 123.0  # type: ignore[method-assign]
+
+    def fake_build_tts_adapter(**kwargs: object) -> FakeTTS:
+        calls.append(kwargs)
+        return FakeTTS()
+
+    monkeypatch.setattr("opentalking.pipeline.session.runner.build_tts_adapter", fake_build_tts_adapter)
+
+    await runner._prewarm_tts()
+
+    assert calls == [
+        {
+            "sample_rate": 16000,
+            "chunk_ms": 123.0,
+            "settings": runner._tts_settings,
+            "default_voice": None,
+            "tts_provider": None,
+            "tts_model": None,
+        },
+        {"text": "预热"},
+    ]
+
+
 @pytest.mark.asyncio
 async def test_handle_worker_task_routes_text_speak_through_chat_when_available() -> None:
     sid = "sess_local_chat"

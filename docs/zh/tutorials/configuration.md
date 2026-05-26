@@ -37,8 +37,12 @@ OpenTalking 从两个来源加载配置，按优先级从高到低：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DASHSCOPE_API_KEY` | _空_ | 由 DashScope SDK 直接读取。语言模型亦在 DashScope 运行时，须与 `OPENTALKING_LLM_API_KEY` 保持一致。 |
-| `OPENTALKING_STT_MODEL` | `paraformer-realtime-v2` | DashScope 实时语音识别模型。 |
+| `OPENTALKING_STT_DEFAULT_PROVIDER` | `dashscope` | STT provider。DashScope 云端识别使用 `dashscope`；本地可选 `sensevoice`。 |
+| `OPENTALKING_STT_ENABLED_PROVIDERS` | _空_ | 前端和状态页可展示的 STT provider 列表，例如 `dashscope,sensevoice`。 |
+| `OPENTALKING_STT_DASHSCOPE_API_KEY` | _空_ | STT 模块鉴权 key。不会从 LLM 或其它 vendor key 自动 fallback。 |
+| `OPENTALKING_STT_DASHSCOPE_MODEL` | `paraformer-realtime-v2` | DashScope 实时语音识别模型；本地 `sensevoice` 固定显示 `iic/SenseVoiceSmall`。 |
+| `OPENTALKING_STT_SENSEVOICE_MODEL_DIR` | _空_ | 本地 SenseVoiceSmall 权重目录。 |
+| `OPENTALKING_STT_SENSEVOICE_DEVICE` | `auto` | 本地 SenseVoiceSmall 设备选择；DashScope STT 忽略。 |
 
 ### 语音合成
 
@@ -46,8 +50,14 @@ OpenTalking 从两个来源加载配置，按优先级从高到低：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `OPENTALKING_TTS_PROVIDER` | `edge` | 取值范围：`edge`、`dashscope`、`cosyvoice`、`elevenlabs`。 |
-| `OPENTALKING_TTS_VOICE` | `zh-CN-XiaoxiaoNeural` | 音色标识，格式取决于 provider。 |
+| `OPENTALKING_TTS_DEFAULT_PROVIDER` | `edge` | 取值范围：`edge`、`dashscope`、`local_cosyvoice`、`cosyvoice`、`elevenlabs`。 |
+| `OPENTALKING_TTS_ENABLED_PROVIDERS` | _空_ | 前端和状态页可展示的 TTS provider 列表，例如 `edge,dashscope,local_cosyvoice`。 |
+| `OPENTALKING_TTS_DASHSCOPE_MODEL` | _空_ | TTS 模型名；DashScope Qwen 实时 TTS 常用 `qwen3-tts-flash-realtime`。 |
+| `OPENTALKING_TTS_DASHSCOPE_API_KEY` | _空_ | TTS 模块鉴权 key。不会从 LLM 或 STT key 自动 fallback。 |
+| `OPENTALKING_TTS_EDGE_VOICE` | `zh-CN-XiaoxiaoNeural` | Edge TTS 音色。 |
+| `OPENTALKING_TTS_DASHSCOPE_VOICE` | `Cherry` | DashScope Qwen realtime TTS 音色。 |
+| `OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL` | _空_ | 本地 CosyVoice service 的 HTTP 地址，例如 `http://127.0.0.1:19090/synthesize`。 |
+| `OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR` | _空_ | 本地 CosyVoice3 权重目录。 |
 
 切换 DashScope 实时 TTS 与 ElevenLabs 的配置，参见 [§4 进阶调优](#4)。
 
@@ -146,15 +156,16 @@ FlashHead 使用专属 WebSocket 协议，不经过 OmniRT。
 ### DashScope Qwen 实时 TTS
 
 ```env
-OPENTALKING_TTS_PROVIDER=dashscope
-OPENTALKING_QWEN_TTS_MODEL=qwen3-tts-flash-realtime
+OPENTALKING_TTS_DEFAULT_PROVIDER=dashscope
+OPENTALKING_TTS_DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_TTS_DASHSCOPE_MODEL=qwen3-tts-flash-realtime
 OPENTALKING_QWEN_TTS_REUSE_WS=1
 ```
 
 ### ElevenLabs TTS
 
 ```env
-OPENTALKING_TTS_PROVIDER=elevenlabs
+OPENTALKING_TTS_DEFAULT_PROVIDER=elevenlabs
 OPENTALKING_TTS_ELEVENLABS_API_KEY=sk_...
 OPENTALKING_TTS_ELEVENLABS_VOICE_ID=...
 OPENTALKING_TTS_ELEVENLABS_MODEL_ID=eleven_flash_v2_5

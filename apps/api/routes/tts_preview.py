@@ -49,7 +49,7 @@ def _normalize_preview_request(body: TTSPreviewRequest) -> tuple[str, str | None
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     model = body.tts_model.strip() if body.tts_model and body.tts_model.strip() else None
-    if provider in {"dashscope", "bailian", "qwen", "qwen_tts"} and model:
+    if provider in {"dashscope", "bailian", "qwen", "qwen_tts", "local_cosyvoice", "local_qwen3_tts"} and model:
         model = sanitize_qwen_model(model)
 
     voice = body.voice.strip() if body.voice and body.voice.strip() else None

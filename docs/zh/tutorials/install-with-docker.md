@@ -59,7 +59,8 @@ cp .env.example .env
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
 Compose 栈通过 `docker-compose.yml` 中的 `env_file` 指令自动读取 `.env`。
@@ -178,7 +179,8 @@ Compose 栈从仓库根目录读取 `.env`。与 Docker 部署相关的变量：
 | 变量 | Compose 中的默认值 | 用途 |
 |------|------------------|------|
 | `OPENTALKING_LLM_API_KEY` | _空_ | 语言模型 API Key，转发至 `api` 与 `worker`。 |
-| `DASHSCOPE_API_KEY` | _空_ | 语音识别 API Key。 |
+| `OPENTALKING_STT_DEFAULT_PROVIDER` | `dashscope` | 语音识别 provider。 |
+| `OPENTALKING_STT_DASHSCOPE_API_KEY` | _空_ | 语音识别 API Key。 |
 | `OPENTALKING_INFERENCE_MOCK` | CPU profile 为 `1`，GPU profile 为 `0` | 由 profile 自动设定。 |
 | `OMNIRT_ENDPOINT` | 仅 GPU profile 下为 `http://omnirt:9000` | 由 override 文件自动设定。 |
 | `OPENTALKING_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 前端使用不同 origin 时须覆盖。 |

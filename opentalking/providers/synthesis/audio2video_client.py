@@ -139,15 +139,23 @@ class LocalAudio2VideoClient:
         self.height = 0
         self.width = 0
         self.audio_chunk_samples = 0
-        self._executor = ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix=f"local-audio2video-{adapter.__class__.__name__.lower()}",
-        )
+        self._executor: ThreadPoolExecutor | None = None
+        self._ensure_executor()
+
+    def _ensure_executor(self) -> ThreadPoolExecutor:
+        executor = self._executor
+        if executor is None:
+            executor = ThreadPoolExecutor(
+                max_workers=1,
+                thread_name_prefix=f"local-audio2video-{self.adapter.__class__.__name__.lower()}",
+            )
+            self._executor = executor
+        return executor
 
     async def _run_sync(self, func: Any, *args: Any, **kwargs: Any) -> Any:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            self._executor,
+            self._ensure_executor(),
             lambda: func(*args, **kwargs),
         )
 
@@ -395,5 +403,8 @@ class LocalAudio2VideoClient:
             response = await self._run_sync(close)
             if inspect.isawaitable(response):
                 await response
-        self._executor.shutdown(wait=False, cancel_futures=True)
+        executor = self._executor
+        if executor is not None:
+            executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
         self.closed = True

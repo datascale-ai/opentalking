@@ -31,17 +31,16 @@ dependencies = [
   'mediapipe==0.10.21; python_version < "3.13" and platform_machine != "aarch64"',
   'mediapipe==0.10.18; python_version < "3.13" and platform_machine == "aarch64"',
   "kornia>=0.8.2",
-  "onnxruntime>=1.24.3",
   "onnx2torch>=1.5.15",
   "insightface>=0.7.3",
-  "transformers>=5.8.1",
+  "transformers>=4.57,<6",
 ]
 
 [project.optional-dependencies]
 engine = [
-  "torch>=2.0",
-  "torchaudio>=2.0",
-  "torchvision>=0.15",
+  "torch>=2.0,<2.11",
+  "torchaudio>=2.0,<2.11",
+  "torchvision>=0.15,<0.26",
   "diffusers>=0.34",
   "transformers>=4.46",
   "accelerate>=1.0",
@@ -60,11 +59,10 @@ engine = [
   "sentencepiece>=0.2",
 ]
 models = [
-  "torch>=2.0",
-  "torchaudio>=2.0",
-  "torchvision>=0.15",
+  "torch>=2.0,<2.11",
+  "torchaudio>=2.0,<2.11",
+  "torchvision>=0.15,<0.26",
   "opencv-python>=4.8,<4.12",
-  "onnxruntime>=1.16",
   "kornia>=0.7",
   "insightface>=0.7",
   "librosa>=0.10",
@@ -73,6 +71,47 @@ models = [
   "diffusers>=0.34",
   "accelerate>=1.0",
   "openai-whisper>=20240930",
+]
+local-audio = [
+  "torch>=2.0,<2.11",
+  "torchaudio>=2.0,<2.11",
+  "torchvision>=0.15,<0.26",
+  "funasr>=1.2.7",
+  "modelscope>=1.31.0",
+  "huggingface-hub>=0.30",
+  "sherpa-onnx>=1.12.0",
+  "soundfile>=0.12",
+  "librosa>=0.10",
+  "scipy>=1.10",
+]
+local-qwen3-tts-service = [
+  "qwen-tts>=0.1.1",
+  "transformers==4.57.3",
+  "accelerate>=1.12",
+  "torch>=2.0,<2.11",
+  "torchaudio>=2.0,<2.11",
+  "soundfile>=0.12",
+  "fastapi>=0.109",
+  "uvicorn[standard]>=0.27",
+]
+quicktalk-cpu = [
+  "onnxruntime>=1.24.3",
+]
+quicktalk-cuda = [
+  "onnxruntime-gpu>=1.24.0",
+]
+local-cosyvoice-service = [
+  "fastapi>=0.109",
+  "uvicorn[standard]>=0.27",
+  "numpy>=1.24,<2",
+  "torch>=2.0,<2.11",
+  "torchaudio>=2.0,<2.11",
+  "soundfile>=0.12",
+  "openai-whisper>=20240930",
+  "modelscope>=1.31.0",
+  "huggingface-hub>=0.30",
+  "onnxruntime-gpu>=1.24.0",
+  "librosa>=0.10",
 ]
 ascend = ["torch-npu>=2.1"]
 demo = ["gradio>=5.0"]
@@ -83,6 +122,7 @@ dev = [
   "ruff>=0.4",
   "mypy>=1.8",
   "types-PyYAML>=6",
+  "soundfile>=0.12",
   "pre-commit>=3",
   'mediapipe==0.10.21; python_version < "3.13" and platform_machine != "aarch64"',
   'mediapipe==0.10.18; python_version < "3.13" and platform_machine == "aarch64"',
@@ -125,6 +165,20 @@ module = [
 ignore_errors = true
 
 [tool.uv]
+conflicts = [
+  [
+    { extra = "quicktalk-cpu" },
+    { extra = "quicktalk-cuda" },
+  ],
+  [
+    { extra = "quicktalk-cpu" },
+    { extra = "local-cosyvoice-service" },
+  ],
+  [
+    { extra = "demo" },
+    { extra = "local-cosyvoice-service" },
+  ],
+]
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

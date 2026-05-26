@@ -62,7 +62,8 @@ Edit `.env` and set the required language model and speech recognition keys:
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
 The Compose stack reads `.env` automatically via the `env_file` directive in
@@ -189,7 +190,8 @@ deployments:
 | Variable | Default in Compose | Purpose |
 |----------|-------------------|---------|
 | `OPENTALKING_LLM_API_KEY` | _empty_ | Language model API key. Forwarded to `api` and `worker`. |
-| `DASHSCOPE_API_KEY` | _empty_ | Speech recognition API key. |
+| `OPENTALKING_STT_DEFAULT_PROVIDER` | `dashscope` | Speech-to-text provider. |
+| `OPENTALKING_STT_DASHSCOPE_API_KEY` | _empty_ | Speech-to-text API key. |
 | `OPENTALKING_INFERENCE_MOCK` | `1` (CPU), `0` (GPU) | Set automatically by the profile. |
 | `OMNIRT_ENDPOINT` | `http://omnirt:9000` (GPU profile only) | Set automatically by the override file. |
 | `OPENTALKING_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Override when serving the frontend from a different origin. |

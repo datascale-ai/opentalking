@@ -100,6 +100,14 @@ def init_voice_store() -> None:
                 (sid, prov, vid, label, tm),
             )
         cur.execute("DELETE FROM tts_voice_entries WHERE provider = 'minimax'")
+        cur.execute(
+            """
+            DELETE FROM tts_voice_entries
+            WHERE provider = 'local_cosyvoice'
+              AND voice_id = 'local-default'
+              AND source = 'system'
+            """
+        )
         conn.commit()
     finally:
         conn.close()

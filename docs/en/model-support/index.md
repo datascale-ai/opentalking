@@ -35,5 +35,6 @@ requirements.
 ## Next Steps
 
 - Not sure which model to choose: start with [Model and Backend Selection](./selection.md).
+- Need local STT/TTS with QuickTalk: read [Local Audio + QuickTalk](./local-audio-quicktalk.md).
 - Need local runtime details: read [Local Adapter](./runtime-backends/local-adapter.md).
 - Need MuseTalk local setup: read [MuseTalk](./models/musetalk.md).

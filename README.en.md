@@ -132,15 +132,20 @@ OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 OPENTALKING_LLM_API_KEY=sk-your-key
 OPENTALKING_LLM_MODEL=qwen-flash
 
-# Voice synthesis / voice cloning when using DashScope-backed providers
-DASHSCOPE_API_KEY=sk-your-key
+# Speech-to-text when using DashScope STT; local SenseVoice does not need a key
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_MODEL=paraformer-realtime-v2
+OPENTALKING_STT_DASHSCOPE_API_KEY=sk-your-key
+
+# Voice synthesis / voice cloning when using DashScope TTS
+OPENTALKING_TTS_DASHSCOPE_API_KEY=sk-your-key
 
 # Other TTS options
-OPENTALKING_TTS_PROVIDER=edge
-OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
+OPENTALKING_TTS_EDGE_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
-> Note: `edge` TTS does not require a key. `DASHSCOPE_API_KEY` is only required when using real-time STT or DashScope voice synthesis.
+> Note: `edge` TTS does not require a key. LLM, STT, and TTS no longer share fallback keys; if you use the same DashScope key, set it explicitly in each `OPENTALKING_*_API_KEY` variable.
 
 ### 1. Fast First Run
 
@@ -188,7 +193,7 @@ bash scripts/start_unified.sh --backend local --model quicktalk
 # Beginner 2 path: single-machine Wav2Lip on consumer GPUs, using OpenTalking's built-in local runtime.
 bash scripts/start_unified.sh --backend local --model wav2lip
 
-# Advanced path: OmniRT remote inference route.
+# Advanced 2 path: OmniRT remote inference route.
 # Start OmniRT first, then connect its endpoint.
 bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt http://<gpu-server>:9000
 ```
@@ -201,7 +206,10 @@ After Mock mode works, choose one path based on your deployment scenario.
 | --- | --- | --- | --- |
 | Beginner 1: consumer-GPU single-machine deployment | `quicktalk` | No standalone inference service required | Real-time video rendering on a single 3090 / 4090 machine |
 | Beginner 2: consumer-GPU single-machine deployment | `wav2lip` | No standalone inference service required | Lightweight lip sync and quick custom-avatar validation |
-| Advanced: remote high-quality inference | `flashtalk` | Required | Multi-GPU, remote GPU/NPU, private deployment, and higher visual quality |
+| Advanced 1: local audio + QuickTalk | `sensevoice` + `local_cosyvoice` + `quicktalk` | Local STT/TTS weights and a CosyVoice service | Private validation with local voice input and local speech synthesis |
+| Advanced 2: remote high-quality inference | `flashtalk` | Required | Multi-GPU, remote GPU/NPU, private deployment, and higher visual quality |
+
+To extend the Beginner 1 QuickTalk single-machine path with local STT and TTS, continue with Advanced 1 and see [Local STT/TTS + QuickTalk](docs/en/model-deployment/local-quicktalk-audio.md). The LLM is still configured through an OpenAI-compatible endpoint by default; if you already run a local LLM server, point `OPENTALKING_LLM_BASE_URL` to that service.
 
 ### Beginner 1: Consumer-GPU Single-Machine Deployment
 
@@ -404,7 +412,13 @@ If GPU memory is tight or first-frame latency is high, tune these parameters fir
 | `OPENTALKING_WAV2LIP_JPEG_QUALITY` | `85` | Output-frame JPEG quality; higher values improve visuals but increase bandwidth. |
 | `OPENTALKING_PREWARM_AVATARS` | `singer` | Prewarm Wav2Lip avatars when the service starts. |
 
-### Advanced: Remote High-Quality Inference
+### Advanced 1: Local Audio + QuickTalk
+
+Use this path when you want to keep Beginner 1's local QuickTalk video driver and also move STT and TTS to local models for private validation, local voice input, and local speech synthesis. It requires SenseVoiceSmall and Fun-CosyVoice3-0.5B-2512 weights plus a CosyVoice service, so the setup cost is higher than the beginner paths, but Bailian STT/TTS is no longer required.
+
+For the full walkthrough, see [Local STT/TTS + QuickTalk](docs/en/model-deployment/local-quicktalk-audio.md).
+
+### Advanced 2: Remote High-Quality Inference
 
 Use OmniRT when you need higher visual quality, remote GPU/NPU, multi-GPU scheduling, or production isolation. Full OmniRT deployment is documented in [Model Deployment](docs/en/model-deployment/talking-head.md).
 
@@ -433,7 +447,8 @@ Recommended models for the advanced path:
 | Fast first run | `mock` | `bash scripts/start_unified.sh --mock` | Validate API, LLM, TTS, and WebRTC |
 | Beginner 1 | `quicktalk` | `bash scripts/start_unified.sh --backend local --model quicktalk` | Real video rendering on consumer GPUs |
 | Beginner 2 | `wav2lip` | `bash scripts/start_unified.sh --backend local --model wav2lip` | Lightweight lip sync and custom-avatar validation |
-| Advanced remote | `flashtalk` | `bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt ...` | High quality, multi-GPU, production deployment |
+| Advanced 1 | `sensevoice` + `local_cosyvoice` + `quicktalk` | See [Local STT/TTS + QuickTalk](docs/en/model-deployment/local-quicktalk-audio.md) | Local audio pipeline and private validation |
+| Advanced 2 | `flashtalk` | `bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt ...` | High quality, multi-GPU, production deployment |
 
 ## Supported Models
 

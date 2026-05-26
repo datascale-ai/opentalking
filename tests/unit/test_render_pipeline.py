@@ -93,7 +93,65 @@ async def test_quicktalk_prefetch_stops_when_sentinel_is_read(monkeypatch: pytes
 
     await asyncio.wait_for(runner._render_chunk_worker_streaming(queue), timeout=1.0)
 
-    assert [frame.timestamp_ms for frame in runner.frames] == [0.0, 1.0, 2.0]
+    assert len(runner.frames) == 3
+
+
+@pytest.mark.asyncio
+async def test_quicktalk_video_timestamps_follow_audio_chunk_duration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = object.__new__(SessionRunner)
+    runner.model_type = "quicktalk"
+    runner.session_id = "sess_video_timeline"
+    runner._frame_idx = 0
+    runner._speech_frame_idx = 0
+    runner._quicktalk_video_ts_ms = 0.0
+    runner._rendered_chunk_count = 0
+    runner._audio_preroll_chunks = 1
+    runner._speech_video_ready = asyncio.Event()
+    runner._render_in_executor = False
+    runner._render_executor = None
+    runner._active_timing = None
+    runner._render_chunk_events = {}
+    runner._render_chunk_audio_events = {}
+
+    frames = [
+        VideoFrameData(
+            data=np.zeros((2, 2, 3), dtype=np.uint8),
+            width=2,
+            height=2,
+            timestamp_ms=900.0 + idx,
+        )
+        for idx in range(3)
+    ]
+
+    async def fake_iter_render_chunk_frames(
+        chunk: AudioChunk,
+        *,
+        frame_index_start: int,
+        speech_frame_index_start: int,
+    ) -> tuple[int, Any, Iterator[VideoFrameData]]:
+        return frame_index_start + len(frames), _StreamFeatures(reps=[]), iter(frames)
+
+    seen_frames: list[VideoFrameData] = []
+
+    async def fake_video_sink(frame: VideoFrameData) -> None:
+        seen_frames.append(frame)
+
+    runner._iter_render_chunk_frames = fake_iter_render_chunk_frames  # type: ignore[method-assign]
+    runner._video_sink = fake_video_sink  # type: ignore[method-assign]
+
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_PREFETCH", "0")
+
+    queue: asyncio.Queue[_SpeechChunkEnvelope | None] = asyncio.Queue()
+    chunk = AudioChunk(data=np.zeros(1920, dtype=np.int16), sample_rate=16000, duration_ms=120.0)
+    await queue.put(_SpeechChunkEnvelope(idx=0, chunk=chunk))
+    await queue.put(None)
+
+    await asyncio.wait_for(runner._render_chunk_worker_streaming(queue), timeout=1.0)
+
+    assert [round(frame.timestamp_ms, 1) for frame in seen_frames] == [0.0, 40.0, 80.0]
+    assert runner._quicktalk_video_ts_ms == pytest.approx(120.0)
 
 
 @pytest.mark.asyncio

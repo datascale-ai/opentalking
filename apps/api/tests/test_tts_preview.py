@@ -65,3 +65,39 @@ def test_tts_preview_rejects_empty_text():
 
     assert response.status_code == 422
     assert "text is required" in response.json()["detail"]
+
+def test_tts_preview_keeps_local_cosyvoice_model_id(monkeypatch):
+    from apps.api.routes import tts_preview
+
+    calls: list[dict[str, object]] = []
+
+    class FakeTTS:
+        async def synthesize_stream(self, text: str, voice: str | None = None):
+            yield AudioChunk(
+                data=np.array([0, 1000, -1000, 0], dtype=np.int16),
+                sample_rate=16000,
+                duration_ms=0.25,
+            )
+
+    def fake_build_tts_adapter(**kwargs):
+        calls.append(kwargs)
+        return FakeTTS()
+
+    monkeypatch.setattr(tts_preview, "build_tts_adapter", fake_build_tts_adapter)
+
+    app = FastAPI()
+    app.include_router(tts_preview.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/tts/preview",
+        json={
+            "text": "你好",
+            "tts_provider": "local_cosyvoice",
+            "tts_model": "iic/CosyVoice-300M",
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls[0]["tts_provider"] == "local_cosyvoice"
+    assert calls[0]["tts_model"] == "iic/CosyVoice-300M"

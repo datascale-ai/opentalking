@@ -1,4 +1,4 @@
-export type VoiceCloneProvider = "dashscope" | "cosyvoice";
+export type VoiceCloneProvider = "dashscope" | "cosyvoice" | "local_cosyvoice";
 
 export type VoiceCloneApplicationInput<
   Provider extends VoiceCloneProvider = VoiceCloneProvider,

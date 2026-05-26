@@ -49,6 +49,18 @@ def _env_bool(name: str, default: bool) -> bool:
     return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _settings_value(name: str, default: str = "") -> str:
+    try:
+        from opentalking.core.config import get_settings
+
+        value = getattr(get_settings(), name, default)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    except Exception:
+        pass
+    return default
+
+
 def _qwen_language_type() -> str:
     raw = _env_str("OPENTALKING_QWEN_TTS_LANGUAGE", "Chinese")
     if raw.lower() in {"cantonese", "yue", "粤语", "廣東話", "广东话"}:
@@ -119,6 +131,7 @@ class DashScopeQwenTTSAdapter:
         chunk_ms: float = 20.0,
         *,
         model: str | None = None,
+        service_url: str | None = None,
     ) -> None:
         # 对外输出采样率（与 FlashTalk / 会话配置一致，默认 16k）
         self.sample_rate = sample_rate
@@ -126,15 +139,18 @@ class DashScopeQwenTTSAdapter:
         # 与 ``AudioFormat.PCM_24000HZ_MONO_16BIT`` 及 DashScope ``update_session`` 要求一致
         self._wire_sr = _QWEN_REALTIME_WIRE_SR
         self.default_voice = normalize_optional_qwen_voice(default_voice) or normalize_optional_qwen_voice(
-            _env_str("OPENTALKING_TTS_VOICE", "Cherry"),
+            _env_str(
+                "OPENTALKING_TTS_DASHSCOPE_VOICE",
+                _settings_value("tts_dashscope_voice", "Cherry"),
+            ),
         ) or "Cherry"
         self._model = (model.strip() if model and str(model).strip() else None) or _env_str(
-            "OPENTALKING_QWEN_TTS_MODEL",
-            "qwen3-tts-flash-realtime",
+            "OPENTALKING_TTS_DASHSCOPE_MODEL",
+            _settings_value("tts_dashscope_model", "qwen3-tts-flash-realtime"),
         )
-        self._ws_url = _env_str(
-            "OPENTALKING_QWEN_TTS_WS_URL",
-            "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+        self._ws_url = (service_url.strip() if service_url and str(service_url).strip() else None) or _env_str(
+            "OPENTALKING_TTS_DASHSCOPE_SERVICE_URL",
+            _settings_value("tts_dashscope_service_url", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"),
         )
         self._mode = _env_str("OPENTALKING_QWEN_TTS_MODE", "commit")
         self._reuse_ws = _env_bool("OPENTALKING_QWEN_TTS_REUSE_WS", True)
@@ -156,18 +172,17 @@ class DashScopeQwenTTSAdapter:
             await _run_blocking(_close_client_sync, client)
 
     def _ensure_api_key(self) -> str:
-        api_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+        api_key = os.environ.get("OPENTALKING_TTS_DASHSCOPE_API_KEY", "").strip()
         if not api_key:
             try:
                 from opentalking.core.config import get_settings
 
-                api_key = (get_settings().llm_api_key or "").strip()
+                api_key = getattr(get_settings(), "tts_dashscope_api_key", "").strip()
             except Exception:
                 pass
         if not api_key:
             raise RuntimeError(
-                "DashScope Qwen TTS 需要密钥：设置 DASHSCOPE_API_KEY，或在 .env 中设置 "
-                "OPENTALKING_LLM_API_KEY（与百炼兼容接口共用）。",
+                "DashScope Qwen TTS 需要密钥：请设置 OPENTALKING_TTS_DASHSCOPE_API_KEY。",
             )
         return api_key
 

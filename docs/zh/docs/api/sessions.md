@@ -24,7 +24,7 @@ WebRTC track 以及底层流水线的生命周期状态。
 |------|------|------|------|
 | `avatar_id` | string | 是 | 来自 `GET /avatars` 的 avatar 标识符。 |
 | `model` | string | 是 | 合成模型，须在 `GET /models` 中 `connected=true`。 |
-| `tts_provider` | string \| null | 否 | 仅此会话覆盖 `OPENTALKING_TTS_PROVIDER`。可选值：`edge`、`dashscope`、`cosyvoice`、`elevenlabs`。 |
+| `tts_provider` | string \| null | 否 | 仅此会话覆盖 `OPENTALKING_TTS_DEFAULT_PROVIDER`。可选值：`edge`、`dashscope`、`cosyvoice`、`elevenlabs`。 |
 | `tts_voice` | string \| null | 否 | 覆盖默认音色，格式取决于 provider。 |
 | `llm_system_prompt` | string \| null | 否 | 仅此会话覆盖 `OPENTALKING_LLM_SYSTEM_PROMPT`。 |
 | `wav2lip_postprocess_mode` | string \| null | 否 | wav2lip 专属后处理开关，所选 Wav2Lip backend 支持时转发。 |

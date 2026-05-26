@@ -11,6 +11,8 @@ Choose `mock` when you only need to verify WebUI, API, TTS, events, and WebRTC.
 Choose `wav2lip` or `quicktalk` with `backend=local`. They are the lightest
 paths for validating a real avatar and talking-head output.
 
+Use [Local Audio + QuickTalk](./local-audio-quicktalk.md) when you also need to validate local STT, local TTS, and QuickTalk together.
+
 ### High-quality Model
 
 Choose MuseTalk, FlashTalk, or FlashHead. MuseTalk can run through `local` for
@@ -48,6 +50,7 @@ inference.
 | --- | --- | --- | --- |
 | Install validation | Mock | `mock` | Confirm environment and page flow |
 | First real path | Wav2Lip / QuickTalk | `local` | Validate avatar and lip sync |
+| Local audio validation | SenseVoiceSmall + CosyVoice3 + QuickTalk | `local` | Validate local STT/TTS/Video |
 | Single-machine quality validation | MuseTalk | `local` | Evaluate MuseTalk quality with official preprocessing |
 | High-quality service demo | FlashTalk / FlashHead | `omnirt` / `direct_ws` | Validate heavyweight output |
 | Production | Multi-model stack | `omnirt` + worker | Stable, scalable, observable deployment |

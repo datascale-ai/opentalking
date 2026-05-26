@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
+import opentalking.providers.rtc.aiortc.adapter as aiortc_adapter
 from opentalking.core.types.frames import VideoFrameData
 from opentalking.providers.rtc.aiortc.adapter import WebRTCSession
 
@@ -23,10 +25,35 @@ def test_buffered_reset_clocks_resets_timeline_without_rewinding_pts() -> None:
         assert session.video._timeline_base_ms is None
         assert session.video._prev_source_ts_ms is None
         assert session.video._next_pts_ms == 960
-        assert session._shared_clock.start_time is not None
+        assert session._shared_clock.start_time is None
         assert session.audio._start_time is None
         assert session.audio._clock_start_pts == 32640
         assert session.audio._next_pts == 32640
+    finally:
+        session._put_close_sentinel(session.video._queue)
+        session._put_close_sentinel(session.audio._queue)
+
+
+@pytest.mark.asyncio
+async def test_buffered_reset_clock_anchors_to_first_media(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = WebRTCSession(fps=25.0, sample_rate=16000, mode="buffered")
+    monkeypatch.setattr(aiortc_adapter.time, "monotonic", lambda: 200.0)
+    try:
+        session.reset_clocks()
+
+        assert session._shared_clock.start_time is None
+
+        await session.video.put(
+            VideoFrameData(
+                data=np.zeros((4, 4, 3), dtype=np.uint8),
+                width=4,
+                height=4,
+                timestamp_ms=0.0,
+            )
+        )
+        await session.video.recv()
+
+        assert session._shared_clock.start_time == 200.0
     finally:
         session._put_close_sentinel(session.video._queue)
         session._put_close_sentinel(session.audio._queue)

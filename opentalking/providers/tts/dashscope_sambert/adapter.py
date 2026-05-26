@@ -34,19 +34,31 @@ def _split_pcm_chunks(pcm: np.ndarray, sr: int, chunk_ms: float) -> list[AudioCh
 
 
 def _ensure_api_key() -> str:
-    api_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+    api_key = os.environ.get("OPENTALKING_TTS_DASHSCOPE_API_KEY", "").strip()
     if not api_key:
         try:
             from opentalking.core.config import get_settings
 
-            api_key = (get_settings().llm_api_key or "").strip()
+            api_key = getattr(get_settings(), "tts_dashscope_api_key", "").strip()
         except Exception:
             pass
     if not api_key:
         raise RuntimeError(
-            "百炼 Sambert TTS 需要密钥：设置 DASHSCOPE_API_KEY 或 OPENTALKING_LLM_API_KEY。",
+            "百炼 Sambert TTS 需要密钥：请设置 OPENTALKING_TTS_DASHSCOPE_API_KEY。",
         )
     return api_key
+
+
+def _settings_value(name: str, default: str = "") -> str:
+    try:
+        from opentalking.core.config import get_settings
+
+        value = getattr(get_settings(), name, default)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    except Exception:
+        pass
+    return default
 
 
 class DashScopeSambertTTSAdapter:
@@ -61,7 +73,14 @@ class DashScopeSambertTTSAdapter:
         self.sample_rate = sample_rate
         self.chunk_ms = chunk_ms
         self.default_voice = default_voice or "zhichu"
-        self._model = (model.strip() if model and str(model).strip() else None) or "sambert-zhichu-v1"
+        self._model = (
+            (model.strip() if model and str(model).strip() else None)
+            or os.environ.get("OPENTALKING_TTS_SAMBERT_MODEL", "").strip()
+            or _settings_value("tts_sambert_model", "")
+            or os.environ.get("OPENTALKING_TTS_DASHSCOPE_MODEL", "").strip()
+            or _settings_value("tts_dashscope_model", "")
+            or "sambert-zhichu-v1"
+        )
 
     async def synthesize_stream(
         self,

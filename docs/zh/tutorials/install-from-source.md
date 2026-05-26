@@ -79,10 +79,11 @@ cp .env.example .env
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
-两个变量须配置为同一把 DashScope API Key。完整配置参考见 [配置](configuration.md)。
+LLM 与 STT 可使用同一把实际 key，但必须分别写入模块级变量。完整配置参考见 [配置](configuration.md)。
 
 ### 5. 验证安装
 

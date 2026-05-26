@@ -105,8 +105,12 @@ class _BufferedNumpyVideoTrack(MediaStreamTrack):
 
         frame_ts_ms = max(0.0, float(item.timestamp_ms))
         if self._timeline_start is None or self._timeline_base_ms is None:
-            shared_start = self._shared_clock.start_time if self._shared_clock else None
-            self._timeline_start = shared_start if shared_start is not None else time.monotonic()
+            shared_start = self._shared_clock.start_time if self._shared_clock is not None else None
+            if shared_start is None:
+                shared_start = time.monotonic()
+                if self._shared_clock is not None:
+                    self._shared_clock.start_time = shared_start
+            self._timeline_start = shared_start
             self._timeline_base_ms = frame_ts_ms
 
         target = self._timeline_start + max(
@@ -256,8 +260,12 @@ class _BufferedPCM16AudioTrack(MediaStreamTrack):
 
         pts = self._next_pts
         if self._start_time is None:
-            shared_start = self._shared_clock.start_time if self._shared_clock else None
-            self._start_time = shared_start if shared_start is not None else time.monotonic()
+            shared_start = self._shared_clock.start_time if self._shared_clock is not None else None
+            if shared_start is None:
+                shared_start = time.monotonic()
+                if self._shared_clock is not None:
+                    self._shared_clock.start_time = shared_start
+            self._start_time = shared_start
             self._clock_start_pts = pts
             self._seen_audio = True
 
@@ -307,7 +315,7 @@ class WebRTCSession:
     def reset_clocks(self) -> None:
         """Reset pacing wall-clock so next frame/audio is sent immediately.
         Does NOT reset PTS counters — keeps the RTP stream continuous."""
-        self._shared_clock.start_time = time.monotonic()
+        self._shared_clock.start_time = None
         self.video.reset_clock()
         self.audio.reset_clock()
         self.draining = False

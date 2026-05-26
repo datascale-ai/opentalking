@@ -134,6 +134,8 @@ def unified_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClien
     avatars_dir = Path(__file__).resolve().parents[3] / "examples" / "avatars"
     monkeypatch.setenv("OPENTALKING_AVATARS_DIR", str(avatars_dir))
     monkeypatch.setenv("OPENTALKING_FLASHTALK_WS_URL", "ws://127.0.0.1:8765")
+    monkeypatch.setenv("OPENTALKING_STT_DEFAULT_PROVIDER", "sensevoice")
+    monkeypatch.setenv("OPENTALKING_TTS_DEFAULT_PROVIDER", "edge")
     unified_main.get_settings.cache_clear()
     try:
         with TestClient(unified_main.create_app()) as client:
@@ -215,7 +217,7 @@ models:
     with TestClient(unified_main.create_app()) as client:
         response = client.post(
             "/sessions",
-            json={"avatar_id": "anchor", "model": "wav2lip"},
+            json={"avatar_id": "anchor", "model": "wav2lip", "stt_provider": "sensevoice"},
         )
 
     assert response.status_code == 200, response.json()
@@ -277,6 +279,38 @@ def test_create_session_passes_fasterliveportrait_config_to_task(
     }
 
 
+def test_speak_audio_passes_request_level_stt_provider(
+    unified_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[str | None] = []
+
+    async def fake_transcribe_upload_path(upload_path: Path, *, stt_provider: str | None = None) -> str:
+        del upload_path
+        seen.append(stt_provider)
+        return "上传识别文本"
+
+    monkeypatch.setattr(sessions_routes, "_transcribe_upload_path", fake_transcribe_upload_path)
+
+    create_response = unified_client.post(
+        "/sessions",
+        json={"avatar_id": "singer", "model": "flashtalk", "stt_provider": "sensevoice"},
+    )
+    session_id = create_response.json()["session_id"]
+    response = unified_client.post(
+        f"/sessions/{session_id}/speak_audio",
+        data={
+            "stt_provider": "dashscope",
+            "tts_provider": "edge",
+        },
+        files={"file": ("speech.webm", b"fake-audio", "audio/webm")},
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["text"] == "上传识别文本"
+    assert seen == ["dashscope"]
+
+
 def test_update_fasterliveportrait_config_for_active_session(
     unified_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -331,8 +365,10 @@ def test_update_fasterliveportrait_config_for_active_session(
 @pytest.mark.parametrize("tts_provider", ["dashscope", "cosyvoice", "sambert"])
 def test_create_session_accepts_bailian_tts_providers(
     unified_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
     tts_provider: str,
 ) -> None:
+    monkeypatch.setenv("OPENTALKING_TTS_DASHSCOPE_API_KEY", "test-tts-key")
     response = unified_client.post(
         "/sessions",
         json={
@@ -365,6 +401,19 @@ def test_queue_status_reads_shared_redis_state() -> None:
     assert response.json() == {"slot_occupied": True, "queue_size": 2}
 
 
+def test_unified_prewarm_model_can_override_avatar_manifest_model() -> None:
+    source = Path(unified_main.__file__).read_text(encoding="utf-8")
+
+    assert "OPENTALKING_PREWARM_MODEL" in source
+    assert "prewarm_model or bundle.manifest.model_type" in source
+
+
+def test_unified_quicktalk_create_waits_for_runner_ready() -> None:
+    source = Path(sessions_routes.__file__).read_text(encoding="utf-8")
+
+    assert 'if body.model == "quicktalk":' not in source
+
+
 def test_split_flashtalk_create_returns_queued_until_worker_ready(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -395,7 +444,7 @@ def test_split_flashtalk_create_returns_queued_until_worker_ready(
     with TestClient(app) as client:
         response = client.post(
             "/sessions",
-            json={"avatar_id": avatar_id, "model": "flashtalk"},
+            json={"avatar_id": avatar_id, "model": "flashtalk", "stt_provider": "sensevoice"},
         )
 
     assert response.status_code == 200
@@ -436,7 +485,7 @@ def test_split_flashtalk_create_returns_created_when_worker_ready(
     with TestClient(app) as client:
         response = client.post(
             "/sessions",
-            json={"avatar_id": avatar_id, "model": "flashtalk"},
+            json={"avatar_id": avatar_id, "model": "flashtalk", "stt_provider": "sensevoice"},
         )
 
     assert response.status_code == 200

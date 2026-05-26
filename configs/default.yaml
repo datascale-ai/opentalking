@@ -20,8 +20,8 @@ flashtalk:
   gpu_count: 8
   jpeg_quality: 40
 flashhead:
-  ws_url: ws://8.92.7.195:8766/v1/avatar/realtime
-  base_url: http://8.92.7.195:8766
+  ws_url: ""
+  base_url: ""
   model: soulx-flashhead-1.3b
   shared_local_dir: /tmp/opentalking_flashhead_io
   shared_remote_dir: /tmp/opentalking_flashhead_io

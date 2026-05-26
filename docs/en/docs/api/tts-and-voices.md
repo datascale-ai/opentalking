@@ -16,7 +16,7 @@ voice auditioning before a session is started.
 |-------|------|----------|-------------|
 | `text` | string | Yes | Text to synthesize. Recommended maximum length: 200 characters. |
 | `voice` | string | No | Voice identifier. Format depends on `provider`. |
-| `provider` | string | No | One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`. Defaults to `OPENTALKING_TTS_PROVIDER`. |
+| `provider` | string | No | One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`. Defaults to `OPENTALKING_TTS_DEFAULT_PROVIDER`. |
 | `model` | string | No | Provider-specific model identifier. |
 
 **Response — `200 OK`**
@@ -201,7 +201,7 @@ Content-Type: `audio/wav`. Body is the uploaded sample.
 | Provider | Cloning | Voice format | Notes |
 |----------|---------|--------------|-------|
 | `edge` | Not supported | `<lang>-<region>-<name>Neural` (e.g. `en-US-AriaNeural`) | Built-in, no API key required. |
-| `dashscope` | Supported | Console-defined name (e.g. `xiaoxiao`) or `voice_id` from clone | Requires `DASHSCOPE_API_KEY`. |
+| `dashscope` | Supported | Console-defined name (e.g. `xiaoxiao`) or `voice_id` from clone | Requires `OPENTALKING_TTS_DASHSCOPE_API_KEY`. |
 | `cosyvoice` | Supported | `voice_id` returned by clone, prefixed | Requires the OpenTalking server to be reachable from DashScope. |
 | `elevenlabs` | External to OpenTalking | ElevenLabs `voice_id` | Requires `OPENTALKING_TTS_ELEVENLABS_API_KEY`. |
 

@@ -11,7 +11,7 @@ import { getVoiceVadConfig } from "../config/voiceVad";
 import { isEdgeTts, type TtsProviderExtended } from "../constants/ttsBailian";
 import { buildWsUrl } from "../lib/api";
 
-/** 浏览器 AudioContext 采样率 → 16kHz PCM（与 DashScope 流式 ASR 约定一致） */
+/** 浏览器 AudioContext 采样率 → 16kHz PCM（与 DashScope 流式 STT 约定一致） */
 const TARGET_SR = 16000;
 
 function floatToInt16Buffer(input: Float32Array): ArrayBuffer {
@@ -90,10 +90,11 @@ function downsampleFloat32To16kPcm(input: Float32Array, inputRate: number): Arra
 interface ChatInputProps {
   onSend: (text: string) => void;
   onSpeakAudio?: (blob: Blob) => void | Promise<void>;
-  /** FlashTalk：选择本地音频文件，不经 ASR/LLM/TTS，由后端解码后直接对口型 */
+  /** FlashTalk：选择本地音频文件，不经 STT/LLM/TTS，由后端解码后直接对口型 */
   onSpeakFlashtalkAudioFile?: (file: File) => void | Promise<void>;
-  /** 与 streamingAsrSessionId 同时传入时，语音走 WS 流式 PCM → 后端流式 ASR */
+  /** 与 streamingAsrSessionId 同时传入时，语音走 WS 流式 PCM → 后端流式 STT */
   onSpeakAudioStreamResult?: (payload: { text: string }) => void | Promise<void>;
+  onSpeakAudioStreamError?: (message: string) => void;
   /** 当前会话 id（live 时）：启用真流式 STT */
   streamingAsrSessionId?: string | null;
   onInterrupt: () => void;
@@ -104,6 +105,7 @@ interface ChatInputProps {
   onNotify?: (message: string, tone?: "info" | "success" | "error") => void;
   /** 当前 TTS 选项（用于识别上传 / WS meta；控件在设置侧栏） */
   ttsProvider?: TtsProviderExtended;
+  sttProvider?: string;
   edgeVoice?: string;
   qwenModel?: string;
   qwenVoice?: string;
@@ -121,7 +123,7 @@ function pickRecorderMime(): string | undefined {
 
 /** 流式 STT：在 VAD 攻击帧确认前保留最近 PCM，连接建立后先补发，减轻句首丢失 */
 const PCM_PREROLL_MAX_SAMPLES = 19200; // 1.2s @ 16kHz
-/** 给 ASR 一个极短“起始缓冲”静音，降低首音节被截断概率 */
+/** 给 STT 一个极短“起始缓冲”静音，降低首音节被截断概率 */
 const PCM_PREROLL_HEAD_SILENCE_SAMPLES = 1600; // 100ms @ 16kHz
 
 function appendPcmPrerollChunk(pcmAb: ArrayBuffer, store: MutableRefObject<Int16Array>) {
@@ -153,6 +155,7 @@ export function ChatInput({
   onSpeakAudio,
   onSpeakFlashtalkAudioFile,
   onSpeakAudioStreamResult,
+  onSpeakAudioStreamError,
   streamingAsrSessionId = null,
   onInterrupt,
   isSpeaking,
@@ -160,6 +163,7 @@ export function ChatInput({
   onOpenSettings,
   onNotify,
   ttsProvider = "edge",
+  sttProvider = "",
   edgeVoice = "",
   qwenModel = "",
   qwenVoice = "",
@@ -221,6 +225,9 @@ export function ChatInput({
 
   const onSpeakAudioStreamResultRef = useRef(onSpeakAudioStreamResult);
   onSpeakAudioStreamResultRef.current = onSpeakAudioStreamResult;
+
+  const onSpeakAudioStreamErrorRef = useRef(onSpeakAudioStreamError);
+  onSpeakAudioStreamErrorRef.current = onSpeakAudioStreamError;
 
   const onInterruptRef = useRef(onInterrupt);
   onInterruptRef.current = onInterrupt;
@@ -393,6 +400,7 @@ export function ChatInput({
                   : qwenVoice ?? "",
               tts_provider: ttsProvider,
               tts_model: !isEdgeTts(ttsProvider) ? qwenModel ?? "" : "",
+              stt_provider: sttProvider,
             }),
           );
           if (PCM_PREROLL_HEAD_SILENCE_SAMPLES > 0) {
@@ -415,7 +423,7 @@ export function ChatInput({
           pcmSendGateRef.current = true;
           wsReady = true;
         } catch (e) {
-          console.warn("streaming ASR WebSocket failed", e);
+          console.warn("streaming STT WebSocket failed", e);
           streamWsRef.current = null;
           pcmSendGateRef.current = false;
           segmentActiveRef.current = false;
@@ -446,6 +454,7 @@ export function ChatInput({
       edgeVoice,
       qwenModel,
       qwenVoice,
+      sttProvider,
       streamingAsrSessionId,
       ttsProvider,
     ],
@@ -531,6 +540,8 @@ export function ChatInput({
                 }
               } catch (err) {
                 console.warn("voice segment failed", err);
+                const message = err instanceof Error ? err.message : String(err);
+                onSpeakAudioStreamErrorRef.current?.(message);
               } finally {
                 uploadLockRef.current = false;
               }

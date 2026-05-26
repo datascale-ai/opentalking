@@ -29,6 +29,7 @@ async def create_session(
     avatar_id: str,
     model: str,
     tts_provider: str | None = None,
+    stt_provider: str | None = None,
     tts_voice: str | None = None,
     llm_system_prompt: str | None = None,
     custom_ref_image_path: str | None = None,
@@ -44,6 +45,8 @@ async def create_session(
     }
     if tts_provider:
         data["tts_provider"] = tts_provider
+    if stt_provider:
+        data["stt_provider"] = stt_provider
     if tts_voice:
         data["tts_voice"] = tts_voice
     if llm_system_prompt:
@@ -63,6 +66,8 @@ async def create_session(
     }
     if tts_provider:
         init_task["tts_provider"] = tts_provider
+    if stt_provider:
+        init_task["stt_provider"] = stt_provider
     if tts_voice:
         init_task["tts_voice"] = tts_voice
     if llm_system_prompt:

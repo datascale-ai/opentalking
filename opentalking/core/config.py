@@ -51,13 +51,18 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "chunk_samples": "flashhead_chunk_samples",
         },
         "llm": {
+            "provider": "llm_provider",
             "base_url": "llm_base_url",
             "api_key": "llm_api_key",
             "model": "llm_model",
             "system_prompt": "llm_system_prompt",
         },
         "tts": {
+            "default_provider": "tts_default_provider",
+            "enabled_providers": "tts_enabled_providers",
             "provider": "tts_provider",
+            "model": "tts_model",
+            "api_key": "tts_api_key",
             "voice": "tts_voice",
             "sample_rate": "tts_sample_rate",
             "streaming_decode": "tts_streaming_decode",
@@ -66,6 +71,39 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "elevenlabs_model_id": "tts_elevenlabs_model_id",
             "elevenlabs_voice_id": "tts_elevenlabs_voice_id",
             "elevenlabs_output_format": "tts_elevenlabs_output_format",
+            "dashscope_model": "tts_dashscope_model",
+            "dashscope_api_key": "tts_dashscope_api_key",
+            "dashscope_voice": "tts_dashscope_voice",
+            "dashscope_service_url": "tts_dashscope_service_url",
+            "cosyvoice_model": "tts_cosyvoice_model",
+            "cosyvoice_service_url": "tts_cosyvoice_service_url",
+            "sambert_model": "tts_sambert_model",
+            "edge_voice": "tts_edge_voice",
+            "local_cosyvoice_model": "tts_local_cosyvoice_model",
+            "local_cosyvoice_model_dir": "tts_local_cosyvoice_model_dir",
+            "local_cosyvoice_runtime_dir": "tts_local_cosyvoice_runtime_dir",
+            "local_cosyvoice_service_url": "tts_local_cosyvoice_service_url",
+            "local_cosyvoice_service_urls": "tts_local_cosyvoice_service_urls",
+            "local_cosyvoice_device": "tts_local_cosyvoice_device",
+        },
+        "stt": {
+            "default_provider": "stt_default_provider",
+            "enabled_providers": "stt_enabled_providers",
+            "provider": "stt_provider",
+            "model": "stt_model",
+            "api_key": "stt_api_key",
+            "device": "stt_device",
+            "sensevoice_model": "stt_sensevoice_model",
+            "sensevoice_model_dir": "stt_sensevoice_model_dir",
+            "sensevoice_device": "stt_sensevoice_device",
+            "dashscope_model": "stt_dashscope_model",
+            "dashscope_api_key": "stt_dashscope_api_key",
+        },
+        "local_audio": {
+            "model_root": "local_audio_model_root",
+            "device": "local_audio_device",
+            "qwen3_tts_model": "local_qwen3_tts_model",
+            "qwen3_tts_service_url": "local_qwen3_tts_service_url",
         },
         "model": {"torch_device": "torch_device", "default_model": "default_model"},
     }
@@ -154,14 +192,6 @@ def _legacy_env_mapping() -> dict[str, str]:
         "OMNIRT_AUDIO2VIDEO_MODELS_PATH": "omnirt_audio2video_models_path",
         "OMNIRT_AUDIO2VIDEO_PATH_TEMPLATE": "omnirt_audio2video_path_template",
         "WAV2LIP_PRELOAD": "wav2lip_preload",
-        "DASHSCOPE_API_KEY": "llm_api_key",
-        "DASHSCOPE_MODEL": "llm_model",
-        "LLM_SYSTEM_PROMPT": "llm_system_prompt",
-        "ELEVENLABS_API_KEY": "tts_elevenlabs_api_key",
-        "ELEVENLABS_BASE_URL": "tts_elevenlabs_base_url",
-        "ELEVENLABS_MODEL_ID": "tts_elevenlabs_model_id",
-        "ELEVENLABS_VOICE_ID": "tts_elevenlabs_voice_id",
-        "ELEVENLABS_OUTPUT_FORMAT": "tts_elevenlabs_output_format",
     }
 
 
@@ -258,12 +288,17 @@ class Settings(BaseSettings):
     flashhead_frame_num: int = 29
     flashhead_chunk_samples: int = 17920
 
+    llm_provider: str = "openai_compatible"
     llm_base_url: str = ""
     llm_api_key: str = ""
     llm_model: str = "qwen-turbo"
     llm_system_prompt: str = "You are a friendly digital human assistant."
 
-    #: edge | dashscope | bailian | qwen | qwen_tts | cosyvoice | sambert（OPENTALKING_TTS_PROVIDER）
+    #: edge | dashscope | bailian | qwen | qwen_tts | cosyvoice | sambert | local_*（OPENTALKING_TTS_DEFAULT_PROVIDER）
+    tts_default_provider: str = Field(default="")
+    tts_enabled_providers: str = Field(default="")
+
+    #: Legacy generic provider; overridden by OPENTALKING_TTS_DEFAULT_PROVIDER when set.
     tts_provider: str = Field(default="edge")
 
     #: 音色目录 SQLite；默认 ./data/opentalking.sqlite3
@@ -272,7 +307,23 @@ class Settings(BaseSettings):
     #: CosyVoice 复刻时，百炼需拉取公网 URL；若留空则用请求的 Host 拼 URL（内网部署请填公网可达地址）
     public_base_url: str = ""
 
+    tts_model: str = ""
+    tts_api_key: str = ""
     tts_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_dashscope_model: str = "qwen3-tts-flash-realtime"
+    tts_dashscope_api_key: str = ""
+    tts_dashscope_voice: str = "Cherry"
+    tts_dashscope_service_url: str = "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"
+    tts_cosyvoice_model: str = "cosyvoice-v3-flash"
+    tts_cosyvoice_service_url: str = ""
+    tts_sambert_model: str = "sambert-zhichu-v1"
+    tts_edge_voice: str = "zh-CN-XiaoxiaoNeural"
+    tts_local_cosyvoice_model: str = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+    tts_local_cosyvoice_model_dir: str = ""
+    tts_local_cosyvoice_runtime_dir: str = ""
+    tts_local_cosyvoice_service_url: str = ""
+    tts_local_cosyvoice_service_urls: str = ""
+    tts_local_cosyvoice_device: str = "auto"
     tts_sample_rate: int = 16000
     tts_streaming_decode: bool = True
     tts_elevenlabs_api_key: str = ""
@@ -281,6 +332,27 @@ class Settings(BaseSettings):
     tts_elevenlabs_voice_id: str = ""
     tts_elevenlabs_output_format: str = "mp3_22050_32"
     ffmpeg_bin: str = "ffmpeg"
+
+    #: dashscope | funasr | sensevoice | sherpa_onnx（OPENTALKING_STT_DEFAULT_PROVIDER）
+    stt_default_provider: str = ""
+    stt_enabled_providers: str = ""
+
+    #: Legacy generic provider; overridden by OPENTALKING_STT_DEFAULT_PROVIDER when set.
+    stt_provider: str = "dashscope"
+    stt_model: str = "paraformer-realtime-v2"
+    stt_api_key: str = ""
+    stt_device: str = "auto"
+    stt_sensevoice_model: str = "iic/SenseVoiceSmall"
+    stt_sensevoice_model_dir: str = ""
+    stt_sensevoice_device: str = "auto"
+    stt_dashscope_model: str = "paraformer-realtime-v2"
+    stt_dashscope_api_key: str = ""
+
+    #: Shared local model root for local STT/TTS assets.
+    local_audio_model_root: str = "./models/local-audio"
+    local_audio_device: str = "auto"
+    local_qwen3_tts_model: str = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+    local_qwen3_tts_service_url: str = ""
 
     torch_device: str = "cpu"
     default_fps: int = 25
@@ -350,6 +422,38 @@ class Settings(BaseSettings):
         except ValueError:
             return "auto"
         return provider or "edge"
+
+    @property
+    def normalized_tts_default_provider(self) -> str:
+        from opentalking.providers.tts.providers import normalize_tts_provider
+
+        raw = self.tts_default_provider or self.tts_provider
+        try:
+            provider = normalize_tts_provider(raw, default="edge")
+        except ValueError:
+            return "auto"
+        return provider or "edge"
+
+    @property
+    def normalized_stt_provider(self) -> str:
+        from opentalking.providers.stt.factory import normalize_stt_provider
+
+        try:
+            provider = normalize_stt_provider(self.stt_provider, default="dashscope")
+        except ValueError:
+            return "dashscope"
+        return provider or "dashscope"
+
+    @property
+    def normalized_stt_default_provider(self) -> str:
+        from opentalking.providers.stt.factory import normalize_stt_provider
+
+        raw = self.stt_default_provider or self.stt_provider
+        try:
+            provider = normalize_stt_provider(raw, default="dashscope")
+        except ValueError:
+            return "dashscope"
+        return provider or "dashscope"
 
     @property
     def normalized_flashtalk_mode(self) -> str:

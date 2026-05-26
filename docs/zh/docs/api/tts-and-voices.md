@@ -14,7 +14,7 @@
 |------|------|------|------|
 | `text` | string | 是 | 待合成文本，建议最长 200 字。 |
 | `voice` | string | 否 | 音色标识符，格式取决于 `provider`。 |
-| `provider` | string | 否 | `edge`、`dashscope`、`cosyvoice`、`elevenlabs` 之一，默认取 `OPENTALKING_TTS_PROVIDER`。 |
+| `provider` | string | 否 | `edge`、`dashscope`、`cosyvoice`、`elevenlabs` 之一，默认取 `OPENTALKING_TTS_DEFAULT_PROVIDER`。 |
 | `model` | string | 否 | provider 专属模型标识符。 |
 
 **响应 — `200 OK`**
@@ -195,7 +195,7 @@ Content-Type：`audio/wav`。响应体为上传的音频样本。
 | Provider | 复刻 | 音色格式 | 说明 |
 |----------|------|---------|------|
 | `edge` | 不支持 | `<lang>-<region>-<name>Neural`（如 `zh-CN-XiaoxiaoNeural`） | 内置，无须 API Key。 |
-| `dashscope` | 支持 | 控制台音色名（如 `xiaoxiao`）或复刻返回的 `voice_id` | 需 `DASHSCOPE_API_KEY`。 |
+| `dashscope` | 支持 | 控制台音色名（如 `xiaoxiao`）或复刻返回的 `voice_id` | 需 `OPENTALKING_TTS_DASHSCOPE_API_KEY`。 |
 | `cosyvoice` | 支持 | 复刻返回的 `voice_id`（带前缀） | OpenTalking 服务须可被 DashScope 反向访问。 |
 | `elevenlabs` | 在 OpenTalking 之外完成 | ElevenLabs `voice_id` | 需 `OPENTALKING_TTS_ELEVENLABS_API_KEY`。 |
 

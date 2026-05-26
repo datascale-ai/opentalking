@@ -70,12 +70,12 @@ OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 OPENTALKING_LLM_API_KEY=sk-your-key
 OPENTALKING_LLM_MODEL=qwen-flash
 
-OPENTALKING_TTS_PROVIDER=edge
-OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
+OPENTALKING_TTS_EDGE_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
-`edge` TTS 不需要 API key。如果使用 DashScope STT 或 DashScope TTS，再额外配置
-`DASHSCOPE_API_KEY`。
+`edge` TTS 不需要 API key。如果使用 DashScope STT 或 DashScope TTS，按模块配置
+`OPENTALKING_STT_DASHSCOPE_API_KEY` 或 `OPENTALKING_TTS_DASHSCOPE_API_KEY`。
 
 ### 4. 启动 mock 模式
 
@@ -318,7 +318,7 @@ bash scripts/quickstart/stop_all.sh
 ### 浏览器没有声音
 
 确认浏览器没有静音，页面获得了播放权限，并检查 TTS provider 是否可用。使用 `edge` TTS 时一般不需要
-API key；使用 DashScope TTS 时需要配置 `DASHSCOPE_API_KEY`。
+API key；使用 DashScope TTS 时需要配置 `OPENTALKING_TTS_DASHSCOPE_API_KEY`。
 
 ### WebRTC 没有画面
 

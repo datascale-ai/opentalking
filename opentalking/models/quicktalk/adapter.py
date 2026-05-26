@@ -159,6 +159,18 @@ def _path_from_env_or_metadata(
     return _resolve_config_path(raw, base_dir=base_dir)
 
 
+def _quicktalk_template_from_bundle(bundle_path: Path) -> Path | None:
+    quicktalk_dir = bundle_path / "quicktalk"
+    preferred = quicktalk_dir / "template_900.mp4"
+    if preferred.is_file():
+        return preferred.resolve()
+    if quicktalk_dir.is_dir():
+        for candidate in sorted(quicktalk_dir.glob("template_*.mp4")):
+            if candidate.is_file():
+                return candidate.resolve()
+    return None
+
+
 def _optional_env_path(name: str) -> Path | None:
     raw = _env_value(name)
     if not raw:
@@ -395,15 +407,23 @@ class QuickTalkAdapter:
         elif prepared_template is not None:
             template_video = prepared_template
         else:
-            template_video = _path_from_env_or_metadata(
-                "OPENTALKING_QUICKTALK_TEMPLATE_VIDEO",
-                metadata,
-                "template_video",
-                "source_video",
-                "video",
-                base_dir=bundle.path,
-                sections=("quicktalk",),
-            )
+            try:
+                template_video = _path_from_env_or_metadata(
+                    "OPENTALKING_QUICKTALK_TEMPLATE_VIDEO",
+                    metadata,
+                    "template_video",
+                    "source_video",
+                    "video",
+                    base_dir=bundle.path,
+                    sections=("quicktalk",),
+                )
+            except ValueError:
+                bundle_template = _quicktalk_template_from_bundle(bundle.path)
+                if bundle_template is None:
+                    raise
+                template_video = bundle_template
+            if template_video is None:
+                raise
         face_cache_raw = _env_value("OPENTALKING_QUICKTALK_FACE_CACHE_DIR")
         face_cache_dir = Path(face_cache_raw).expanduser().resolve() if face_cache_raw else asset_root / ".face_cache_v3"
         max_template_seconds = (

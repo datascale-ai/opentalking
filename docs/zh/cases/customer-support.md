@@ -37,7 +37,7 @@ flowchart LR
 ## 前置条件
 
 - 已完成 [快速上手](../tutorials/quickstart.md) 或 [Mock 端到端案例](../tutorials/cases/mock-e2e.md)。
-- `.env` 中已配置 `OPENTALKING_LLM_API_KEY` 与 `DASHSCOPE_API_KEY`。
+- `.env` 中已配置 `OPENTALKING_LLM_API_KEY`；如启用语音输入，另配 `OPENTALKING_STT_DASHSCOPE_API_KEY`。
 - 浏览器建议使用 Chromium 内核。
 
 ## 1. 配置客服人设
@@ -46,8 +46,8 @@ flowchart LR
 
 ```env title=".env"
 OPENTALKING_LLM_SYSTEM_PROMPT=你是 OpenTalking 产品客服。回答要简洁、礼貌、口语化。遇到价格、合同、法律承诺等问题时，提示用户联系人工销售。不要编造不存在的功能。
-OPENTALKING_TTS_PROVIDER=edge
-OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
+OPENTALKING_TTS_EDGE_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
 如果业务侧已经有客服 Agent，可以让 Agent 提供 OpenAI-compatible endpoint，再配置：
@@ -66,7 +66,7 @@ bash scripts/quickstart/start_mock.sh
 ```
 
 打开 <http://localhost:5173>，选择内置 avatar 与 `mock` 模型，开始语音对话。此时画面是占位数字人，
-但 ASR、LLM、TTS、字幕事件和 WebRTC 链路都已真实运行。
+但 STT、LLM、TTS、字幕事件和 WebRTC 链路都已真实运行。
 
 ## 3. 用 API 嵌入业务系统
 

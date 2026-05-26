@@ -66,16 +66,14 @@ class _StreamingTextCollector(RecognitionCallback):
 
 
 def _dashscope_api_key() -> str:
-    direct = (
-        os.environ.get("DASHSCOPE_API_KEY", "").strip()
-        or os.environ.get("OPENTALKING_LLM_API_KEY", "").strip()
-    )
+    direct = os.environ.get("OPENTALKING_STT_DASHSCOPE_API_KEY", "").strip()
     if direct:
         return direct
     try:
         from opentalking.core.config import get_settings
 
-        return (get_settings().llm_api_key or "").strip()
+        settings = get_settings()
+        return getattr(settings, "stt_dashscope_api_key", "").strip()
     except Exception:
         return ""
 
@@ -85,7 +83,16 @@ def _ffmpeg_bin() -> str:
 
 
 def _stt_model() -> str:
-    return os.environ.get("OPENTALKING_STT_MODEL", "paraformer-realtime-v2").strip()
+    direct = os.environ.get("OPENTALKING_STT_DASHSCOPE_MODEL", "").strip()
+    if direct:
+        return direct
+    try:
+        from opentalking.core.config import get_settings
+
+        settings = get_settings()
+        return getattr(settings, "stt_dashscope_model", "").strip() or "paraformer-realtime-v2"
+    except Exception:
+        return "paraformer-realtime-v2"
 
 
 def _language_hints() -> list[str] | None:
@@ -185,7 +192,7 @@ def _recognize_wav_sync(wav_path: Path) -> tuple[str, float]:
     api_key = _dashscope_api_key()
     if not api_key:
         raise RuntimeError(
-            "缺少 DashScope API Key：请在环境变量设置 DASHSCOPE_API_KEY 或 OPENTALKING_LLM_API_KEY（与百炼控制台一致）。"
+            "缺少 DashScope STT API Key：请设置 OPENTALKING_STT_DASHSCOPE_API_KEY。"
         )
 
     dashscope.api_key = api_key
@@ -207,7 +214,7 @@ def _recognize_wav_sync(wav_path: Path) -> tuple[str, float]:
         result = rc.call(str(wav_path))
     except Exception as e:
         log.exception("STT Recognition.call raised")
-        raise RuntimeError(f"DashScope ASR 调用异常: {e}") from e
+        raise RuntimeError(f"DashScope STT 调用异常: {e}") from e
 
     call_ms = (time.perf_counter() - t_call) * 1000.0
 
@@ -226,10 +233,10 @@ def _recognize_wav_sync(wav_path: Path) -> tuple[str, float]:
             getattr(result, "code", None),
             req,
         )
-        detail = msg or "ASR failed"
+        detail = msg or "STT failed"
         raise RuntimeError(
             f"百炼语音识别失败（HTTP {sc}）: {detail}。"
-            "请核对 API Key、模型名 OPENTALKING_STT_MODEL、账号是否开通语音识别。"
+            "请核对 API Key、模型名 OPENTALKING_STT_DASHSCOPE_MODEL、账号是否开通语音识别。"
         )
 
     text = recognition_result_to_text(result)
@@ -252,7 +259,7 @@ def transcribe_pcm_chunk_queue_sync(chunk_queue: "queue.Queue[bytes | None]") ->
     api_key = _dashscope_api_key()
     if not api_key:
         raise RuntimeError(
-            "缺少 DashScope API Key：请在环境变量设置 DASHSCOPE_API_KEY 或 OPENTALKING_LLM_API_KEY（与百炼控制台一致）。"
+            "缺少 DashScope STT API Key：请设置 OPENTALKING_STT_DASHSCOPE_API_KEY。"
         )
 
     dashscope.api_key = api_key
@@ -288,7 +295,7 @@ def transcribe_pcm_chunk_queue_sync(chunk_queue: "queue.Queue[bytes | None]") ->
     dashscope_ms = (time.perf_counter() - t0) * 1000.0
 
     if collector.error_message:
-        raise RuntimeError(f"DashScope 流式 ASR 错误: {collector.error_message}")
+        raise RuntimeError(f"DashScope 流式 STT 错误: {collector.error_message}")
 
     text = collector.combined_text()
     if not text.strip():

@@ -39,15 +39,15 @@ flowchart LR
 ## Prerequisites
 
 - Finish [Quickstart](../tutorials/quickstart.md) or [Mock E2E](../tutorials/cases/mock-e2e.md).
-- Configure `OPENTALKING_LLM_API_KEY` and `DASHSCOPE_API_KEY` in `.env`.
+- Configure `OPENTALKING_LLM_API_KEY` in `.env`; if microphone input is enabled, also configure `OPENTALKING_STT_DASHSCOPE_API_KEY`.
 - Use a Chromium-based browser for the smoothest WebRTC path.
 
 ## 1. Configure the Support Persona
 
 ```env title=".env"
 OPENTALKING_LLM_SYSTEM_PROMPT=You are an OpenTalking product support agent. Keep answers concise, polite, and conversational. For pricing, contracts, legal commitments, or unsupported claims, ask the user to contact a human sales representative. Do not invent features.
-OPENTALKING_TTS_PROVIDER=edge
-OPENTALKING_TTS_VOICE=zh-CN-XiaoxiaoNeural
+OPENTALKING_TTS_DEFAULT_PROVIDER=edge
+OPENTALKING_TTS_EDGE_VOICE=zh-CN-XiaoxiaoNeural
 ```
 
 If you already have a support agent, expose it through an OpenAI-compatible endpoint:
@@ -66,7 +66,7 @@ bash scripts/quickstart/start_mock.sh
 ```
 
 Open <http://localhost:5173>, select the built-in avatar and the `mock` model, then start
-speaking. The image is a placeholder, but ASR, LLM, TTS, captions, and WebRTC are real.
+speaking. The image is a placeholder, but STT, LLM, TTS, captions, and WebRTC are real.
 
 ## 3. Embed Through the API
 

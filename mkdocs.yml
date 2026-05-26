@@ -118,6 +118,7 @@ plugins:
             Support Matrix: 支持矩阵
             LLM and STT: LLM 与 STT
             Text-to-Speech: 语音合成
+            Local Audio + QuickTalk: 本地语音 + QuickTalk
             Avatar Assets: Avatar 资产
             Talking-Head Models: Talking-head 模型
             Mock: Mock
@@ -205,6 +206,7 @@ nav:
       - Model Support:
           - Model Support Overview: model-support/index.md
           - Model and Backend Selection: model-support/selection.md
+          - Local Audio + QuickTalk: model-support/local-audio-quicktalk.md
           - Runtime Backends:
               - Mock Backend: model-support/runtime-backends/mock.md
               - Local Adapter: model-support/runtime-backends/local-adapter.md
@@ -244,6 +246,7 @@ nav:
   - Model Support:
       - Model Support Overview: model-support/index.md
       - Model and Backend Selection: model-support/selection.md
+      - Local Audio + QuickTalk: model-support/local-audio-quicktalk.md
       - Runtime Backends:
           - Mock Backend: model-support/runtime-backends/mock.md
           - Local Adapter: model-support/runtime-backends/local-adapter.md

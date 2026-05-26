@@ -27,3 +27,17 @@ cosyApplication satisfies {
   voice: "voice-cosy";
   message: "已使用复刻音色：Cosy 测试";
 };
+
+const localCosyApplication = resolveVoiceCloneApplication({
+  provider: "local_cosyvoice",
+  targetModel: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  displayLabel: "本地 Cosy 测试",
+  voiceId: "local-cosy-test",
+});
+
+localCosyApplication satisfies {
+  provider: "local_cosyvoice";
+  model: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512";
+  voice: "local-cosy-test";
+  message: "已使用复刻音色：本地 Cosy 测试";
+};

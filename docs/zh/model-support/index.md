@@ -106,5 +106,6 @@ flowchart LR
 ## 下一步
 
 - 不确定选哪个模型：先看[模型与后端选择](./selection.md)。
+- 想验证本地 STT/TTS 与 QuickTalk：看[本地语音 + QuickTalk](./local-audio-quicktalk.md)。
 - 想了解模型可调参数：进入具体模型页。
 - 准备生产部署：先参考[模型与后端选择](./selection.md)中的服务化建议。

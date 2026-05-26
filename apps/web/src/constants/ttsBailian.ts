@@ -19,11 +19,19 @@ export const SAMBERT_MODEL_OPTIONS: { id: string; label: string }[] = [
   { id: "sambert-zhichu-v1", label: "sambert-zhichu-v1（知楚）" },
 ];
 
+/** 本地模型：OpenTalking 同机/内网本地服务，不走百炼云端 TTS。 */
+export const LOCAL_COSYVOICE_MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512", label: "CosyVoice3-0.5B-2512（本地模型）" },
+];
+
+export const LOCAL_TTS_VOICE_OPTIONS: { id: string; label: string }[] = [];
+
 export type TtsProviderExtended =
   | "edge"
   | "dashscope"
   | "cosyvoice"
-  | "sambert";
+  | "sambert"
+  | "local_cosyvoice";
 
 export function isEdgeTts(p: string): boolean {
   return p === "edge";

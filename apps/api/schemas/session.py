@@ -9,6 +9,7 @@ class CreateSessionRequest(BaseModel):
     avatar_id: str = Field(..., examples=["singer"])
     model: str = Field(..., examples=["wav2lip"])
     tts_provider: str | None = None
+    stt_provider: str | None = None
     tts_voice: str | None = None
     llm_system_prompt: str | None = None
     wav2lip_postprocess_mode: str | None = None

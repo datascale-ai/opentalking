@@ -27,11 +27,12 @@ opentalking/
 
 ## Configuration
 
-At minimum, configure LLM/STT keys:
+At minimum, configure the LLM and STT module keys:
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
 ## Start
@@ -56,6 +57,6 @@ Expected:
 
 | Symptom | Action |
 |---------|--------|
-| LLM returns 401 | Check both DashScope keys in `.env`. |
+| LLM returns 401 | Check `OPENTALKING_LLM_API_KEY` and `OPENTALKING_STT_DASHSCOPE_API_KEY` separately. |
 | No browser video | Use a Chromium-based browser and inspect WebRTC/CORS errors. |
 | Port conflict | Run `bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180`. |

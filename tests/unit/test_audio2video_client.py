@@ -235,6 +235,27 @@ async def test_local_audio2video_client_generate_does_not_block_event_loop(
     assert all(name != threading.current_thread().name for name in adapter.infer_thread_names)
 
 
+@pytest.mark.asyncio
+async def test_local_audio2video_client_can_reinit_after_session_reset(
+    tmp_path: Path,
+) -> None:
+    adapter = FakeLocalAdapter()
+    client = LocalAudio2VideoClient(adapter, device="cuda:0")
+    avatar = tmp_path / "avatar"
+    avatar.mkdir()
+
+    await client.init_session(avatar_path=avatar)
+    await client.generate(np.arange(1600, dtype=np.int16))
+    await client.close(send_close_msg=False)
+
+    await client.init_session(avatar_path=avatar)
+    frames = await client.generate(np.arange(1600, dtype=np.int16))
+
+    assert len(frames) == 3
+    assert adapter.infer_calls == 2
+    assert client.closed is False
+
+
 def test_make_audio_chunk_uses_pcm_length_for_duration() -> None:
     chunk = make_audio_chunk(np.zeros(8000, dtype=np.int16), sample_rate=16000)
 

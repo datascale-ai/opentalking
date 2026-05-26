@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { apiPostForm } from "../lib/api";
-import { COSYVOICE_MODEL_OPTIONS } from "../constants/ttsBailian";
+import { COSYVOICE_MODEL_OPTIONS, LOCAL_COSYVOICE_MODEL_OPTIONS } from "../constants/ttsBailian";
 import { QWEN_VOICE_CLONE_TARGET_OPTIONS } from "../constants/ttsQwen";
 import { resolveVoiceCloneApplication, type VoiceCloneApplication } from "../lib/voiceCloneApply";
 
@@ -18,7 +19,29 @@ function pickRecorderMime(): string | undefined {
   return undefined;
 }
 
-type CloneProvider = "dashscope" | "cosyvoice";
+function recorderErrorMessage(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "麦克风权限被拒绝。请允许浏览器使用麦克风，或请改用上传音频。";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "麦克风不可用：没有检测到可用的输入设备，请改用上传音频。";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "麦克风不可用：设备正被其它程序占用，请关闭占用程序后重试，或请改用上传音频。";
+  }
+  return "麦克风不可用：浏览器只允许 HTTPS 或 localhost 页面录音，请通过本地隧道打开，或请改用上传音频。";
+}
+
+function fileExtFromBlob(blob: Blob): string {
+  if (blob instanceof File) return blob.name.split(".").pop()?.toLowerCase() || "webm";
+  if (blob.type.includes("wav")) return "wav";
+  if (blob.type.includes("mpeg") || blob.type.includes("mp3")) return "mp3";
+  if (blob.type.includes("ogg")) return "ogg";
+  return "webm";
+}
+
+type CloneProvider = "dashscope" | "cosyvoice" | "local_cosyvoice";
 type RecorderPhase = "idle" | "recording" | "paused" | "recorded";
 
 function formatDuration(ms: number): string {
@@ -39,8 +62,11 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     () =>
       (provider === "dashscope"
         ? QWEN_VOICE_CLONE_TARGET_OPTIONS[0]?.id
-        : COSYVOICE_MODEL_OPTIONS[0]?.id) ?? "",
+        : provider === "local_cosyvoice"
+          ? LOCAL_COSYVOICE_MODEL_OPTIONS[0]?.id
+          : COSYVOICE_MODEL_OPTIONS[0]?.id) ?? "",
   );
+  const [promptText, setPromptText] = useState(BAILIAN_CLONE_SAMPLE_TEXT);
   const [displayLabel, setDisplayLabel] = useState("我的复刻音色");
   const [prefix, setPrefix] = useState("");
   const [preferredName, setPreferredName] = useState("");
@@ -84,6 +110,8 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     setProvider(p);
     if (p === "dashscope") {
       setTargetModel(QWEN_VOICE_CLONE_TARGET_OPTIONS[0]?.id ?? "");
+    } else if (p === "local_cosyvoice") {
+      setTargetModel(LOCAL_COSYVOICE_MODEL_OPTIONS[0]?.id ?? "");
     } else {
       setTargetModel(COSYVOICE_MODEL_OPTIONS[0]?.id ?? "");
     }
@@ -162,24 +190,56 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
   const startRecording = useCallback(async () => {
     setMessage(null);
     deleteRecording();
-    chunksRef.current = [];
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    streamRef.current = stream;
-    const mime = pickRecorderMime();
-    const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-    mrRef.current = mr;
-    mr.ondataavailable = (ev) => {
-      if (ev.data.size > 0) chunksRef.current.push(ev.data);
-    };
-    mr.start(200);
-    elapsedBeforePauseRef.current = 0;
-    recordStartedAtRef.current = Date.now();
-    setElapsedMs(0);
-    setRecorderPhase("recording");
-    timerRef.current = window.setInterval(() => {
-      setElapsedMs(elapsedBeforePauseRef.current + Math.max(0, Date.now() - recordStartedAtRef.current));
-    }, 250);
-  }, [deleteRecording]);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setMessage(recorderErrorMessage(new DOMException("media devices unavailable", "NotAllowedError")));
+      return;
+    }
+    try {
+      chunksRef.current = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mime = pickRecorderMime();
+      const mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mrRef.current = mr;
+      mr.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      mr.start(200);
+      elapsedBeforePauseRef.current = 0;
+      recordStartedAtRef.current = Date.now();
+      setElapsedMs(0);
+      setRecorderPhase("recording");
+      timerRef.current = window.setInterval(() => {
+        setElapsedMs(elapsedBeforePauseRef.current + Math.max(0, Date.now() - recordStartedAtRef.current));
+      }, 250);
+    } catch (e) {
+      stopTracks();
+      clearTimer();
+      chunksRef.current = [];
+      mrRef.current = null;
+      setRecorderPhase("idle");
+      setMessage(recorderErrorMessage(e));
+    }
+  }, [clearTimer, deleteRecording, stopTracks]);
+
+  const handleAudioFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0];
+      event.currentTarget.value = "";
+      if (!file) return;
+      deleteRecording();
+      setBlob(file);
+      revokeAudioUrl();
+      setAudioUrl(URL.createObjectURL(file));
+      setElapsedMs(0);
+      setPlaybackTime(0);
+      setPlaybackEnded(false);
+      setPlaying(false);
+      setRecorderPhase("recorded");
+      setMessage("已选择上传音频，可试听后上传并复刻。");
+    },
+    [deleteRecording, revokeAudioUrl],
+  );
 
   const pauseRecording = useCallback(() => {
     const mr = mrRef.current;
@@ -230,7 +290,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     setBusy(true);
     setMessage(null);
     try {
-      const ext = blob.type.includes("webm") ? "webm" : blob.type.includes("ogg") ? "ogg" : "webm";
+      const ext = fileExtFromBlob(blob);
       const fd = new FormData();
       fd.append("provider", provider);
       fd.append("target_model", targetModel.trim());
@@ -238,6 +298,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
       fd.append("audio", blob, `sample.${ext}`);
       fd.append("prefix", prefix.trim());
       fd.append("preferred_name", preferredName.trim());
+      fd.append("prompt_text", promptText.trim() || BAILIAN_CLONE_SAMPLE_TEXT);
       const res = await apiPostForm<{
         ok?: boolean;
         message?: string;
@@ -262,13 +323,13 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     } finally {
       setBusy(false);
     }
-  }, [blob, displayLabel, onSuccess, preferredName, prefix, provider, targetModel]);
+  }, [blob, displayLabel, onSuccess, preferredName, prefix, promptText, provider, targetModel]);
 
   return (
     <div className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white text-sm text-slate-800 shadow-sm shadow-slate-200/70">
       <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-4 py-3">
         <div>
-          <p className="text-xs font-medium text-slate-500">声音与角色</p>
+          <p className="text-xs font-medium text-slate-500">语音合成</p>
           <h2 className="mt-0.5 text-base font-semibold text-slate-950">百炼音色复刻</h2>
         </div>
         <button
@@ -283,7 +344,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
       <div className="space-y-4 p-4">
         <div>
           <p className="text-xs leading-relaxed text-slate-500">
-            请朗读下方固定文案并录音。千问复刻走 base64，内网可用；CosyVoice 需本服务对公网可访问或配置{" "}
+            请朗读下方固定文案并录音。本地 CosyVoice 会保存到本机模型目录；千问复刻走 base64，内网可用；云端 CosyVoice 需本服务对公网可访问或配置{" "}
             <code className="rounded bg-slate-100 px-1 py-0.5 text-slate-700">OPENTALKING_PUBLIC_BASE_URL</code>。
           </p>
           <div className="mt-3 rounded-lg border border-cyan-300 bg-cyan-50 shadow-sm shadow-cyan-100/70">
@@ -295,6 +356,20 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
               {BAILIAN_CLONE_SAMPLE_TEXT}
             </blockquote>
           </div>
+          {provider === "local_cosyvoice" ? (
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-xs font-medium text-slate-500">本地 CosyVoice 参考文本</span>
+              <textarea
+                className="min-h-20 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-relaxed text-slate-800 outline-none transition focus:border-cyan-300 focus:bg-white"
+                value={promptText}
+                onChange={(e) => setPromptText(e.target.value)}
+                disabled={busy}
+              />
+              <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">
+                本地 CosyVoice 会用这段文本对齐参考音频；请让录音内容和文本一致，并先试听确认声音清晰。
+              </span>
+            </label>
+          ) : null}
         </div>
 
         <div className="grid gap-3 text-xs sm:grid-cols-2">
@@ -307,7 +382,8 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
               disabled={busy}
             >
               <option value="dashscope">千问（DashScope 复刻）</option>
-              <option value="cosyvoice">CosyVoice</option>
+              <option value="local_cosyvoice">本地 CosyVoice</option>
+              <option value="cosyvoice">云端 CosyVoice</option>
             </select>
           </label>
           <label className="block">
@@ -318,13 +394,16 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
               onChange={(e) => setTargetModel(e.target.value)}
               disabled={busy}
             >
-              {(provider === "dashscope" ? QWEN_VOICE_CLONE_TARGET_OPTIONS : COSYVOICE_MODEL_OPTIONS).map(
-                (o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.label}
-                  </option>
-                ),
-              )}
+              {(provider === "dashscope"
+                ? QWEN_VOICE_CLONE_TARGET_OPTIONS
+                : provider === "local_cosyvoice"
+                  ? LOCAL_COSYVOICE_MODEL_OPTIONS
+                  : COSYVOICE_MODEL_OPTIONS
+              ).map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </label>
         </div>
@@ -392,15 +471,32 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
             </span>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+            {recorderPhase === "idle" ? (
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={busy}
+                onClick={() => void startRecording()}
+              >
+                开始录音
+              </button>
+            ) : null}
+            <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
+              上传音频文件
+              <input
+                type="file"
+                className="sr-only"
+                accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+                disabled={busy}
+                onChange={handleAudioFileChange}
+              />
+            </label>
+          </div>
           {recorderPhase === "idle" ? (
-            <button
-              type="button"
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={busy}
-              onClick={() => void startRecording()}
-            >
-              开始录音
-            </button>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              远程 HTTP 页面可能无法直接录音；如果点击无响应，请改用上传音频。上传前请试听，静音或声音太小会被拒绝。
+            </p>
           ) : null}
 
           {recorderPhase === "recording" || recorderPhase === "paused" ? (
@@ -459,6 +555,12 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
                 ref={audioRef}
                 src={audioUrl}
                 preload="metadata"
+                onLoadedMetadata={(e) => {
+                  const duration = e.currentTarget.duration;
+                  if (Number.isFinite(duration) && duration > 0) {
+                    setElapsedMs(duration * 1000);
+                  }
+                }}
                 onTimeUpdate={(e) => {
                   setPlaybackTime(e.currentTarget.currentTime);
                   if (!e.currentTarget.ended) setPlaybackEnded(false);

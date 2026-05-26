@@ -911,10 +911,17 @@ def test_create_custom_avatar_generates_quicktalk_template_from_upload(tmp_path,
     base.mkdir()
     (base / "preview.png").write_bytes(_png_bytes((416, 704)))
     (base / "reference.png").write_bytes(_png_bytes((416, 704)))
+    source_dir = base / "source"
+    source_dir.mkdir()
+    (source_dir / "source.png").write_bytes(_png_bytes((416, 704)))
+    (source_dir / "idle.mp4").write_bytes(b"old-idle")
+    (base / "idle.mp4").write_bytes(b"old-root-idle")
     quicktalk_dir = base / "quicktalk"
     quicktalk_dir.mkdir()
     (quicktalk_dir / "template_900.mp4").write_bytes(b"old-template")
     (quicktalk_dir / "face_cache_v3_900.npz").write_bytes(b"stale-cache")
+    (quicktalk_dir / "template_720x900.mp4").write_bytes(b"old-sized-template")
+    (quicktalk_dir / "face_cache_v3_720x900.npz").write_bytes(b"stale-sized-cache")
     (base / "manifest.json").write_text(
         json.dumps(
             {
@@ -926,7 +933,14 @@ def test_create_custom_avatar_generates_quicktalk_template_from_upload(tmp_path,
                 "width": 416,
                 "height": 704,
                 "version": "1.0",
-                "metadata": {},
+                "metadata": {
+                    "source_video": "source/idle.mp4",
+                    "source_image": "source/source.png",
+                    "quicktalk": {
+                        "template_video": "quicktalk/template_900.mp4",
+                        "face_cache": "quicktalk/face_cache_v3_900.npz",
+                    },
+                },
             }
         ),
         encoding="utf-8",
@@ -952,7 +966,7 @@ def test_create_custom_avatar_generates_quicktalk_template_from_upload(tmp_path,
 
     response = client.post(
         "/avatars/custom",
-        data={"base_avatar_id": "base-quicktalk", "name": "QuickTalk 新形象"},
+        data={"base_avatar_id": "base-quicktalk", "name": "QuickTalk 新形象", "model": "quicktalk"},
         files={"image": ("avatar.png", _png_bytes((640, 900)), "image/png")},
     )
 
@@ -960,9 +974,21 @@ def test_create_custom_avatar_generates_quicktalk_template_from_upload(tmp_path,
     created = response.json()
     custom_dir = tmp_path / created["id"]
     manifest = json.loads((custom_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert created["model_type"] == "quicktalk"
+    assert manifest["model_type"] == "quicktalk"
     assert "quicktalk" not in manifest["metadata"]
+    assert "source_video" not in manifest["metadata"]
+    assert manifest["metadata"]["source_image"] == "source/source.png"
+    assert manifest["metadata"]["source_image_path"] == "reference.png"
     assert (custom_dir / "quicktalk" / "template_900.mp4").is_file()
     assert (custom_dir / "quicktalk" / "template_900.mp4").read_bytes() != b"old-template"
+    assert not (custom_dir / "quicktalk" / "face_cache_v3_900.npz").exists()
+    assert not (custom_dir / "quicktalk" / "template_720x900.mp4").exists()
+    assert not (custom_dir / "quicktalk" / "face_cache_v3_720x900.npz").exists()
+    assert not (custom_dir / "idle.mp4").exists()
+    assert not (custom_dir / "source" / "idle.mp4").exists()
+    assert Image.open(custom_dir / "source" / "source.png").size == (640, 900)
+    assert client.get(f"/avatars/{created['id']}/preview-video").status_code == 404
 
 
 def test_create_custom_avatar_resizes_large_upload_to_realtime_max(tmp_path, monkeypatch):

@@ -342,6 +342,51 @@ def test_quicktalk_adapter_prefers_prepared_avatar_template_and_cache(
     assert captured["face_cache_dir"] == asset_root.resolve() / ".face_cache_v3"
 
 
+def test_quicktalk_adapter_uses_bundled_quicktalk_template_when_metadata_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset_root = tmp_path / "models" / "quicktalk"
+    _write_quicktalk_pth_assets(asset_root)
+    avatar_dir = tmp_path / "avatars" / "office-woman"
+    quicktalk_dir = avatar_dir / "quicktalk"
+    quicktalk_dir.mkdir(parents=True)
+    template = quicktalk_dir / "template_900.mp4"
+    template.write_bytes(b"video")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "office-woman",
+                "model_type": "wav2lip",
+                "fps": 30,
+                "sample_rate": 16000,
+                "width": 540,
+                "height": 900,
+                "version": "1.0",
+                "metadata": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, Path] = {}
+
+    class FakeWorker:
+        fps = 25
+
+        def __init__(self, *, asset_root: Path, template_video: Path, **_: object) -> None:
+            captured["asset_root"] = asset_root
+            captured["template_video"] = template_video
+
+        def make_state(self) -> object:
+            return object()
+
+    fake_runtime = types.ModuleType("opentalking.models.quicktalk.runtime")
+    fake_runtime.RealtimeV3Worker = FakeWorker
+    monkeypatch.setitem(sys.modules, "opentalking.models.quicktalk.runtime", fake_runtime)
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_ASSET_ROOT", str(asset_root))
+
+
 def test_quicktalk_adapter_uses_prepared_image_avatar_template_without_video_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

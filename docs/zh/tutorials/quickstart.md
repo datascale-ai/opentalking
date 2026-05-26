@@ -50,11 +50,12 @@ cp .env.example .env
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
-两个变量必须设置为同一把 DashScope API Key。`OPENTALKING_LLM_API_KEY` 用于大语言模型
-客户端，`DASHSCOPE_API_KEY` 由 DashScope SDK 直接读取，用于语音识别。
+LLM 与 STT 可以使用同一把 DashScope API Key，但必须分别写入模块级变量；
+STT 不会自动读取 LLM key。
 
 !!! note "其它大语言模型 provider"
     任意 OpenAI 兼容 endpoint 均可替代 DashScope。切换 provider 时同时调整
@@ -154,7 +155,7 @@ bash scripts/quickstart/stop_all.sh
 | 现象 | 处理方式 |
 |------|---------|
 | TTS 解码时出现 `ffmpeg: not found` | 安装 ffmpeg。macOS：`brew install ffmpeg`；Debian/Ubuntu：`apt install ffmpeg`。 |
-| 大语言模型返回 HTTP 401 | 确认 `OPENTALKING_LLM_API_KEY` 与 `DASHSCOPE_API_KEY` 均已设置且为同一把 DashScope key。 |
+| 大语言模型返回 HTTP 401 | 确认 `OPENTALKING_LLM_API_KEY` 已设置；麦克风识别失败时另查 `OPENTALKING_STT_DASHSCOPE_API_KEY`。 |
 | 浏览器提示不支持 WebRTC | 使用 Chromium 内核浏览器。Safari 需将 `OPENTALKING_API_HOST` 设为 `127.0.0.1` 并匹配 CORS origin。 |
 | 端口 8000 被占用 | 覆盖默认端口：`bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180`。 |
 | OmniRT 启动后立即退出 | 检查 OmniRT 启动脚本输出中的日志路径，通常位于 `~/logs/omnirt-wav2lip.log`。 |

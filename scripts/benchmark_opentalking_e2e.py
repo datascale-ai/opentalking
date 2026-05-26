@@ -12,7 +12,6 @@ import shutil
 import shlex
 import signal
 import subprocess
-import sys
 import tarfile
 import time
 import wave
@@ -796,7 +795,7 @@ def start_opentalking(repo: Path, cfg: dict[str, Any], model: str, backend: str,
     if cfg.get("tts_voice"):
         env["OPENTALKING_TTS_VOICE"] = str(cfg["tts_voice"])
     if cfg.get("tts_model"):
-        env["OPENTALKING_QWEN_TTS_MODEL"] = str(cfg["tts_model"])
+        env["OPENTALKING_TTS_MODEL"] = str(cfg["tts_model"])
     cmd = [
         "bash",
         "scripts/start_unified.sh",

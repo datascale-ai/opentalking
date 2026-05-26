@@ -48,9 +48,9 @@ OPENTALKING_LLM_BASE_URL=https://llm.internal.example.com/v1
 OPENTALKING_LLM_MODEL=company-chat-model
 OPENTALKING_LLM_API_KEY=<gateway-token>
 
-OPENTALKING_TTS_PROVIDER=dashscope
-OPENTALKING_TTS_VOICE=<voice-id>
-DASHSCOPE_API_KEY=<dashscope-or-internal-token>
+OPENTALKING_TTS_DEFAULT_PROVIDER=dashscope
+OPENTALKING_TTS_DASHSCOPE_VOICE=<voice-id>
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-or-internal-token>
 ```
 
 如果 TTS 也完全私有化，可以在 provider 层扩展适配器；扩展方式参考 [开发流程](../docs/developing.md)

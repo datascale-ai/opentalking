@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,6 +31,18 @@ from opentalking.providers.tts import build_tts_adapter
 from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
 from opentalking.providers.llm.openai_compatible.conversation import ConversationHistory
 from opentalking.providers.llm.openai_compatible.sentence_splitter import SentenceSplitter
+from opentalking.runtime.bus import publish_event
+from opentalking.pipeline.speak.render_pipeline import (
+    iter_rendered_frames_sync,
+    render_audio_chunk_sync,
+    reset_avatar_speech_state,
+)
+from opentalking.pipeline.speak.text_sanitize import sanitize_tts_text, strip_emoji
+from opentalking.runtime.timing import SpeechTiming
+
+log = logging.getLogger(__name__)
+_SETTINGS = get_settings()
+
 
 # Local wav2lip runtime was removed (delegated to omnirt). Keep no-op shims so
 # legacy code paths in this runner still import; the real synthesis path goes
@@ -44,17 +57,6 @@ def run_official_inference(*args, **kwargs) -> tuple[Path, Path, Path]:
 
 def load_video_frames(video_path: Path) -> list[np.ndarray]:
     raise RuntimeError("wav2lip local runtime removed; route via omnirt")
-from opentalking.runtime.bus import publish_event
-from opentalking.pipeline.speak.render_pipeline import (
-    iter_rendered_frames_sync,
-    render_audio_chunk_sync,
-    reset_avatar_speech_state,
-)
-from opentalking.pipeline.speak.text_sanitize import sanitize_tts_text, strip_emoji
-from opentalking.runtime.timing import SpeechTiming
-
-log = logging.getLogger(__name__)
-_SETTINGS = get_settings()
 
 
 def _next_iter_item(iterator: Any) -> tuple[bool, Any]:
@@ -270,6 +272,7 @@ class SessionRunner:
         self._llm_client: Any = None
         self._conversation: Any = None
         self._frame_idx = 0
+        self._quicktalk_video_ts_ms = 0.0
         self._speech_frame_idx = 0
         self._speak_lock = asyncio.Lock()
         self._interrupt = asyncio.Event()
@@ -341,6 +344,31 @@ class SessionRunner:
             return float(raw)
         except ValueError:
             return default
+
+    @classmethod
+    def _build_first_sentence_splitter(cls) -> Callable[[str], list[str]]:
+        min_chars = max(1, cls._read_int_env("OPENTALKING_CHAT_FIRST_SENT_MIN_CHARS", 6))
+        max_chars = cls._read_int_env("OPENTALKING_CHAT_FIRST_SENT_MAX_CHARS", 20)
+        soft_punct = "，；：、,;:"
+
+        def split_first(sentence: str) -> list[str]:
+            text = sentence.strip()
+            if not text or max_chars <= 0 or len(text) <= max_chars:
+                return [sentence] if sentence else []
+            for idx, ch in enumerate(text):
+                if idx + 1 >= min_chars and ch in soft_punct:
+                    head = text[: idx + 1].strip()
+                    tail = text[idx + 1 :].strip()
+                    if head and tail:
+                        return [head, tail]
+                    return [text]
+            head = text[:max_chars].strip()
+            tail = text[max_chars:].strip()
+            if head and tail:
+                return [head, tail]
+            return [text]
+
+        return split_first
 
     @staticmethod
     def _quicktalk_env(suffix: str, default: str = "") -> str:
@@ -490,7 +518,26 @@ class SessionRunner:
         await asyncio.wait_for(self.ready_event.wait(), timeout=timeout)
 
     async def _prewarm_tts(self) -> None:
-        return
+        if self.avatar_state is None:
+            return
+        text = strip_emoji(self._tts_prewarm_text or "").strip()
+        if not text:
+            return
+        try:
+            tts = build_tts_adapter(
+                sample_rate=int(self.avatar_state.manifest.sample_rate),
+                chunk_ms=self._speech_chunk_ms(),
+                settings=self._tts_settings,
+                default_voice=None,
+                tts_provider=None,
+                tts_model=None,
+            )
+            async for _chunk in tts.synthesize_stream(text):
+                break
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            log.warning("TTS prewarm failed for session %s", self.session_id, exc_info=True)
 
     async def _idle_loop(self) -> None:
         fps = max(1.0, float(self.avatar_state.manifest.fps)) if self.avatar_state else 25.0
@@ -662,6 +709,27 @@ class SessionRunner:
         if delay_samples <= 0:
             return arr
         return np.concatenate((np.zeros(delay_samples, dtype=np.int16), arr)).astype(np.int16, copy=False)
+
+    @staticmethod
+    def _audio_chunk_duration_ms(chunk: AudioChunk) -> float:
+        data = np.asarray(chunk.data).reshape(-1)
+        sample_rate = int(chunk.sample_rate)
+        if sample_rate > 0 and data.size > 0:
+            return float(data.size) / float(sample_rate) * 1000.0
+        return max(0.0, float(chunk.duration_ms))
+
+    def _retime_quicktalk_frame(
+        self,
+        frame: VideoFrameData,
+        *,
+        frame_in_chunk: int,
+        frames_in_chunk: int,
+        chunk_duration_ms: float,
+    ) -> None:
+        if self.model_type != "quicktalk" or frames_in_chunk <= 0 or chunk_duration_ms <= 0.0:
+            return
+        start_ms = float(getattr(self, "_quicktalk_video_ts_ms", 0.0))
+        frame.timestamp_ms = start_ms + frame_in_chunk * (chunk_duration_ms / frames_in_chunk)
 
     async def _publish_speech_ended(self) -> None:
         if not self._speech_started:
@@ -900,6 +968,8 @@ class SessionRunner:
             media_started = media_started or should_release_media
 
             frame_count = 0
+            frames_in_chunk = max(1, int(next_frame_idx - visual_frame_idx))
+            chunk_duration_ms = self._audio_chunk_duration_ms(item.chunk)
             chunk_audio_ready_marked = False
             iterator = iter(frames)
             loop = asyncio.get_running_loop()
@@ -953,6 +1023,12 @@ class SessionRunner:
                         if timing is not None:
                             timing.add_duration("render_debug_capture_s", _time.perf_counter() - debug_started_at)
                     video_enqueue_started_at = _time.perf_counter()
+                    self._retime_quicktalk_frame(
+                        frame,
+                        frame_in_chunk=frame_count,
+                        frames_in_chunk=frames_in_chunk,
+                        chunk_duration_ms=chunk_duration_ms,
+                    )
                     await self._video_sink(frame)
                     if timing is not None:
                         timing.add_duration("render_video_enqueue_s", _time.perf_counter() - video_enqueue_started_at)
@@ -973,6 +1049,8 @@ class SessionRunner:
                 self._mark_render_chunk_audio_ready(item.idx)
             self._frame_idx = next_frame_idx
             self._rendered_chunk_count += 1
+            if self.model_type == "quicktalk" and chunk_duration_ms > 0.0:
+                self._quicktalk_video_ts_ms = float(getattr(self, "_quicktalk_video_ts_ms", 0.0)) + chunk_duration_ms
             if timing is not None:
                 timing.add_duration("render_total_s", _time.perf_counter() - render_started_at)
                 timing.add_count("render_frames", frame_count)
@@ -1145,6 +1223,8 @@ class SessionRunner:
         frame_count = 0
         audio_enqueued = False
         playback_pcm = self._maybe_delay_quicktalk_audio(pcm, sample_rate)
+        frames_in_chunk = max(1, int(next_frame_idx - self._frame_idx))
+        chunk_duration_ms = float(pcm.shape[0]) / float(sample_rate) * 1000.0
         media_started_at: float | None = None
         while True:
             next_started_at = _time.perf_counter()
@@ -1159,6 +1239,12 @@ class SessionRunner:
             if timing is not None:
                 timing.add_duration("render_debug_capture_s", _time.perf_counter() - debug_started_at)
             enqueue_started_at = _time.perf_counter()
+            self._retime_quicktalk_frame(
+                frame,
+                frame_in_chunk=frame_count,
+                frames_in_chunk=frames_in_chunk,
+                chunk_duration_ms=chunk_duration_ms,
+            )
             await self._video_sink(frame)
             if timing is not None:
                 timing.add_duration("render_video_enqueue_s", _time.perf_counter() - enqueue_started_at)
@@ -1194,6 +1280,7 @@ class SessionRunner:
         # held and stalled the next user turn without delivering any benefit.
         self._frame_idx = next_frame_idx
         self._speech_frame_idx = next_frame_idx
+        self._quicktalk_video_ts_ms = float(getattr(self, "_quicktalk_video_ts_ms", 0.0)) + chunk_duration_ms
         self._rendered_chunk_count += 1
         return True
 
@@ -1337,6 +1424,7 @@ class SessionRunner:
                     reset_avatar_speech_state(self.avatar_state)
                 if self._reset_frame_idx_on_speak:
                     self._frame_idx = 0
+                self._quicktalk_video_ts_ms = 0.0
                 self._speech_frame_idx = 0
                 if self.webrtc:
                     self.webrtc.clear_media_queues()
@@ -1622,6 +1710,7 @@ class SessionRunner:
                     reset_avatar_speech_state(self.avatar_state)
                 if self._reset_frame_idx_on_speak:
                     self._frame_idx = 0
+                self._quicktalk_video_ts_ms = 0.0
                 self._speech_frame_idx = 0
                 if self.webrtc:
                     self.webrtc.clear_media_queues()
@@ -1652,6 +1741,7 @@ class SessionRunner:
                 audio_task = asyncio.create_task(self._audio_chunk_worker(audio_queue))
 
                 splitter = SentenceSplitter()
+                split_first_sentence = self._build_first_sentence_splitter()
                 full_response_parts: list[str] = []
                 chunk_idx = 0
                 finish_workers_gracefully = False
@@ -1781,7 +1871,14 @@ class SessionRunner:
                         full_response_parts.append(delta)
                         for sentence in splitter.feed(delta):
                             first_sentence_committed = True
-                            await _enqueue_sentence(sentence)
+                            if chunk_idx == 0:
+                                parts = split_first_sentence(sentence)
+                            else:
+                                parts = [sentence]
+                            for part in parts:
+                                await _enqueue_sentence(part)
+                                if self._interrupt.is_set():
+                                    break
                             if self._interrupt.is_set():
                                 break
                         if not first_sentence_committed:

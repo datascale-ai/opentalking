@@ -25,7 +25,7 @@ Creates a new session.
 |-------|------|----------|-------------|
 | `avatar_id` | string | Yes | Avatar identifier from `GET /avatars`. |
 | `model` | string | Yes | Synthesis model. Must appear in `GET /models` with `connected=true`. |
-| `tts_provider` | string \| null | No | Overrides `OPENTALKING_TTS_PROVIDER` for this session. One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`. |
+| `tts_provider` | string \| null | No | Overrides `OPENTALKING_TTS_DEFAULT_PROVIDER` for this session. One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`. |
 | `tts_voice` | string \| null | No | Overrides the default voice. Format depends on provider. |
 | `llm_system_prompt` | string \| null | No | Overrides `OPENTALKING_LLM_SYSTEM_PROMPT` for this session. |
 | `wav2lip_postprocess_mode` | string \| null | No | wav2lip-specific post-processing flag. Forwarded to the selected Wav2Lip backend when supported. |

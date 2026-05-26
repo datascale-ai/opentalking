@@ -81,11 +81,12 @@ Edit `.env` and set the minimum required variables:
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
-Both variables receive the same DashScope API key. The complete configuration
-reference is in [Configuration](configuration.md).
+LLM and STT may use the same actual key, but each module variable must be set
+explicitly. The complete configuration reference is in [Configuration](configuration.md).
 
 ### 5. Verify the installation
 

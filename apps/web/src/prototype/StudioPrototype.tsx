@@ -161,7 +161,7 @@ function ConfigSidebar() {
           </div>
         </Section>
 
-        <Section title="声音与角色" action="复刻音色">
+        <Section title="语音合成" action="复刻音色">
           <div className="space-y-3">
             <div>
               <p className="text-xs text-slate-500">合成线路</p>
@@ -181,17 +181,6 @@ function ConfigSidebar() {
           </div>
         </Section>
 
-        <Section title="参考图">
-          <div className="flex items-center gap-3">
-            <div className="h-14 w-14 overflow-hidden rounded-lg bg-slate-200">
-              <img src={avatarPreviewUrl} alt="数字人参考图" className="h-full w-full object-cover" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-slate-900">主播</p>
-              <p className="text-xs text-slate-500">1024x1024 · 已应用</p>
-            </div>
-          </div>
-        </Section>
       </div>
     </aside>
   );

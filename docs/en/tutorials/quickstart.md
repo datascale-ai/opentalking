@@ -53,12 +53,12 @@ defaults and may be left unchanged.
 
 ```env title=".env"
 OPENTALKING_LLM_API_KEY=<dashscope-api-key>
-DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
 ```
 
-Both variables must be set to the same DashScope API key. `OPENTALKING_LLM_API_KEY` is
-consumed by the language model client; `DASHSCOPE_API_KEY` is read directly by the
-DashScope SDK used for speech recognition.
+LLM and STT may use the same DashScope API key, but it must be written to each
+module variable explicitly. STT does not read the LLM key automatically.
 
 !!! note "Alternative language model providers"
     Any OpenAI-compatible endpoint may be used in place of DashScope. When switching
@@ -168,7 +168,7 @@ The following table lists common installation issues and their resolutions.
 | Symptom | Resolution |
 |---------|------------|
 | `ffmpeg: not found` during TTS decoding | Install ffmpeg. On macOS: `brew install ffmpeg`. On Debian/Ubuntu: `apt install ffmpeg`. |
-| Language model returns HTTP 401 | Ensure `OPENTALKING_LLM_API_KEY` and `DASHSCOPE_API_KEY` are both set to the same DashScope key. |
+| Language model returns HTTP 401 | Ensure `OPENTALKING_LLM_API_KEY` is set; if microphone STT fails, check `OPENTALKING_STT_DASHSCOPE_API_KEY` separately. |
 | Browser reports WebRTC is unavailable | Use a Chromium-based browser. Safari requires `OPENTALKING_API_HOST=127.0.0.1` and a matching CORS origin. |
 | Port 8000 is already in use | Override the bound ports: `bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180`. |
 | OmniRT exits during startup | Inspect the log file referenced in the OmniRT script output (typically `~/logs/omnirt-wav2lip.log`). |

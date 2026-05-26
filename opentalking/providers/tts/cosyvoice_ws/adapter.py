@@ -34,19 +34,31 @@ def _split_pcm_chunks(pcm: np.ndarray, sr: int, chunk_ms: float) -> list[AudioCh
 
 
 def _ensure_api_key() -> str:
-    api_key = os.environ.get("DASHSCOPE_API_KEY", "").strip()
+    api_key = os.environ.get("OPENTALKING_TTS_DASHSCOPE_API_KEY", "").strip()
     if not api_key:
         try:
             from opentalking.core.config import get_settings
 
-            api_key = (get_settings().llm_api_key or "").strip()
+            api_key = getattr(get_settings(), "tts_dashscope_api_key", "").strip()
         except Exception:
             pass
     if not api_key:
         raise RuntimeError(
-            "CosyVoice WebSocket TTS 需要密钥：设置 DASHSCOPE_API_KEY 或 OPENTALKING_LLM_API_KEY。",
+            "CosyVoice WebSocket TTS 需要密钥：请设置 OPENTALKING_TTS_DASHSCOPE_API_KEY。",
         )
     return api_key
+
+
+def _settings_value(name: str, default: str = "") -> str:
+    try:
+        from opentalking.core.config import get_settings
+
+        value = getattr(get_settings(), name, default)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    except Exception:
+        pass
+    return default
 
 
 def _pcm_format_for_sr(sample_rate: int) -> Any:
@@ -72,11 +84,27 @@ class DashScopeCosyVoiceWsAdapter:
         chunk_ms: float = 20.0,
         *,
         model: str | None = None,
+        service_url: str | None = None,
     ) -> None:
         self.sample_rate = sample_rate
         self.chunk_ms = chunk_ms
         self.default_voice = default_voice or "longanyang"
-        self._model = (model.strip() if model and str(model).strip() else None) or "cosyvoice-v3-flash"
+        self._model = (
+            (model.strip() if model and str(model).strip() else None)
+            or os.environ.get("OPENTALKING_TTS_COSYVOICE_MODEL", "").strip()
+            or _settings_value("tts_cosyvoice_model", "")
+            or os.environ.get("OPENTALKING_TTS_DASHSCOPE_MODEL", "").strip()
+            or _settings_value("tts_dashscope_model", "")
+            or "cosyvoice-v3-flash"
+        )
+        self._service_url = (
+            service_url.strip()
+            if service_url and str(service_url).strip()
+            else (
+                os.environ.get("OPENTALKING_TTS_COSYVOICE_SERVICE_URL", "").strip()
+                or _settings_value("tts_cosyvoice_service_url", "")
+            )
+        )
 
     async def synthesize_stream(
         self,
@@ -105,7 +133,7 @@ class DashScopeCosyVoiceWsAdapter:
 
         pcm_fmt = _pcm_format_for_sr(self.sample_rate)
         eff_sr = int(pcm_fmt.sample_rate) if getattr(pcm_fmt, "sample_rate", 0) else int(self.sample_rate)
-        ws_url_raw = os.environ.get("OPENTALKING_COSYVOICE_WS_URL", "").strip()
+        ws_url_raw = self._service_url
         ws_url = ws_url_raw if ws_url_raw else None
 
         class _Cb(ResultCallback):
