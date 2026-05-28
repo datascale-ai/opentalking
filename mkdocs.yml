@@ -81,6 +81,7 @@ plugins:
             AI Customer Support: AI 客服数字人
             Product Demo and Live Sales: 商品讲解与直播导购
             Course and News Presenter: 课程与新闻口播
+            Emotional Companion: 情绪安抚与实时陪伴
             Private Digital Human Assistant: 私有数字人助手
             Custom Avatar: 自定义 Avatar
             Voice and TTS: 音色与 TTS
@@ -201,6 +202,7 @@ nav:
               - Voice and TTS: usage/webui/voice-and-tts.md
       - Examples:
           - Examples Overview: examples/index.md
+          - Emotional Companion: examples/companion.md
           - AI Customer Support: examples/customer-support.md
           - Product Demo and Live Sales: examples/product-demo-live-sales.md
           - Course and News Presenter: examples/course-news-presenter.md
@@ -242,6 +244,7 @@ nav:
           - Voice and TTS: usage/webui/voice-and-tts.md
   - Examples:
       - Examples Overview: examples/index.md
+      - Emotional Companion: examples/companion.md
       - AI Customer Support: examples/customer-support.md
       - Product Demo and Live Sales: examples/product-demo-live-sales.md
       - Course and News Presenter: examples/course-news-presenter.md
