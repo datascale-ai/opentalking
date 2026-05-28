@@ -70,6 +70,7 @@ plugins:
             Quick Start: 快速开始
             Platform Notes: 平台说明
             Docker Deployment: Docker 部署
+            Windows Deployment: Windows 部署
             Usage: 使用指南
             Usage Overview: 使用概览
             WebUI Usage: WebUI 使用
@@ -188,6 +189,7 @@ nav:
           - Quick Start: quick-start/index.md
           - Platform Notes: quick-start/platform-notes.md
           - Docker Deployment: quick-start/docker-deployment.md
+          - Windows Deployment: quick-start/windows-deployment.md
       - Usage:
           - Usage Overview: usage/index.md
           - Command Line Usage:
@@ -228,6 +230,7 @@ nav:
       - Quick Start: quick-start/index.md
       - Platform Notes: quick-start/platform-notes.md
       - Docker Deployment: quick-start/docker-deployment.md
+      - Windows Deployment: quick-start/windows-deployment.md
   - Usage:
       - Usage Overview: usage/index.md
       - Command Line Usage:
