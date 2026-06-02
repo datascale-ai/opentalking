@@ -6,6 +6,19 @@ Similar UX to LiveTalking's ``python app.py`` (one HTTP port, no external Redis)
 
 from __future__ import annotations
 
+# --- Patch for WSL2 ---
+# Resolving the issue of WebRTC tunnel failure caused by WSL2 connecting back to Windows.
+import aioice.ice as _aioice_ice
+def _get_host_addresses_loopback(use_ipv4: bool, use_ipv6: bool) -> list[str]:
+    addresses: list[str] = []
+    if use_ipv4:
+        addresses.append("127.0.0.1")
+    return addresses
+
+_aioice_ice.get_host_addresses = _get_host_addresses_loopback
+print("[wsl_webrtc_patch] aioice host addresses forced to 127.0.0.1", flush=True)
+# --- End Patch ---
+
 import argparse
 import asyncio
 import logging
