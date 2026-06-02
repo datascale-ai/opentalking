@@ -18,6 +18,11 @@ export type FasterLivePortraitConfig = {
   cheek_jaw_multiplier: number;
   driving_multiplier: number;
   cfg_scale: number;
+  flag_stitching: boolean;
+  flag_pasteback: boolean;
+  flag_relative_motion: boolean;
+  flag_normalize_lip: boolean;
+  flag_lip_retargeting: boolean;
 };
 
 export const DEFAULT_FASTLIVEPORTRAIT_CONFIG: FasterLivePortraitConfig = {
@@ -33,6 +38,11 @@ export const DEFAULT_FASTLIVEPORTRAIT_CONFIG: FasterLivePortraitConfig = {
   cheek_jaw_multiplier: 0.9,
   driving_multiplier: 1.0,
   cfg_scale: 4.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: true,
+  flag_lip_retargeting: false,
 };
 
 export const SETTINGS_DOCK_EXPANDED_KEY = "opentalking-settings-dock-expanded";
@@ -86,7 +96,7 @@ const WAV2LIP_POSTPROCESS_OPTIONS: { id: Wav2LipPostprocessMode; label: string }
 ];
 
 const FASTERLIVEPORTRAIT_CONTROLS: {
-  key: Exclude<keyof FasterLivePortraitConfig, "animation_region">;
+  key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">;
   label: string;
   min: number;
   max: number;
@@ -103,6 +113,18 @@ const FASTERLIVEPORTRAIT_CONTROLS: {
   { key: "cheek_jaw_multiplier", label: "脸颊下颌", min: 0, max: 3, step: 0.05 },
   { key: "driving_multiplier", label: "整体驱动", min: 0, max: 2, step: 0.05 },
   { key: "cfg_scale", label: "音频跟随", min: 0, max: 10, step: 0.25 },
+];
+
+const FASTERLIVEPORTRAIT_SWITCHES: {
+  key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">;
+  label: string;
+  caption: string;
+}[] = [
+  { key: "flag_stitching", label: "Stitching", caption: "稳定面部边缘" },
+  { key: "flag_pasteback", label: "拼回原图", caption: "保持 source 原始构图" },
+  { key: "flag_relative_motion", label: "相对运动", caption: "保留数字人基础姿态" },
+  { key: "flag_normalize_lip", label: "唇形归一", caption: "减少初始嘴型偏差" },
+  { key: "flag_lip_retargeting", label: "唇形重定向", caption: "增强嘴部跟随" },
 ];
 
 const FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS: {
@@ -476,7 +498,7 @@ export function SettingsPanel({
   };
 
   const updateFasterLivePortraitValue = (
-    key: Exclude<keyof FasterLivePortraitConfig, "animation_region">,
+    key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
     rawValue: string,
   ) => {
     const numeric = Number(rawValue);
@@ -484,6 +506,16 @@ export function SettingsPanel({
     onFasterLivePortraitConfigChange({
       ...fasterliveportraitConfig,
       [key]: numeric,
+    });
+  };
+
+  const updateFasterLivePortraitSwitch = (
+    key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
+    value: boolean,
+  ) => {
+    onFasterLivePortraitConfigChange({
+      ...fasterliveportraitConfig,
+      [key]: value,
     });
   };
 
@@ -649,6 +681,25 @@ export function SettingsPanel({
                       </label>
                     );
                   })}
+                  <div className="grid grid-cols-1 gap-2">
+                    {FASTERLIVEPORTRAIT_SWITCHES.map((control) => (
+                      <label
+                        key={control.key}
+                        className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-2.5 py-2"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-slate-700">{control.label}</span>
+                          <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-400">{control.caption}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(fasterliveportraitConfig[control.key])}
+                          onChange={(e) => updateFasterLivePortraitSwitch(control.key, e.target.checked)}
+                          className="h-4 w-4 shrink-0 accent-cyan-600"
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="mt-3 flex gap-2">
                   <button

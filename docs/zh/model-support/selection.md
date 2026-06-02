@@ -22,7 +22,7 @@ Mock 不代表真实模型效果，也不能用于评估口型质量和推理延
 
 - 想快速验证一张图片或短视频 Avatar：从 Wav2Lip 开始。
 - 想验证更接近实时口播的链路：从 QuickTalk 开始。
-- 想同时验证本地语音识别、本地语音合成和 QuickTalk：看[本地语音 + QuickTalk](./local-audio-quicktalk.md)。
+- 想同时验证本地语音识别、本地语音合成和 QuickTalk：看[模型部署 / 本地语音 + QuickTalk](../model-deployment/local-quicktalk-audio.md)。
 
 建议先用内置 Avatar 跑通，再替换为自定义 Avatar。
 

@@ -11,7 +11,7 @@ Choose `mock` when you only need to verify WebUI, API, TTS, events, and WebRTC.
 Choose `wav2lip` or `quicktalk` with `backend=local`. They are the lightest
 paths for validating a real avatar and talking-head output.
 
-Use [Local Audio + QuickTalk](./local-audio-quicktalk.md) when you also need to validate local STT, local TTS, and QuickTalk together.
+Use [Model Deployment / Local Audio + QuickTalk](../model-deployment/local-quicktalk-audio.md) when you also need to validate local STT, local TTS, and QuickTalk together.
 
 ### High-quality Model
 

@@ -29,6 +29,11 @@ class FasterLivePortraitConfigRequest(BaseModel):
     driving_multiplier: float | None = None
     cfg_scale: float | None = None
     animation_region: str | None = None
+    flag_stitching: bool | None = None
+    flag_pasteback: bool | None = None
+    flag_relative_motion: bool | None = None
+    flag_normalize_lip: bool | None = None
+    flag_lip_retargeting: bool | None = None
 
 
 class CreateSessionResponse(BaseModel):

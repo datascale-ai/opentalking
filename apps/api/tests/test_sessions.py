@@ -265,6 +265,8 @@ def test_create_session_passes_fasterliveportrait_config_to_task(
                 "pose_motion_multiplier": 0.2,
                 "yaw_multiplier": 0.7,
                 "animation_region": "all",
+                "flag_pasteback": True,
+                "flag_lip_retargeting": False,
                 "width": 999,
             },
         },
@@ -276,6 +278,8 @@ def test_create_session_passes_fasterliveportrait_config_to_task(
         "pose_motion_multiplier": 0.2,
         "yaw_multiplier": 0.7,
         "animation_region": "all",
+        "flag_pasteback": True,
+        "flag_lip_retargeting": False,
     }
 
 
@@ -336,6 +340,8 @@ def test_update_fasterliveportrait_config_for_active_session(
             "pose_motion_multiplier": 0.2,
             "yaw_multiplier": 0.75,
             "animation_region": "lip",
+            "flag_pasteback": True,
+            "flag_lip_retargeting": False,
             "width": 999,
         },
     )
@@ -349,6 +355,8 @@ def test_update_fasterliveportrait_config_for_active_session(
             "pose_motion_multiplier": 0.2,
             "yaw_multiplier": 0.75,
             "animation_region": "lip",
+            "flag_pasteback": True,
+            "flag_lip_retargeting": False,
         },
     }
     runner = unified_client.created_runners[session_id]  # type: ignore[attr-defined]
@@ -358,6 +366,8 @@ def test_update_fasterliveportrait_config_for_active_session(
             "pose_motion_multiplier": 0.2,
             "yaw_multiplier": 0.75,
             "animation_region": "lip",
+            "flag_pasteback": True,
+            "flag_lip_retargeting": False,
         }
     ]
 

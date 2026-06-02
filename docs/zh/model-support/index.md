@@ -10,7 +10,7 @@ OpenTalking 位于应用层和推理层之间：
 
 - 应用层：WebUI、命令行工具、会话创建、文本/语音输入、TTS、录制和状态展示。
 - 编排层：Avatar 加载、音频切片、模型调用、帧输出、WebRTC 推流、错误处理。
-- 推理层：Wav2Lip、QuickTalk、MuseTalk、FlashTalk、FlashHead 等具体模型。
+- 推理层：Wav2Lip、QuickTalk、MuseTalk、FlashTalk、FlashHead、FasterLivePortrait 等具体模型。
 
 因此，一个模型接入 OpenTalking 后，通常不需要重新实现 WebUI、TTS、会话管理和播放链路，只需要适配模型输入输出。
 
@@ -23,6 +23,7 @@ Model 指具体的数字人驱动能力，例如：
 - `musetalk`：适合较高质量的口型同步和视频 Avatar。
 - `flashtalk`：面向高质量实时数字人，需要独立推理服务承载。
 - `flashhead`：通过 HTTP 生成式接口接入，适合片段式生成和离线/准实时链路。
+- `fasterliveportrait`：通过 OmniRT 接入，支持音频驱动实时对话和摄像头/自拍视频驱动的视频克隆。
 
 Model 决定了画面质量、延迟、显存占用、Avatar 要求和可调参数。
 
@@ -92,6 +93,7 @@ flowchart LR
 | MuseTalk | `local` / `omnirt` / `direct_ws` | 更高质量口型同步；local 模式会在会话初始化前运行官方头像预处理 |
 | FlashTalk | `omnirt` | 高质量实时数字人，适合服务化部署 |
 | FlashHead | `direct_ws` / HTTP adapter | 片段式生成、离线或准实时链路 |
+| FasterLivePortrait | `omnirt` | 单卡实时头像贴回、音频驱动实时对话、视频克隆 |
 
 实际可用性取决于模型权重、硬件、后端服务和部署方式。页面中的参数说明以 OpenTalking 当前代码支持为准。
 
@@ -106,6 +108,6 @@ flowchart LR
 ## 下一步
 
 - 不确定选哪个模型：先看[模型与后端选择](./selection.md)。
-- 想验证本地 STT/TTS 与 QuickTalk：看[本地语音 + QuickTalk](./local-audio-quicktalk.md)。
+- 想验证本地 STT/TTS 与 QuickTalk：看[模型部署 / 本地语音 + QuickTalk](../model-deployment/local-quicktalk-audio.md)。
 - 想了解模型可调参数：进入具体模型页。
 - 准备生产部署：先参考[模型与后端选择](./selection.md)中的服务化建议。

@@ -28,9 +28,11 @@ const DOT_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export type FlashtalkRecordPhase = "idle" | "recording" | "stopped";
+export type StudioWorkflow = "realtime" | "videoClone";
 
 interface TopBarProps {
   connection: ConnectionStatus;
+  workflow?: StudioWorkflow;
   flashtalkRecording?: boolean;
   flashtalkRecordPhase?: FlashtalkRecordPhase;
   flashtalkRecordBusy?: boolean;
@@ -42,10 +44,12 @@ interface TopBarProps {
   /** 上传整段音频，推理结束后下载对齐音视频（不经 WebRTC 实时预览） */
   flashtalkOfflineBundleBusy?: boolean;
   onFlashtalkOfflineBundleClick?: () => void;
+  onWorkflowChange?: (workflow: StudioWorkflow) => void;
 }
 
 export function TopBar({
   connection,
+  workflow = "realtime",
   flashtalkRecording = false,
   flashtalkRecordPhase = "idle",
   flashtalkRecordBusy = false,
@@ -56,6 +60,7 @@ export function TopBar({
   onFlashtalkRecordSave,
   flashtalkOfflineBundleBusy = false,
   onFlashtalkOfflineBundleClick,
+  onWorkflowChange,
 }: TopBarProps) {
   const busy = flashtalkRecordBusy || recordingSaving || flashtalkOfflineBundleBusy;
 
@@ -77,9 +82,26 @@ export function TopBar({
       </div>
 
       <nav className="hidden items-center gap-1 rounded-lg bg-slate-100 p-1 md:flex" aria-label="工作台模块">
-        <span className="rounded-md bg-white px-3 py-1.5 text-xs font-medium text-cyan-700 shadow-sm">
-          实时对话
-        </span>
+        {[
+          ["realtime", "实时对话"],
+          ["videoClone", "视频克隆"],
+        ].map(([id, label]) => {
+          const active = workflow === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onWorkflowChange?.(id as StudioWorkflow)}
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                active
+                  ? "bg-white text-cyan-700 shadow-sm"
+                  : "text-slate-500 hover:bg-white/70 hover:text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
         {["视频创作", "资产库", "运行监控"].map((item) => (
           <button
             key={item}

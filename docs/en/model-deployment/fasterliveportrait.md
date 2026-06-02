@@ -6,7 +6,7 @@
 | Model ID | `fasterliveportrait` |
 | Backend | `omnirt` |
 | Evidence level | Documented; realtime path exposed through the OmniRT runtime |
-| Best for | Single-GPU realtime audio-driven portrait avatars, original-image pasteback, frontend amplitude hot updates |
+| Best for | Single-GPU realtime audio-driven portrait avatars, original-image pasteback, video clone, frontend amplitude hot updates |
 
 ## Common Errors
 
@@ -22,14 +22,30 @@ FasterLivePortrait also runs through the OmniRT `audio2video` compatibility path
 
 This path is intended for single-GPU realtime avatars. The default live profile uses 25fps, one-second audio chunks, a 448px width, and pasteback into the original avatar image. Full-body uploads are still driven through the detected face region; body motion is not synthesized by this runtime.
 
+The same runtime can also serve the Video Clone workflow. OpenTalking keeps an avatar-library image as the source, streams browser camera frames or uploaded-video frames as driving input, and forwards them to OmniRT `/v1/avatar/video-clone/fasterliveportrait`. This path does not call LLM, STT, or TTS and does not reuse the realtime conversation `speak` queue.
+
 ## 1. Prepare code and weights
 
-You need a FasterLivePortrait source checkout and a real checkpoint directory. If you do not want symlinks, copy or download the files directly into the model root.
+Prepare the shared directory variables first. `FASTERLIVEPORTRAIT_HOME` is the FasterLivePortrait source checkout; `OMNIRT_MODEL_ROOT` is the model-weight root. Do not put model weights inside the OpenTalking or OmniRT repository.
+
+```bash title="terminal"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-/path/to/digital_human}"
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
+export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
+export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-/path/to/model}"
+export FASTERLIVEPORTRAIT_REF="${FASTERLIVEPORTRAIT_REF:-5dcf03aa2e6b2eb2a55b971efdc28fc0afdb1494}"
+```
+
+The current OpenTalking video-clone path and OmniRT runtime depend on FasterLivePortrait patches for fine-grained motion controls, TensorRT output ordering, and new PyTorch checkpoint loading behavior. For now, deploy the pinned `zyairehhh/FasterLivePortrait` fork. Switch to the upstream package only after those patches are available in an official stable package.
 
 ```bash title="terminal"
 if [ ! -d "$FASTERLIVEPORTRAIT_HOME/.git" ]; then
-  git clone https://github.com/KlingAIResearch/LivePortrait.git "$FASTERLIVEPORTRAIT_HOME"
+  git clone https://github.com/zyairehhh/FasterLivePortrait.git "$FASTERLIVEPORTRAIT_HOME"
 fi
+
+git -C "$FASTERLIVEPORTRAIT_HOME" fetch origin master
+git -C "$FASTERLIVEPORTRAIT_HOME" checkout "$FASTERLIVEPORTRAIT_REF"
 
 mkdir -p "$OMNIRT_MODEL_ROOT/FasterLivePortrait/checkpoints"
 ```
@@ -65,9 +81,12 @@ test -f "$OMNIRT_MODEL_ROOT/FasterLivePortrait/checkpoints/chinese-hubert-base/p
 
 ## 2. Prepare the OmniRT environment
 
+On servers, keep the `uv` cache on a data disk and use a PyPI mirror to speed up dependency installation. `PIP_INDEX_URL` is a fallback for build steps that still read pip settings.
+
 ```bash title="terminal"
 cd "$OMNIRT_HOME"
 export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+export PIP_INDEX_URL="${PIP_INDEX_URL:-$UV_DEFAULT_INDEX}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.uv-cache}"
 uv sync --extra server --extra fasterliveportrait --python 3.11
 ```
@@ -80,14 +99,18 @@ Before deployment, verify that `uv run python -c "import tensorrt as trt; print(
 
 ```bash title="terminal"
 cd "$OMNIRT_HOME"
-OMNIRT_FASTLIVEPORTRAIT_RUNTIME=1 \
-OMNIRT_FASTLIVEPORTRAIT_LOAD_MODELS=1 \
-OMNIRT_FASTLIVEPORTRAIT_ROOT="$FASTERLIVEPORTRAIT_HOME" \
-OMNIRT_FASTLIVEPORTRAIT_CHECKPOINTS_DIR="$OMNIRT_MODEL_ROOT/FasterLivePortrait/checkpoints" \
-OMNIRT_FASTLIVEPORTRAIT_CFG=configs/trt_infer.yaml \
-OMNIRT_FASTLIVEPORTRAIT_DEVICE=cuda:0 \
-OMNIRT_FASTLIVEPORTRAIT_JPEG_QUALITY=85 \
-uv run omnirt serve-avatar-ws --host 0.0.0.0 --port 9000 --backend cuda
+mkdir -p "$DIGITAL_HUMAN_HOME/logs"
+nohup env \
+  OMNIRT_FASTLIVEPORTRAIT_RUNTIME=1 \
+  OMNIRT_FASTLIVEPORTRAIT_LOAD_MODELS=1 \
+  OMNIRT_FASTLIVEPORTRAIT_ROOT="$FASTERLIVEPORTRAIT_HOME" \
+  OMNIRT_FASTLIVEPORTRAIT_CHECKPOINTS_DIR="$OMNIRT_MODEL_ROOT/FasterLivePortrait/checkpoints" \
+  OMNIRT_FASTLIVEPORTRAIT_CFG=configs/trt_infer.yaml \
+  OMNIRT_FASTLIVEPORTRAIT_DEVICE=cuda:0 \
+  OMNIRT_FASTLIVEPORTRAIT_JPEG_QUALITY=85 \
+  uv run omnirt serve-avatar-ws --host 0.0.0.0 --port 9000 --backend cuda \
+  > "$DIGITAL_HUMAN_HOME/logs/omnirt-fasterliveportrait-9000.log" 2>&1 &
+echo $! > "$DIGITAL_HUMAN_HOME/logs/omnirt-fasterliveportrait-9000.pid"
 ```
 
 Verify OmniRT reports the model:
@@ -103,6 +126,16 @@ Expected status:
 ```
 
 ## 4. Configure and start OpenTalking
+
+Sync the OpenTalking environment first. Use the same `uv` mirror and cache directory as OmniRT.
+
+```bash title="terminal"
+cd "$OPENTALKING_HOME"
+export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+export PIP_INDEX_URL="${PIP_INDEX_URL:-$UV_DEFAULT_INDEX}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.uv-cache}"
+uv sync --extra dev --python 3.11
+```
 
 OpenTalking configures `fasterliveportrait` as `backend: omnirt` by default. The realtime profile lives in `configs/synthesis/fasterliveportrait.yaml`; common defaults are:
 
@@ -132,17 +165,25 @@ Start OpenTalking against OmniRT:
 
 ```bash title="terminal"
 cd "$OPENTALKING_HOME"
-OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
-OPENTALKING_OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
-uv run opentalking-unified --host 0.0.0.0 --port 8000
+mkdir -p "$DIGITAL_HUMAN_HOME/logs"
+nohup env \
+  OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
+  OPENTALKING_OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
+  uv run opentalking-unified --host 0.0.0.0 --port 8000 \
+  > "$DIGITAL_HUMAN_HOME/logs/opentalking-8000.log" 2>&1 &
+echo $! > "$DIGITAL_HUMAN_HOME/logs/opentalking-8000.pid"
 ```
 
 Frontend:
 
 ```bash title="terminal"
 cd "$OPENTALKING_HOME/apps/web"
-npm ci
-VITE_BACKEND_PORT=8000 npm run dev -- --host 0.0.0.0 --port 5173
+npm ci --registry=https://registry.npmmirror.com
+mkdir -p "$DIGITAL_HUMAN_HOME/logs"
+nohup env VITE_BACKEND_PORT=8000 \
+  npm run dev -- --host 0.0.0.0 --port 5282 \
+  > "$DIGITAL_HUMAN_HOME/logs/opentalking-web-5282.log" 2>&1 &
+echo $! > "$DIGITAL_HUMAN_HOME/logs/opentalking-web-5282.pid"
 ```
 
 Verify OpenTalking sees the model:
@@ -155,6 +196,18 @@ Expected status:
 
 ```json
 {"id":"fasterliveportrait","backend":"omnirt","connected":true,"reason":"omnirt"}
+```
+
+Also verify the video-clone entry:
+
+```bash title="terminal"
+curl -s http://127.0.0.1:8000/video-clone/status | jq
+```
+
+Expected:
+
+```json
+{"model":"fasterliveportrait","connected":true,"reason":"omnirt"}
 ```
 
 ## 5. Frontend controls and hot updates
@@ -178,7 +231,36 @@ After selecting `FasterLivePortrait`, the frontend shows a parameter panel. Befo
 
 Start with `head_motion_multiplier=0.3`, `pose_motion_multiplier=0.35`, `yaw_multiplier=0.85`, `roll_multiplier=0.85`, `animation_region=lip`, `expression_multiplier=1.0`, `mouth_open_multiplier=1.25`, `mouth_corner_multiplier=0.85`, `cheek_jaw_multiplier=0.9`, `cfg_scale=4.0`, and keep `flag_relative_motion=true`. If the head sways left/right, lower `yaw_multiplier` to `0.7`. If the mouth looks pursed or the smile is too strong, lower `mouth_corner_multiplier` to `0.75`. Switch the region from `lip` to `all` only when you need richer facial expression. Do not improve speed by dropping mouth-open frames.
 
-## 6. Performance check
+## 6. Video Clone Mode
+
+Video Clone is shown in the WebUI top navigation next to “Realtime Conversation”. After entering it:
+
+- Source: select an existing avatar on the left, or upload a new source image. The source is the digital-human asset being driven.
+- Driving: select a camera on the right, or upload a driving video. Driving only provides expression, head motion, and mouth motion.
+- Output: inspect realtime output in the center, with sent frames, received frames, dropped frames, and latency.
+
+The frontend connects to OpenTalking:
+
+```text
+ws://<opentalking-host>/video-clone/fasterliveportrait/ws
+```
+
+OpenTalking then forwards the source image and driving frame stream to OmniRT:
+
+```text
+ws://<omnirt-host>/v1/avatar/video-clone/fasterliveportrait
+```
+
+Common tuning notes:
+
+- Enable pasteback when you want to preserve the original source composition.
+- If uploaded driving video does not open the mouth enough, raise mouth opening first. If motion collapses into simple vertical mouth opening, lower lip retargeting.
+- If the mouth looks puffy or misaligned, first disable driving-face crop and confirm the driving input is not over-cropped.
+- If camera permission fails, open the page from `localhost`, `127.0.0.1`, or HTTPS. You can also upload a driving video first to validate the backend.
+
+When stopped or when the page changes, the frontend releases the camera track, WebSocket, and current video-clone session.
+
+## 7. Performance check
 
 ```bash title="terminal"
 cd "$OMNIRT_HOME"

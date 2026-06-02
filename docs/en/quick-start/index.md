@@ -99,19 +99,17 @@ After startup, the terminal prints the WebUI URL. The default URL is:
 http://127.0.0.1:5173
 ```
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: Mock mode WebUI home</strong>
-  <span>Add later: WebUI after successful startup, highlighting avatar, model, voice, and conversation areas.</span>
-</div>
+![Mock mode WebUI home](../../assets/images/WebUI.png)
+
+*After startup, WebUI shows the avatar library, model selector, voice controls, and conversation area.*
 
 ### 6. Complete Your First Conversation
 
 In WebUI, select Mock / driverless mode, confirm LLM and TTS configuration, enter a short test sentence, and start the session. If the browser plays audio, shows subtitles, and displays the Mock frame, the base pipeline is working.
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: first Mock conversation</strong>
-  <span>Add later: user input, subtitle events, playback status, and Mock video frame.</span>
-</div>
+![First conversation example](../../assets/images/product-demo-live-sales/05_product_intro.jpeg)
+
+*For the first validation, check user input, subtitle events, playback state, and video output.*
 
 ## QuickTalk Mode
 
@@ -227,10 +225,9 @@ models/
 
 You can start with the built-in QuickTalk example avatar. Later, if you want to upload your own identity, use a clear frontal or half-body image and create a custom avatar in WebUI through “upload from local”.
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: upload QuickTalk Avatar</strong>
-  <span>Add later: WebUI avatar library, upload entry, model selection, and preview result.</span>
-</div>
+![Select or upload an avatar in WebUI](../../assets/images/product-demo-live-sales/02_select_avatar.jpeg)
+
+*The WebUI avatar library supports built-in avatars and custom images through the upload entry.*
 
 ### 5. Start QuickTalk Mode
 
@@ -258,3 +255,7 @@ The first startup may build face cache and worker state, so it can take longer t
 ### 6. Select QuickTalk in WebUI
 
 After opening WebUI, select a `QuickTalk` avatar and the `quicktalk` model, then start a session. If the video frame is generated along with audio, the local QuickTalk rendering path is available.
+
+![QuickTalk session output example](../../assets/images/companion/04_webrtc_connected.jpeg)
+
+*After selecting a QuickTalk avatar and model, check the generation state, connection status, and playback output.*

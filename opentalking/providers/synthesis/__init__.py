@@ -9,6 +9,7 @@ from opentalking.providers.synthesis import mock as _mock  # noqa: F401  side-ef
 from opentalking.providers.synthesis.omnirt import (
     auth_headers as omnirt_auth_headers,
     derive_audio2video_ws_url,
+    derive_video_clone_ws_url,
     resolve_synthesis_ws_url,
 )
 from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
@@ -55,6 +56,7 @@ __all__ = [
     "SYNTHESIS_PROVIDERS",
     "SUPPORTED_MODELS",
     "derive_audio2video_ws_url",
+    "derive_video_clone_ws_url",
     "list_available_synthesis",
     "omnirt_auth_headers",
     "resolve_synthesis_ws_url",

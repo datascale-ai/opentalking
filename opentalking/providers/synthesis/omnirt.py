@@ -14,6 +14,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit, urlunsplit
 
 DEFAULT_PATH_TEMPLATE = "/v1/audio2video/{model}"
+DEFAULT_VIDEO_CLONE_PATH_TEMPLATE = "/v1/avatar/video-clone/{model}"
 
 
 def derive_audio2video_ws_url(
@@ -49,6 +50,16 @@ def derive_audio2video_ws_url(
         suffix = "/" + suffix
 
     return urlunsplit((scheme, parts.netloc, base_path + suffix, "", ""))
+
+
+def derive_video_clone_ws_url(
+    endpoint: str,
+    model: str = "fasterliveportrait",
+    *,
+    path_template: str = DEFAULT_VIDEO_CLONE_PATH_TEMPLATE,
+) -> str:
+    """Build the independent video-clone WebSocket URL behind OmniRT."""
+    return derive_audio2video_ws_url(endpoint, model, path_template=path_template)
 
 
 def resolve_synthesis_ws_url(model: str, settings) -> str:

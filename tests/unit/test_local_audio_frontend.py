@@ -69,6 +69,89 @@ def test_voice_clone_recorder_has_error_copy_and_upload_fallback():
     assert "handleAudioFileChange" in clone
 
 
+def test_video_clone_camera_failures_show_actionable_copy():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "videoCloneStartErrorMessage" in clone
+    assert "摄像头权限被拒绝" in clone
+    assert "未检测到可用摄像头" in clone
+    assert "当前浏览器或访问地址不支持摄像头" in clone
+    assert "请使用本机 http://127.0.0.1" in clone
+    assert "NotSupportedError" in clone
+    assert 'onNotify?.(detail, "error")' in clone
+    assert "无法启动摄像头或视频克隆服务" not in clone
+
+
+def test_video_clone_exposes_reference_controls_and_return_to_avatar_selection():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+    settings = (WEB / "components" / "SettingsPanel.tsx").read_text(encoding="utf-8")
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+
+    for key in (
+        "flag_stitching",
+        "flag_pasteback",
+        "flag_relative_motion",
+        "flag_normalize_lip",
+        "flag_lip_retargeting",
+    ):
+        assert key in settings
+        assert key in app
+        assert key in clone
+    assert "拼回原图" in clone
+    assert "更换形象" in clone
+    assert "handleReturnToAvatarSelection" in clone
+    return_block = clone[clone.index("const handleReturnToAvatarSelection"):clone.index("const handleUploadPreview")]
+    assert "stop()" in return_block
+    assert "setOutputUrl(null)" in return_block
+    assert "sourcePanelRef.current?.scrollIntoView" in return_block
+
+
+def test_video_clone_upload_preview_uses_full_frame_and_not_camera_mirror():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert 'uploadVideoUrl ? "object-contain" : "object-cover"' in clone
+    assert "mirror && !uploadVideoUrl" in clone
+    preview_block = clone[clone.index("<video ref={videoRef}"):clone.index("/>", clone.index("<video ref={videoRef}"))]
+    assert "object-contain" in preview_block
+    assert "object-cover" in preview_block
+    send_frame_block = clone[clone.index("const sendFrame"):clone.index("canvas.toBlob")]
+    assert "mirror && !uploadVideoUrl" in send_frame_block
+
+
+def test_video_clone_runtime_controls_send_config_update():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "sendRuntimeConfigUpdate" in clone
+    assert 'type: "config_update"' in clone
+    assert "handleConfigChange" in clone
+    assert "sendRuntimeConfigUpdate(normalizedConfig)" in clone
+    assert "handleCropDrivingChange" in clone
+    assert 'sendRuntimeConfigUpdate({ flag_crop_driving_video: checked })' in clone
+
+
+def test_video_clone_allows_uploading_source_avatar():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+
+    assert "上传 source 形象" in clone
+    assert "handleSourceUpload" in clone
+    assert 'apiPostForm<AvatarSummary>("/avatars/custom", form)' in clone
+    assert 'form.set("base_avatar_id", selectedAvatar.id)' in clone
+    assert 'form.set("model", "fasterliveportrait")' in clone
+    assert "onAvatarUploaded(created)" in clone
+    assert "handleVideoCloneAvatarUploaded" in app
+    assert "onAvatarUploaded={handleVideoCloneAvatarUploaded}" in app
+
+
+def test_video_clone_lip_retargeting_disables_relative_motion():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "normalizeVideoCloneConfigChange" in clone
+    assert "flag_lip_retargeting" in clone
+    assert "flag_relative_motion: false" in clone
+    assert "handleConfigChange({ ...config, [control.key]: event.target.checked })" in clone
+
+
 def test_frontend_does_not_seed_local_default_voice():
     constants = (WEB / "constants" / "ttsBailian.ts").read_text(encoding="utf-8")
 

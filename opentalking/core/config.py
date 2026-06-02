@@ -191,6 +191,7 @@ def _legacy_env_mapping() -> dict[str, str]:
         "OMNIRT_API_KEY": "omnirt_api_key",
         "OMNIRT_AUDIO2VIDEO_MODELS_PATH": "omnirt_audio2video_models_path",
         "OMNIRT_AUDIO2VIDEO_PATH_TEMPLATE": "omnirt_audio2video_path_template",
+        "OMNIRT_VIDEO_CLONE_PATH_TEMPLATE": "omnirt_video_clone_path_template",
         "WAV2LIP_PRELOAD": "wav2lip_preload",
     }
 
@@ -372,6 +373,8 @@ class Settings(BaseSettings):
     # {model} is substituted at connect time. Override only if your OmniRT
     # instance uses a different routing convention.
     omnirt_audio2video_path_template: str = "/v1/audio2video/{model}"
+    # Independent WS route for FasterLivePortrait video clone (source avatar + driving frame stream).
+    omnirt_video_clone_path_template: str = "/v1/avatar/video-clone/{model}"
     # Preload preprocessed Wav2Lip frame assets into OmniRT at unified startup.
     # This keeps the first user request from paying reference-frame prepare time.
     wav2lip_preload: bool = True

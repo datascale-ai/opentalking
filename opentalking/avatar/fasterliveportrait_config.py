@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-FasterLivePortraitConfigValue = float | str
+FasterLivePortraitConfigValue = bool | float | str
 
 DEFAULT_FASTLIVEPORTRAIT_CONFIG: dict[str, FasterLivePortraitConfigValue] = {
     "head_motion_multiplier": 0.3,
@@ -18,6 +18,11 @@ DEFAULT_FASTLIVEPORTRAIT_CONFIG: dict[str, FasterLivePortraitConfigValue] = {
     "driving_multiplier": 1.0,
     "cfg_scale": 4.0,
     "animation_region": "lip",
+    "flag_stitching": True,
+    "flag_pasteback": True,
+    "flag_relative_motion": True,
+    "flag_normalize_lip": True,
+    "flag_lip_retargeting": False,
 }
 
 FASTLIVEPORTRAIT_RUNTIME_CONFIG_LIMITS: dict[str, tuple[float, float]] = {
@@ -34,6 +39,13 @@ FASTLIVEPORTRAIT_RUNTIME_CONFIG_LIMITS: dict[str, tuple[float, float]] = {
     "cfg_scale": (0.0, 10.0),
 }
 FASTLIVEPORTRAIT_ANIMATION_REGIONS = {"all", "exp", "pose", "lip", "eyes"}
+FASTLIVEPORTRAIT_BOOL_CONFIG_KEYS = {
+    "flag_stitching",
+    "flag_pasteback",
+    "flag_relative_motion",
+    "flag_normalize_lip",
+    "flag_lip_retargeting",
+}
 
 FASTLIVEPORTRAIT_RUNTIME_CONFIG_KEYS = tuple(DEFAULT_FASTLIVEPORTRAIT_CONFIG.keys())
 
@@ -63,6 +75,17 @@ def normalize_fasterliveportrait_runtime_config(raw: Any) -> dict[str, FasterLiv
                 raise ValueError(f"animation_region must be one of: {allowed}")
             out[key] = region
             continue
+        if key in FASTLIVEPORTRAIT_BOOL_CONFIG_KEYS:
+            if isinstance(value, bool):
+                out[key] = value
+                continue
+            if isinstance(value, str):
+                out[key] = value.strip().lower() in {"1", "true", "yes", "on"}
+                continue
+            if isinstance(value, (int, float)) and math.isfinite(float(value)):
+                out[key] = bool(value)
+                continue
+            raise ValueError(f"{key} must be a boolean")
         if isinstance(value, bool):
             raise ValueError(f"{key} must be a number")
         try:

@@ -53,6 +53,7 @@ data/
 # Runtime output & debug artifacts
 output/
 outputs/
+.run-video-clone/
 
 # Frontend build artifacts (regenerate with npm run build)
 apps/web/dist/

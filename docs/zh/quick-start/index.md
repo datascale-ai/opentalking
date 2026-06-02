@@ -103,20 +103,18 @@ bash scripts/start_unified.sh --mock --api-port 8210 --web-port 5280
 http://127.0.0.1:5173
 ```
 
-<div class="ot-figure-placeholder">
-  <strong>截图占位：Mock 模式 WebUI 首页</strong>
-  <span>后续补充：启动成功后的 WebUI 页面，突出 Avatar、模型、音色和会话区域。</span>
-</div>
+![Mock 模式 WebUI 首页](../../assets/images/WebUI.png)
+
+*启动成功后的 WebUI 页面会展示 Avatar、模型、音色和会话区域。*
 
 ### 6. 完成第一次对话
 
 在 WebUI 中选择 Mock / driverless 模式，确认 LLM 和 TTS 配置后，输入一句测试文本并开始会话。
 如果浏览器能播放音频、显示字幕，并看到 Mock 画面，说明基础链路已经跑通。
 
-<div class="ot-figure-placeholder">
-  <strong>截图占位：第一次 Mock 会话</strong>
-  <span>后续补充：用户输入、字幕事件、播放状态和 Mock 画面。</span>
-</div>
+![第一次会话效果示例](../../assets/images/product-demo-live-sales/05_product_intro.jpeg)
+
+*第一次验证时，重点确认用户输入、字幕事件、播放状态和画面输出都正常。*
 
 ## QuickTalk 模式
 
@@ -234,10 +232,9 @@ models/
 可以先使用项目内置的 QuickTalk 示例 Avatar。后续如果要上传自己的形象，建议使用清晰正脸或半身图，
 并在 WebUI 中通过“从本地上传新形象”创建自定义 Avatar。
 
-<div class="ot-figure-placeholder">
-  <strong>截图占位：上传 QuickTalk Avatar</strong>
-  <span>后续补充：WebUI 形象库、上传入口、模型选择和预览结果。</span>
-</div>
+![在 WebUI 中选择或上传 Avatar](../../assets/images/product-demo-live-sales/02_select_avatar.jpeg)
+
+*WebUI 形象库支持选择内置 Avatar，也可以通过上传入口添加自定义形象。*
 
 ### 5. 启动 QuickTalk 模式
 
@@ -267,10 +264,9 @@ bash scripts/start_unified.sh \
 打开 WebUI 后，选择 `QuickTalk` 相关 Avatar 和 `quicktalk` 模型，再发起一次会话。
 如果视频画面随音频生成，说明本地 QuickTalk 渲染链路已经可用。
 
-<div class="ot-figure-placeholder">
-  <strong>截图占位：QuickTalk 会话效果</strong>
-  <span>后续补充：模型选择、Avatar 选择、生成中状态和播放结果。</span>
-</div>
+![QuickTalk 会话效果示例](../../assets/images/companion/04_webrtc_connected.jpeg)
+
+*选择 QuickTalk 相关 Avatar 和模型后，确认生成状态、连接状态和播放画面正常。*
 
 ## 验证
 

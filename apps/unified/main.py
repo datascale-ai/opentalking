@@ -19,7 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apps.api.core.config import get_settings
 from apps.api.routes.avatars import _call_adapter_warmup
-from apps.api.routes import avatars, events, health, models, sessions, tts_preview, voices
+from apps.api.routes import avatars, events, health, models, sessions, tts_preview, video_clone, voices
 from opentalking.voice.store import init_voice_store
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.pipeline.session.runner import SessionRunner
@@ -218,6 +218,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(events.router)
     app.include_router(tts_preview.router)
+    app.include_router(video_clone.router)
     app.include_router(voices.router)
     _verify_offline_bundle_route_registered(app)
     return app

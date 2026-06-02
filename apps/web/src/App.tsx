@@ -13,6 +13,7 @@ import {
 import { TopBar } from "./components/TopBar";
 import { ToastStack, type ToastMessage, type ToastTone } from "./components/ToastStack";
 import { VideoBackground } from "./components/VideoBackground";
+import { VideoCloneWorkspace } from "./components/VideoCloneWorkspace";
 import {
   ApiError,
   apiDelete,
@@ -58,6 +59,8 @@ import {
   TTS_PROVIDER_STORAGE_KEY,
 } from "./constants/ttsQwen";
 import type { ConnectionStatus, Message, QueueInfo } from "./types";
+
+type StudioWorkflow = "realtime" | "videoClone";
 
 function bailianModelOptions(provider: TtsProviderExtended): { id: string; label: string }[] {
   switch (provider) {
@@ -156,6 +159,11 @@ const LEGACY_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   cheek_jaw_multiplier: 1.0,
   driving_multiplier: 1.0,
   cfg_scale: 4.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: true,
+  flag_lip_retargeting: false,
 };
 const CONSERVATIVE_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   head_motion_multiplier: 0.3,
@@ -170,6 +178,11 @@ const CONSERVATIVE_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   cheek_jaw_multiplier: 0.75,
   driving_multiplier: 1.0,
   cfg_scale: 3.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: true,
+  flag_lip_retargeting: false,
 };
 const INTERMEDIATE_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   head_motion_multiplier: 0.3,
@@ -184,6 +197,11 @@ const INTERMEDIATE_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   cheek_jaw_multiplier: 1.0,
   driving_multiplier: 1.0,
   cfg_scale: 4.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: true,
+  flag_lip_retargeting: false,
 };
 const OVERDRIVEN_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   head_motion_multiplier: 0.3,
@@ -198,6 +216,11 @@ const OVERDRIVEN_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   cheek_jaw_multiplier: 1.0,
   driving_multiplier: 1.0,
   cfg_scale: 5.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: true,
+  flag_lip_retargeting: false,
 };
 
 const STT_MODEL_BY_PROVIDER: Record<string, string> = {
@@ -314,10 +337,19 @@ type HealthResponse = {
 
 function sanitizeFasterLivePortraitConfig(raw: unknown): FasterLivePortraitConfig {
   const source = raw && typeof raw === "object" ? raw as Partial<Record<keyof FasterLivePortraitConfig, unknown>> : {};
-  const clamp = (key: Exclude<keyof FasterLivePortraitConfig, "animation_region">, min: number, max: number) => {
+  const clamp = (key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">, min: number, max: number) => {
     const value = Number(source[key] ?? DEFAULT_FASTLIVEPORTRAIT_CONFIG[key]);
     if (!Number.isFinite(value)) return DEFAULT_FASTLIVEPORTRAIT_CONFIG[key];
     return Math.min(max, Math.max(min, value));
+  };
+  const boolValue = (
+    key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
+  ) => {
+    const value = source[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+    if (typeof value === "number") return value !== 0;
+    return DEFAULT_FASTLIVEPORTRAIT_CONFIG[key];
   };
   return {
     head_motion_multiplier: clamp("head_motion_multiplier", 0, 4),
@@ -338,6 +370,11 @@ function sanitizeFasterLivePortraitConfig(raw: unknown): FasterLivePortraitConfi
     cheek_jaw_multiplier: clamp("cheek_jaw_multiplier", 0, 4),
     driving_multiplier: clamp("driving_multiplier", 0, 4),
     cfg_scale: clamp("cfg_scale", 0, 10),
+    flag_stitching: boolValue("flag_stitching"),
+    flag_pasteback: boolValue("flag_pasteback"),
+    flag_relative_motion: boolValue("flag_relative_motion"),
+    flag_normalize_lip: boolValue("flag_normalize_lip"),
+    flag_lip_retargeting: boolValue("flag_lip_retargeting"),
   };
 }
 
@@ -510,6 +547,7 @@ export default function App() {
     readStoredFasterLivePortraitConfig,
   );
   const [fasterliveportraitApplying, setFasterliveportraitApplying] = useState(false);
+  const [workflow, setWorkflow] = useState<StudioWorkflow>("realtime");
 
   // Connection
   const [connection, setConnection] = useState<ConnectionStatus>("idle");
@@ -1710,6 +1748,17 @@ export default function App() {
     [releaseSession, resetLiveState],
   );
 
+  const handleVideoCloneAvatarUploaded = useCallback(
+    (created: AvatarSummary) => {
+      setAvatars((prev) => {
+        const filtered = prev.filter((avatar) => avatar.id !== created.id);
+        return [...filtered, created];
+      });
+      handleAvatarChange(created.id);
+    },
+    [handleAvatarChange],
+  );
+
   const handleModelChange = useCallback((newModel: string) => {
     setModel(newModel);
     void (async () => {
@@ -1765,6 +1814,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 text-slate-900 lg:h-screen lg:overflow-hidden">
       <TopBar
         connection={connection}
+        workflow={workflow}
         flashtalkRecording={
           isFlashRenderer(model) &&
           !!sessionId &&
@@ -1773,7 +1823,13 @@ export default function App() {
         flashtalkRecordPhase={ftRecordPhase}
         flashtalkRecordBusy={ftRecordBusy}
         recordingSaving={recordingSaving}
-        onInactiveModuleClick={(label) => notify(`${label}模块规划中。当前可用的是实时对话、数字人配置、语音驱动和导出能力。`, "info")}
+        onInactiveModuleClick={(label) => notify(`${label}模块规划中。当前可用的是实时对话、视频克隆、数字人配置、语音驱动和导出能力。`, "info")}
+        onWorkflowChange={(next) => {
+          setWorkflow(next);
+          if (next === "videoClone" && sessionIdRef.current) {
+            notify("视频克隆不会复用当前实时对话链路；如需释放实时会话，请先返回实时对话停止会话。", "info");
+          }
+        }}
         onFlashtalkRecordStart={() => void handleFtRecordStart()}
         onFlashtalkRecordStop={() => void handleFtRecordStop()}
         onFlashtalkRecordSave={() => void handleFtRecordSave()}
@@ -1821,6 +1877,19 @@ export default function App() {
         </div>
       )}
 
+      {workflow === "videoClone" ? (
+        <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
+          <VideoCloneWorkspace
+            avatars={avatars}
+            avatarId={avatarId}
+            config={fasterliveportraitConfig}
+            onAvatarChange={handleAvatarChange}
+            onAvatarUploaded={handleVideoCloneAvatarUploaded}
+            onConfigChange={handleFasterLivePortraitConfigChange}
+            onNotify={notify}
+          />
+        </div>
+      ) : (
       <div className="flex min-h-0 flex-col lg:h-[calc(100vh-3.5rem)] lg:flex-row">
         <div className="order-2 min-h-0 lg:order-none lg:h-full lg:shrink-0">
           <SettingsPanel
@@ -2069,6 +2138,7 @@ export default function App() {
           </div>
         </aside>
       </div>
+      )}
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
