@@ -33,6 +33,7 @@ from opentalking.providers.tts import build_tts_adapter
 from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
 from opentalking.providers.llm.openai_compatible.conversation import ConversationHistory
 from opentalking.providers.llm.openai_compatible.sentence_splitter import SentenceSplitter
+from opentalking.providers.memory.runtime import MemoryRuntime, MemoryScope
 from opentalking.runtime.bus import publish_event
 from opentalking.pipeline.speak.render_pipeline import (
     iter_rendered_frames_sync,
@@ -44,6 +45,16 @@ from opentalking.runtime.timing import SpeechTiming
 
 log = logging.getLogger(__name__)
 _SETTINGS = get_settings()
+
+
+def _agent_memory_enabled_for_runtime(
+    *,
+    memory_enabled: bool,
+    memory_scope: MemoryScope | None,
+) -> bool:
+    if memory_scope is not None and memory_scope.enabled and memory_scope.character_id:
+        return False
+    return bool(memory_enabled)
 
 
 # Local wav2lip runtime was removed (delegated to omnirt). Keep no-op shims so
@@ -255,6 +266,7 @@ class SessionRunner:
         knowledge_enabled: bool = False,
         knowledge_base_id: str | None = None,
         knowledge_base_ids: list[str] | None = None,
+        memory_scope: MemoryScope | None = None,
     ) -> None:
         self.session_id = session_id
         self.avatar_id = avatar_id
@@ -282,11 +294,15 @@ class SessionRunner:
         self.agent_config = AgentSessionConfig(
             user_id=agent_user_id,
             agent_enabled=agent_enabled,
-            memory_enabled=memory_enabled,
+            memory_enabled=_agent_memory_enabled_for_runtime(
+                memory_enabled=memory_enabled,
+                memory_scope=memory_scope,
+            ),
             knowledge_enabled=knowledge_enabled,
             knowledge_base_id=knowledge_base_id,
             knowledge_base_ids=knowledge_base_ids,
         )
+        self._memory = MemoryRuntime(scope=memory_scope, settings=_SETTINGS) if memory_scope else None
         self._llm_client: Any = None
         self._conversation: Any = None
         self._frame_idx = 0
@@ -1749,10 +1765,22 @@ class SessionRunner:
 
                 llm = self._ensure_llm_client()
                 conversation = self._ensure_conversation()
+                memory_prompt = await self._memory.retrieve_prompt(prompt_text) if self._memory else ""
+                llm_user_text = (
+                    f"{memory_prompt}\n\nCurrent user message:\n{prompt_text}"
+                    if memory_prompt
+                    else prompt_text
+                )
                 conversation.add_user(prompt_text)
                 agent_context = await self._build_agent_context(prompt_text)
+                base_messages = list(conversation.get_messages())
+                if memory_prompt:
+                    for idx in range(len(base_messages) - 1, -1, -1):
+                        if base_messages[idx].get("role") == "user":
+                            base_messages[idx] = {**base_messages[idx], "content": llm_user_text}
+                            break
                 llm_messages = inject_agent_context(
-                    conversation.get_messages(),
+                    base_messages,
                     agent_context,
                 )
 
@@ -2014,6 +2042,12 @@ class SessionRunner:
                 if full_response:
                     conversation.add_assistant(full_response)
                     await self._save_agent_turn(user_text=prompt_text, assistant_text=full_response)
+                    if self._memory is not None:
+                        self._memory.schedule_write(
+                            user_text=prompt_text,
+                            assistant_text=full_response,
+                            interrupted=self._interrupt.is_set(),
+                        )
                     await publish_event(
                         self.redis,
                         self.session_id,

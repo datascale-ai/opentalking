@@ -25,6 +25,7 @@ from opentalking.providers.synthesis.audio2video_client import (
 )
 from opentalking.providers.synthesis.backends import resolve_model_backend
 from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
+from opentalking.providers.memory.runtime import normalize_memory_scope
 
 log = logging.getLogger(__name__)
 
@@ -217,6 +218,14 @@ def _create_runner(
         "knowledge_base_id": knowledge_base_ids[0] if knowledge_base_ids else None,
         "knowledge_base_ids": knowledge_base_ids,
     }
+    memory_scope = normalize_memory_scope(
+        settings=settings,
+        memory_enabled=task.get("memory_enabled"),
+        profile_id=str(task.get("memory_profile_id") or ""),
+        character_id=str(task.get("character_id") or ""),
+        avatar_id=avatar_id,
+        library_id=str(task.get("memory_library_id") or ""),
+    )
 
     # Mock mode: pick the in-process mock client (echoes reference image).
     # Selected explicitly when the user picks model=mock in the UI.
@@ -298,6 +307,7 @@ def _create_runner(
             fasterliveportrait_config=task.get("fasterliveportrait_config")
             if isinstance(task.get("fasterliveportrait_config"), dict)
             else None,
+            memory_scope=memory_scope,
             **agent_kwargs,
         )
 
@@ -315,6 +325,7 @@ def _create_runner(
         llm_system_prompt=str(task.get("llm_system_prompt", "") or settings.llm_system_prompt)
         or "你是一个友好的数字人助手，请用简洁的语言回答问题。不要使用表情符号或emoji。",
         wav2lip_postprocess_mode=str(task.get("wav2lip_postprocess_mode", "") or ""),
+        memory_scope=memory_scope,
         **agent_kwargs,
     )
 

@@ -13,8 +13,10 @@ import {
   type KnowledgeDocument,
   type KnowledgeDocumentsResponse,
 } from "../lib/api";
+import { MemoryPanel } from "./MemoryPanel";
+import type { MemoryLibrary } from "../types";
 
-type AssetTab = "exports" | "knowledge" | "avatars" | "voices";
+type AssetTab = "exports" | "knowledge" | "memory" | "avatars" | "voices";
 export type AssetLibraryTab = AssetTab;
 
 type AssetLibraryWorkspaceProps = {
@@ -23,11 +25,21 @@ type AssetLibraryWorkspaceProps = {
   initialTab?: AssetTab;
   activeTabOverride?: AssetTab | null;
   onActiveTabChange?: (tab: AssetTab) => void;
+  memoryCharacterId?: string | null;
+  memoryLibraryId?: string | null;
+  memoryEnabled?: boolean;
+  memoryLibraries?: MemoryLibrary[];
+  profileId?: string;
+  onMemoryLibrarySelect?: (libraryId: string | null) => void;
+  onMemoryEnabledChange?: (enabled: boolean) => void;
+  onMemoryLibrariesChange?: (libraries: MemoryLibrary[]) => void;
+  onRefreshMemoryLibraries?: () => void;
 };
 
 const ASSET_TABS: { id: AssetTab; label: string; disabled?: boolean }[] = [
   { id: "exports", label: "导出视频" },
   { id: "knowledge", label: "知识库" },
+  { id: "memory", label: "记忆库" },
   { id: "avatars", label: "Avatar资产", disabled: true },
   { id: "voices", label: "声音资产", disabled: true },
 ];
@@ -203,6 +215,15 @@ export function AssetLibraryWorkspace({
   initialTab = "exports",
   activeTabOverride = null,
   onActiveTabChange,
+  memoryCharacterId = null,
+  memoryLibraryId = null,
+  memoryEnabled = false,
+  memoryLibraries = [],
+  profileId = "default",
+  onMemoryLibrarySelect,
+  onMemoryEnabledChange,
+  onMemoryLibrariesChange,
+  onRefreshMemoryLibraries,
 }: AssetLibraryWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<AssetTab>(initialTab);
   const [items, setItems] = useState<ExportVideoItem[]>([]);
@@ -231,6 +252,7 @@ export function AssetLibraryWorkspace({
   const [filePoolFiles, setFilePoolFiles] = useState<File[]>([]);
   const [creatingKnowledge, setCreatingKnowledge] = useState(false);
   const [filePoolUploading, setFilePoolUploading] = useState(false);
+  const [memoryRefreshToken, setMemoryRefreshToken] = useState(0);
   const newKnowledgeFileInputRef = useRef<HTMLInputElement>(null);
   const uploadKnowledgeFileInputRef = useRef<HTMLInputElement>(null);
   const filePoolUploadInputRef = useRef<HTMLInputElement>(null);
@@ -359,8 +381,13 @@ export function AssetLibraryWorkspace({
       if (selectedKnowledgeId) void loadKnowledgeDocuments(selectedKnowledgeId);
       return;
     }
+    if (activeTab === "memory") {
+      onRefreshMemoryLibraries?.();
+      setMemoryRefreshToken((value) => value + 1);
+      return;
+    }
     if (activeTab === "exports") void loadExports();
-  }, [activeTab, loadAllKnowledgeDocuments, loadExports, loadKnowledgeBases, loadKnowledgeDocuments, selectedKnowledgeId]);
+  }, [activeTab, loadAllKnowledgeDocuments, loadExports, loadKnowledgeBases, loadKnowledgeDocuments, onRefreshMemoryLibraries, selectedKnowledgeId]);
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -870,6 +897,20 @@ export function AssetLibraryWorkspace({
     </div>
   );
 
+  const renderMemoryTab = () => (
+    <MemoryPanel
+      mode="manage"
+      characterId={memoryCharacterId}
+      selectedLibraryId={memoryLibraryId}
+      memoryEnabled={memoryEnabled}
+      profileId={profileId}
+      refreshToken={memoryRefreshToken}
+      onLibrarySelect={onMemoryLibrarySelect ?? (() => undefined)}
+      onMemoryEnabledChange={onMemoryEnabledChange}
+      onLibrariesChange={onMemoryLibrariesChange}
+    />
+  );
+
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
       <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -883,6 +924,11 @@ export function AssetLibraryWorkspace({
               <>
                 <span>{knowledgeBases.length} 个知识库</span>
                 <span>{knowledgeDocuments.length} 个文件</span>
+              </>
+            ) : activeTab === "memory" ? (
+              <>
+                <span>{memoryLibraries.length} 个记忆库</span>
+                <span>{memoryLibraries.reduce((sum, library) => sum + library.memory_count, 0)} 条记忆</span>
               </>
             ) : (
               <>
@@ -988,6 +1034,8 @@ export function AssetLibraryWorkspace({
             </div>
           ) : activeTab === "knowledge" ? (
             renderKnowledgeTab()
+          ) : activeTab === "memory" ? (
+            renderMemoryTab()
           ) : (
             <div className="flex min-h-[18rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-500">
               {activeTab === "avatars" ? "Avatar资产管理规划中" : "声音资产管理规划中"}

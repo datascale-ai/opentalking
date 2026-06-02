@@ -27,6 +27,11 @@ type AvatarSelectionStageProps = {
   onCustomAvatarCreate: (file: File, name: string) => void;
   onAvatarDelete?: (avatar: AvatarSummary) => void;
   referenceSaving?: boolean;
+  memorySummary?: {
+    enabled: boolean;
+    libraryName: string | null;
+    memoryCount: number | null;
+  };
   agentConfig: AgentConfig;
   onAgentConfigChange: (next: AgentConfig) => void;
   knowledgeBases: KnowledgeBaseSummary[];
@@ -79,6 +84,7 @@ export function AvatarSelectionStage({
   onCustomAvatarCreate,
   onAvatarDelete,
   referenceSaving = false,
+  memorySummary,
   agentConfig,
   onAgentConfigChange,
   knowledgeBases,
@@ -401,6 +407,39 @@ export function AvatarSelectionStage({
                       </div>
                     ) : (
                       <p className="px-1 py-2 text-xs text-slate-400">未选择知识库</p>
+                    )}
+                  </div>
+                </div>
+                <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-600">记忆库</p>
+                    <span
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                        memorySummary?.enabled
+                          ? "border-cyan-200 bg-white text-cyan-700"
+                          : "border-slate-200 bg-white text-slate-500"
+                      }`}
+                    >
+                      {memorySummary?.enabled ? "已挂载" : "未挂载"}
+                    </span>
+                  </div>
+                  <div className="mt-2 min-h-16 rounded-md border border-slate-200 bg-white p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        当前形象记忆库
+                      </p>
+                      <span className="text-[11px] text-slate-400">
+                        {memorySummary?.enabled && memorySummary.memoryCount !== null
+                          ? `${memorySummary.memoryCount} 条`
+                          : "0 条"}
+                      </span>
+                    </div>
+                    {memorySummary?.enabled && memorySummary.libraryName ? (
+                      <div className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs text-cyan-800">
+                        <span className="min-w-0 truncate font-medium">{memorySummary.libraryName}</span>
+                      </div>
+                    ) : (
+                      <p className="px-1 py-2 text-xs text-slate-400">未选择记忆库</p>
                     )}
                   </div>
                 </div>

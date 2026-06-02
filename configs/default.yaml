@@ -44,6 +44,15 @@ tts:
   voice: zh-CN-XiaoxiaoNeural
   sample_rate: 16000
   streaming_decode: true
+memory:
+  provider: sqlite
+  enabled: false
+  default_profile_id: default
+  default_library_id: default
+  recall_limit: 5
+  recall_min_score: 0.0
+  recall_timeout_ms: 80
+  sqlite_path: ./data/opentalking_memory.sqlite3
 model:
   torch_device: cpu
   default_model: wav2lip

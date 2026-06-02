@@ -37,6 +37,7 @@ from opentalking.core.session_store import set_session_state
 from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
 from opentalking.providers.llm.openai_compatible.sentence_splitter import SentenceSplitter
 from opentalking.providers.llm.openai_compatible.conversation import ConversationHistory
+from opentalking.providers.memory.runtime import MemoryRuntime, MemoryScope
 from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
 from opentalking.providers.synthesis.audio2video_client import Audio2VideoClient, OmniRTAudio2VideoClient
 from opentalking.providers.rtc.aiortc.adapter import WebRTCSession
@@ -54,6 +55,17 @@ _TTS_OPENER_PCM_CACHE: dict[str, np.ndarray] = {}
 _TTS_OPENER_CACHE_LOCKS: dict[str, asyncio.Lock] = {}
 _TTS_OPENER_PRELOAD_TASK: asyncio.Task[None] | None = None
 _SENTINEL = object()  # unique marker for "not yet set"
+
+
+def _agent_memory_enabled_for_runtime(
+    *,
+    memory_enabled: bool,
+    memory_scope: MemoryScope | None,
+) -> bool:
+    if memory_scope is not None and memory_scope.enabled and memory_scope.character_id:
+        return False
+    return bool(memory_enabled)
+
 
 from opentalking.pipeline.speak.tts_openers import (
     TTS_OPENER_FALLBACKS as _TTS_OPENER_FALLBACKS,
@@ -231,6 +243,7 @@ class FlashTalkRunner:
         knowledge_enabled: bool = False,
         knowledge_base_id: str | None = None,
         knowledge_base_ids: list[str] | None = None,
+        memory_scope: MemoryScope | None = None,
     ) -> None:
         self.session_id = session_id
         self.avatar_id = avatar_id
@@ -243,11 +256,15 @@ class FlashTalkRunner:
         self.agent_config = AgentSessionConfig(
             user_id=agent_user_id,
             agent_enabled=agent_enabled,
-            memory_enabled=memory_enabled,
+            memory_enabled=_agent_memory_enabled_for_runtime(
+                memory_enabled=memory_enabled,
+                memory_scope=memory_scope,
+            ),
             knowledge_enabled=knowledge_enabled,
             knowledge_base_id=knowledge_base_id,
             knowledge_base_ids=knowledge_base_ids,
         )
+        self._memory = MemoryRuntime(scope=memory_scope, settings=get_settings()) if memory_scope else None
         self.avatars_root = avatars_root
         self.redis = redis
         self._flashtalk_ws_url = flashtalk_ws_url or _default_flashtalk_ws_url()
@@ -1806,6 +1823,12 @@ class FlashTalkRunner:
             )
             self._speech_started = True
 
+            memory_prompt = await self._memory.retrieve_prompt(text) if self._memory else ""
+            llm_user_text = (
+                f"{memory_prompt}\n\nCurrent user message:\n{text}"
+                if memory_prompt
+                else text
+            )
             self.conversation.add_user(text)
             agent_context = await self._build_agent_context(text)
 
@@ -2082,10 +2105,13 @@ class FlashTalkRunner:
                     anti-repetition hint, then append the opener as a synthetic assistant
                     turn so the model continues instead of echoing the same greeting.
                     """
-                    base = inject_agent_context(
-                        list(self.conversation.get_messages()),
-                        agent_context,
-                    )
+                    base_messages = list(self.conversation.get_messages())
+                    if memory_prompt:
+                        for idx in range(len(base_messages) - 1, -1, -1):
+                            if base_messages[idx].get("role") == "user":
+                                base_messages[idx] = {**base_messages[idx], "content": llm_user_text}
+                                break
+                    base = inject_agent_context(base_messages, agent_context)
                     prefix = spoken_prefix.strip()
                     if not prefix:
                         return base
@@ -2466,6 +2492,12 @@ class FlashTalkRunner:
             if stored_response:
                 self.conversation.add_assistant(stored_response)
                 await self._save_agent_turn(user_text=text, assistant_text=stored_response)
+                if self._memory is not None:
+                    self._memory.schedule_write(
+                        user_text=text,
+                        assistant_text=stored_response,
+                        interrupted=self._interrupt.is_set(),
+                    )
 
             await self._publish_speech_ended(stored_response)
             if not self._closed:

@@ -3,6 +3,7 @@ import type { AgentConfig } from "./AvatarSelectionStage";
 import type { AvatarSummary, KnowledgeBaseSummary } from "../lib/api";
 import { modelConnectionBadge, type ModelStatus } from "../lib/modelStatus";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
+import type { MemoryLibrary } from "../types";
 
 type VoiceOpt = { id: string; label: string; targetModel?: string | null };
 export type Wav2LipPostprocessMode = "auto" | "basic" | "opentalking_improved" | "easy_improved" | "easy_enhanced";
@@ -200,6 +201,12 @@ interface SettingsPanelProps {
   onAgentConfigChange: (next: AgentConfig) => void;
   knowledgeBases: KnowledgeBaseSummary[];
   onManageKnowledgeBases?: () => void;
+  memoryLibraries: MemoryLibrary[];
+  selectedMemoryLibraryId: string | null;
+  memoryEnabled: boolean;
+  onMemoryLibrarySelect: (libraryId: string | null) => void;
+  onMemoryEnabledChange: (enabled: boolean) => void;
+  onManageMemoryLibraries?: () => void;
 }
 
 type SettingsSectionProps = {
@@ -423,10 +430,17 @@ export function SettingsPanel({
   onAgentConfigChange,
   knowledgeBases,
   onManageKnowledgeBases,
+  memoryLibraries,
+  selectedMemoryLibraryId,
+  memoryEnabled,
+  onMemoryLibrarySelect,
+  onMemoryEnabledChange,
+  onManageMemoryLibraries,
 }: SettingsPanelProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     avatars: true,
     knowledge: true,
+    memory: true,
     model: true,
     asr: true,
     voice: true,
@@ -653,6 +667,67 @@ export function SettingsPanel({
             {!knowledgeBases.length ? (
               <p className="rounded-md border border-dashed border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-500">
                 暂无知识库
+              </p>
+            ) : null}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="memory"
+          title="记忆库"
+          open={openSections.memory}
+          onToggle={toggleSection}
+          action={
+            <div className="flex shrink-0 items-center gap-2">
+              {onManageMemoryLibraries ? (
+                <button
+                  type="button"
+                  onClick={onManageMemoryLibraries}
+                  className="min-h-8 px-1 text-xs font-semibold text-slate-600 transition hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2"
+                >
+                  管理
+                </button>
+              ) : null}
+              <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
+                {memoryLibraries.length} 个记忆库
+              </span>
+            </div>
+          }
+        >
+          <div className="grid grid-cols-1 gap-1">
+            {memoryLibraries.map((library) => {
+              const selected = memoryEnabled && selectedMemoryLibraryId === library.id;
+              const memoryLibraryReady = library.memory_count > 0;
+              return (
+                <button
+                  key={library.id}
+                  type="button"
+                  disabled={configLocked || !memoryLibraryReady}
+                  onClick={() => {
+                    const nextSelected = selected ? null : library.id;
+                    onMemoryLibrarySelect(nextSelected);
+                    onMemoryEnabledChange(Boolean(nextSelected));
+                  }}
+                  className={`flex min-h-9 items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                    selected
+                      ? "border-cyan-300 bg-white text-cyan-800 shadow-sm"
+                      : memoryLibraryReady
+                        ? "border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:text-cyan-700"
+                        : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400"
+                  } ${configLocked ? "cursor-not-allowed opacity-60 hover:border-slate-100 hover:bg-slate-50" : ""}`}
+                >
+                  <span className="min-w-0 truncate">{library.name || library.id}</span>
+                  <span className={`shrink-0 text-[11px] ${
+                    selected ? "text-cyan-700" : memoryLibraryReady ? "text-emerald-600" : "text-slate-400"
+                  }`}>
+                    {selected ? "已挂载" : memoryLibraryReady ? "已就绪" : "空库"}
+                  </span>
+                </button>
+              );
+            })}
+            {!memoryLibraries.length ? (
+              <p className="rounded-md border border-dashed border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-500">
+                暂无记忆库
               </p>
             ) : null}
           </div>

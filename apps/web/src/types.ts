@@ -11,3 +11,26 @@ export interface Message {
   text: string;
   timestamp: number;
 }
+
+export type MemoryLibrary = {
+  id: string;
+  name: string;
+  profile_id: string;
+  character_id: string;
+  memory_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MemoryItem = {
+  id: string;
+  text: string;
+  type: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type MemoryTurn = {
+  role: "user" | "assistant";
+  content: string;
+};

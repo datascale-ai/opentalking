@@ -74,6 +74,17 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "lightrag_language": "agent_lightrag_language",
             "lightrag_chunk_fallback_enabled": "agent_lightrag_chunk_fallback_enabled",
         },
+        "memory": {
+            "provider": "memory_provider",
+            "enabled": "memory_enabled",
+            "default_profile_id": "memory_default_profile_id",
+            "default_library_id": "memory_default_library_id",
+            "recall_limit": "memory_recall_limit",
+            "recall_min_score": "memory_recall_min_score",
+            "recall_timeout_ms": "memory_recall_timeout_ms",
+            "mem0_config": "memory_mem0_config",
+            "sqlite_path": "memory_sqlite_path",
+        },
         "tts": {
             "default_provider": "tts_default_provider",
             "enabled_providers": "tts_enabled_providers",
@@ -365,6 +376,17 @@ class Settings(BaseSettings):
     agent_lightrag_embedding_max_token_size: int = Field(default=8192)
     agent_lightrag_language: str = Field(default="Chinese")
     agent_lightrag_chunk_fallback_enabled: bool = Field(default=False)
+
+    # ---- Character memory provider ----
+    memory_provider: str = "none"
+    memory_enabled: bool = False
+    memory_default_profile_id: str = "default"
+    memory_default_library_id: str = "default"
+    memory_recall_limit: int = 5
+    memory_recall_min_score: float = 0.0
+    memory_recall_timeout_ms: int = 80
+    memory_mem0_config: str = ""
+    memory_sqlite_path: str = "./data/opentalking_memory.sqlite3"
 
     #: CosyVoice 复刻时，百炼需拉取公网 URL；若留空则用请求的 Host 拼 URL（内网部署请填公网可达地址）
     public_base_url: str = ""

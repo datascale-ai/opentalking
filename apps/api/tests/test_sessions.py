@@ -304,7 +304,12 @@ models:
     with TestClient(unified_main.create_app()) as client:
         response = client.post(
             "/sessions",
-            json={"avatar_id": "anchor", "model": "wav2lip", "stt_provider": "sensevoice"},
+            json={
+                "avatar_id": "anchor",
+                "model": "wav2lip",
+                "stt_provider": "sensevoice",
+                "tts_provider": "edge",
+            },
         )
 
     assert response.status_code == 200, response.json()

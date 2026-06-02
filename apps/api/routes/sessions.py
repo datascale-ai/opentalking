@@ -244,7 +244,7 @@ def _normalize_agent_session_config(
     body: CreateSessionRequest,
 ) -> tuple[str | None, bool, bool, bool, str | None, list[str]]:
     agent_user_id = _normalize_agent_user_id(body.user_id)
-    memory_enabled = bool(agent_user_id and body.memory_enabled)
+    memory_enabled = bool(body.memory_enabled)
     knowledge_enabled = body.knowledge_enabled is not False
     agent_enabled = bool(body.agent_enabled or memory_enabled or knowledge_enabled)
     knowledge_base_ids = _normalize_knowledge_base_ids(
@@ -611,9 +611,9 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
 
     agent_user_id = _normalize_agent_user_id(body.user_id)
     if persona_defaults is not None and "memory_enabled" not in explicit_fields:
-        memory_enabled = bool(agent_user_id and persona_defaults.memory_enabled)
+        memory_enabled = bool(persona_defaults.memory_enabled)
     else:
-        memory_enabled = bool(agent_user_id and body.memory_enabled)
+        memory_enabled = bool(body.memory_enabled)
     if persona_defaults is not None and "knowledge_enabled" not in explicit_fields:
         knowledge_enabled = bool(persona_defaults.knowledge_enabled)
     else:
@@ -664,6 +664,9 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         user_id=agent_user_id,
         agent_enabled=agent_enabled,
         memory_enabled=memory_enabled,
+        memory_profile_id=body.memory_profile_id,
+        character_id=body.character_id or avatar_id,
+        memory_library_id=body.memory_library_id,
         knowledge_enabled=knowledge_enabled,
         knowledge_base_id=knowledge_base_id,
         knowledge_base_ids=knowledge_base_ids,

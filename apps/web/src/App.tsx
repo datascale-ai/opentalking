@@ -28,6 +28,7 @@ import {
   apiPut,
   apiUploadFile,
   buildApiUrl,
+  getMemoryLibraries,
   uploadExportVideo,
   type AvatarKnowledgeBasesResponse,
   type AvatarSummary,
@@ -76,7 +77,9 @@ import {
   QWEN_VOICE_STORAGE_KEY,
   TTS_PROVIDER_STORAGE_KEY,
 } from "./constants/ttsQwen";
-import type { ConnectionStatus, Message, QueueInfo } from "./types";
+import type { ConnectionStatus, MemoryLibrary, Message, QueueInfo } from "./types";
+
+const MEMORY_PROFILE_ID = "default";
 
 function bailianModelOptions(provider: TtsProviderExtended): { id: string; label: string }[] {
   switch (provider) {
@@ -959,6 +962,9 @@ export default function App() {
   const [clientUserId] = useState(readOrCreateClientUserId);
   const [agentConfig, setAgentConfigState] = useState<AgentConfig>(readStoredAgentConfig);
   const [knowledgeBaseSummaries, setKnowledgeBaseSummaries] = useState<KnowledgeBaseSummary[]>([]);
+  const [memoryEnabled, setMemoryEnabled] = useState(false);
+  const [memoryLibraryId, setMemoryLibraryId] = useState<string | null>(null);
+  const [memoryLibraries, setMemoryLibraries] = useState<MemoryLibrary[]>([]);
   const avatarKnowledgeBasesSyncReadyRef = useRef(false);
   const lastPersistedAvatarKnowledgeBasesRef = useRef<Map<string, string[]>>(new Map());
   const avatarKnowledgeBasesLoadSeqRef = useRef(0);
@@ -1138,9 +1144,42 @@ export default function App() {
     setWorkflow("assetLibrary");
   }, []);
 
+  const handleManageMemoryLibraries = useCallback(() => {
+    setAssetLibraryTab("memory");
+    setWorkflow("assetLibrary");
+  }, []);
+
   useEffect(() => {
     if (workflow === "realtime") void refreshKnowledgeBases();
   }, [refreshKnowledgeBases, workflow]);
+
+  const refreshMemoryLibraries = useCallback(async () => {
+    if (!avatarId) {
+      setMemoryLibraries([]);
+      setMemoryLibraryId(null);
+      setMemoryEnabled(false);
+      return;
+    }
+    try {
+      const result = await getMemoryLibraries(MEMORY_PROFILE_ID, avatarId);
+      const items = Array.isArray(result.items) ? result.items : [];
+      setMemoryLibraries(items);
+      setMemoryLibraryId((current) => {
+        if (!current || items.some((library) => library.id === current)) return current;
+        setMemoryEnabled(false);
+        return null;
+      });
+    } catch (error) {
+      console.warn("load memory libraries failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `记忆库列表读取失败：${detail}` : "记忆库列表读取失败，请查看后端日志。", "error");
+      setMemoryLibraries([]);
+    }
+  }, [avatarId, notify]);
+
+  useEffect(() => {
+    if (workflow === "realtime") void refreshMemoryLibraries();
+  }, [refreshMemoryLibraries, workflow]);
 
   useEffect(() => {
     if (workflow === "realtime") void refreshPersonas();
@@ -1877,8 +1916,11 @@ export default function App() {
         fasterliveportrait_config:
           model === "fasterliveportrait" ? fasterliveportraitConfig : undefined,
         user_id: clientUserId,
-        agent_enabled: agentConfig.memoryEnabled || agentConfig.knowledgeEnabled,
-        memory_enabled: agentConfig.memoryEnabled,
+        agent_enabled: agentConfig.memoryEnabled || agentConfig.knowledgeEnabled || (memoryEnabled && Boolean(memoryLibraryId)),
+        memory_enabled: agentConfig.memoryEnabled || (memoryEnabled && Boolean(memoryLibraryId)),
+        memory_profile_id: MEMORY_PROFILE_ID,
+        character_id: avatarId,
+        memory_library_id: memoryEnabled && memoryLibraryId ? memoryLibraryId : undefined,
         knowledge_enabled: agentConfig.knowledgeEnabled,
         knowledge_base_id: knowledgeBaseIds[0],
         knowledge_base_ids: knowledgeBaseIds,
@@ -1952,6 +1994,8 @@ export default function App() {
     closePeerConnection,
     edgeVoice,
     llmSystemPrompt,
+    memoryEnabled,
+    memoryLibraryId,
     model,
     notify,
     qwenVoice,
@@ -2488,7 +2532,12 @@ export default function App() {
   const selectedVoiceLabel = isEdgeTts(ttsProvider)
     ? EDGE_ZH_VOICES.find((voice) => voice.id === edgeVoice)?.label ?? edgeVoice
     : bailianVoices.find((voice) => voice.id === qwenVoice)?.label ?? (qwenVoice || "暂无音色");
-
+  const selectedMemoryLibrary = memoryLibraries.find((library) => library.id === memoryLibraryId) ?? null;
+  const memorySummary = {
+    enabled: memoryEnabled && Boolean(selectedMemoryLibrary),
+    libraryName: selectedMemoryLibrary?.name || selectedMemoryLibrary?.id || null,
+    memoryCount: selectedMemoryLibrary ? selectedMemoryLibrary.memory_count : null,
+  };
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 lg:h-screen lg:overflow-hidden">
       <TopBar
@@ -2548,6 +2597,15 @@ export default function App() {
             initialTab={assetLibraryTab}
             activeTabOverride={assetLibraryTab}
             onActiveTabChange={setAssetLibraryTab}
+            memoryCharacterId={currentAvatar?.id ?? null}
+            memoryLibraryId={memoryLibraryId}
+            memoryEnabled={memoryEnabled}
+            memoryLibraries={memoryLibraries}
+            profileId={MEMORY_PROFILE_ID}
+            onMemoryLibrarySelect={setMemoryLibraryId}
+            onMemoryEnabledChange={setMemoryEnabled}
+            onMemoryLibrariesChange={setMemoryLibraries}
+            onRefreshMemoryLibraries={() => void refreshMemoryLibraries()}
           />
         </div>
       ) : workflow === "videoCreation" ? (
@@ -2642,6 +2700,12 @@ export default function App() {
             onAgentConfigChange={setAgentConfig}
             knowledgeBases={knowledgeBaseSummaries}
             onManageKnowledgeBases={() => void handleManageKnowledgeBases()}
+            memoryLibraries={memoryLibraries}
+            selectedMemoryLibraryId={memoryLibraryId}
+            memoryEnabled={memoryEnabled}
+            onMemoryLibrarySelect={setMemoryLibraryId}
+            onMemoryEnabledChange={setMemoryEnabled}
+            onManageMemoryLibraries={() => void handleManageMemoryLibraries()}
             llmSystemPrompt={llmSystemPrompt}
             onLlmSystemPromptChange={setLlmSystemPrompt}
             onSavePrompt={() => void handleSavePrompt()}
@@ -2721,6 +2785,7 @@ export default function App() {
                     personaImporting={personaImporting}
                     onPersonaChange={handlePersonaChange}
                     onPersonaImport={handlePersonaImport}
+                    memorySummary={memorySummary}
                     onAvatarChange={handleAvatarChange}
                     onStart={() => void handleStart()}
                     onCustomAvatarCreate={(file, name) => void handleCreateCustomAvatar(file, name)}

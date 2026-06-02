@@ -1,3 +1,5 @@
+import type { MemoryItem, MemoryLibrary, MemoryTurn } from "../types";
+
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
 export function buildApiUrl(path: string): string {
@@ -268,6 +270,9 @@ export type CreateSessionRequest = {
   user_id: string;
   agent_enabled: boolean;
   memory_enabled: boolean;
+  memory_profile_id?: string;
+  character_id?: string;
+  memory_library_id?: string;
   knowledge_enabled: boolean;
   knowledge_base_id: string;
   knowledge_base_ids: string[];
@@ -326,6 +331,58 @@ export type AvatarSummary = {
 };
 
 export type CreateSessionResponse = { session_id: string; status: string };
+
+function memoryQuery(profileId: string, characterId: string): string {
+  const qs = new URLSearchParams({ profile_id: profileId, character_id: characterId });
+  return qs.toString();
+}
+
+export function getMemoryLibraries(profileId: string, characterId: string): Promise<{ items: MemoryLibrary[] }> {
+  return apiGet(`/memory/libraries?${memoryQuery(profileId, characterId)}`);
+}
+
+export function createMemoryLibrary(body: {
+  id?: string;
+  name?: string;
+  profile_id?: string;
+  character_id: string;
+}): Promise<MemoryLibrary> {
+  return apiPost("/memory/libraries", body);
+}
+
+export function getMemoryItems(
+  libraryId: string,
+  profileId: string,
+  characterId: string,
+): Promise<{ items: MemoryItem[] }> {
+  return apiGet(`/memory/libraries/${encodeURIComponent(libraryId)}/items?${memoryQuery(profileId, characterId)}`);
+}
+
+export function deleteMemoryItem(
+  libraryId: string,
+  itemId: string,
+  profileId: string,
+  characterId: string,
+): Promise<{ deleted: true }> {
+  return apiDelete(
+    `/memory/libraries/${encodeURIComponent(libraryId)}/items/${encodeURIComponent(itemId)}?${memoryQuery(
+      profileId,
+      characterId,
+    )}`,
+  );
+}
+
+export function importMemoryTurns(
+  libraryId: string,
+  body: {
+    profile_id?: string;
+    character_id: string;
+    turns: MemoryTurn[];
+    source?: string;
+  },
+): Promise<{ imported: number }> {
+  return apiPost(`/memory/libraries/${encodeURIComponent(libraryId)}/import`, body);
+}
 
 /** GET /voices 返回的音色目录项（含 SQLite 中的系统预设与复刻） */
 export type VoiceCatalogItem = {

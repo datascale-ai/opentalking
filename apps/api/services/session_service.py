@@ -66,6 +66,9 @@ async def create_session(
     user_id: str | None = None,
     agent_enabled: bool = False,
     memory_enabled: bool = False,
+    memory_profile_id: str | None = None,
+    character_id: str | None = None,
+    memory_library_id: str | None = None,
     knowledge_enabled: bool = False,
     knowledge_base_id: str | None = None,
     knowledge_base_ids: list[str] | None = None,
@@ -104,6 +107,12 @@ async def create_session(
         data["agent_enabled"] = _bool_hash(agent_enabled)
         data["memory_enabled"] = _bool_hash(memory_enabled)
         data["knowledge_enabled"] = _bool_hash(knowledge_enabled)
+        if memory_profile_id:
+            data["memory_profile_id"] = memory_profile_id
+        if character_id:
+            data["character_id"] = character_id
+        if memory_library_id:
+            data["memory_library_id"] = memory_library_id
         if legacy_knowledge_base_id:
             data["knowledge_base_id"] = legacy_knowledge_base_id
         data["knowledge_base_ids"] = json.dumps(selected_knowledge_base_ids, ensure_ascii=False)
@@ -136,6 +145,12 @@ async def create_session(
         init_task["agent_enabled"] = bool(agent_enabled)
         init_task["memory_enabled"] = bool(memory_enabled)
         init_task["knowledge_enabled"] = bool(knowledge_enabled)
+        if memory_profile_id:
+            init_task["memory_profile_id"] = memory_profile_id
+        if character_id:
+            init_task["character_id"] = character_id
+        if memory_library_id:
+            init_task["memory_library_id"] = memory_library_id
         if legacy_knowledge_base_id:
             init_task["knowledge_base_id"] = legacy_knowledge_base_id
         init_task["knowledge_base_ids"] = selected_knowledge_base_ids

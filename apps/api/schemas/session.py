@@ -18,6 +18,9 @@ class CreateSessionRequest(BaseModel):
     user_id: str | None = None
     agent_enabled: bool = True
     memory_enabled: bool = False
+    memory_profile_id: str | None = None
+    character_id: str | None = None
+    memory_library_id: str | None = None
     knowledge_enabled: bool = True
     knowledge_base_id: str | None = None
     knowledge_base_ids: list[str] | None = None
