@@ -69,9 +69,9 @@ Use it as the decision page before following the deeper setup guides.
 
 1. Use `mock` to validate the browser, API, LLM, STT, TTS, and WebRTC path.
 2. Use local `wav2lip` when you want the lightest talking-head validation path.
-3. Use [Local STT/TTS + QuickTalk](local-quicktalk-audio.md) when you want local speech input, local speech synthesis, and QuickTalk realtime video.
+3. Use [Local STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md) when you want local speech input, local speech synthesis, and QuickTalk realtime video.
 4. Use local `musetalk` when you want MuseTalk quality on one CUDA machine and can install the preprocessing dependencies.
-5. Use `quicktalk` when you want realtime audio2video and can run CUDA.
+5. Use [QuickTalk Local](quicktalk/local.md) for single-machine realtime audio2video on CUDA, or [QuickTalk with OmniRT](quicktalk/omnirt.md) for service isolation.
 6. Use `fasterliveportrait` when you want realtime audio-driven portrait pasteback on a single CUDA GPU.
 7. Use `flashtalk` when quality matters more than deployment weight.
 8. Use `flashhead` only when you already operate a FlashHead service.
@@ -82,4 +82,4 @@ Use it as the decision page before following the deeper setup guides.
 - [LLM and STT](llm-stt.md)
 - [Text-to-Speech](tts.md)
 - [Avatar Assets](avatar.md)
-- [Talking-Head Models](talking-head.md)
+- [Talking-Head Models](talking-head/index.md)

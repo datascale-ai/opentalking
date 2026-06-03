@@ -74,7 +74,7 @@ OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD=1 \
 python scripts/local_cosyvoice_service.py --host 127.0.0.1 --port 19090
 ```
 
-CosyVoice3 first-chunk latency still depends on model inference. OpenTalking splits service audio into `AudioChunk` streams and keeps driving QuickTalk / WebRTC. For the full local speech input, speech synthesis, and QuickTalk video chain, see [Local STT/TTS + QuickTalk](local-quicktalk-audio.md).
+CosyVoice3 first-chunk latency still depends on model inference. OpenTalking splits service audio into `AudioChunk` streams and keeps driving QuickTalk / WebRTC. For the full local speech input, speech synthesis, and QuickTalk video chain, see [Local STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md).
 
 ## ElevenLabs
 

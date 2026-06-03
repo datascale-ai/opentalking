@@ -10,7 +10,7 @@ can move to `local`.
 
 - [Mock E2E](mock-e2e.md) has passed.
 - `wav2lip384.pth` and `s3fd.pth` are downloaded as described in
-  [Talking-head Models → Wav2Lip](../../model-deployment/wav2lip.md).
+  [Talking-head Models → Wav2Lip](../../model-deployment/wav2lip/local.md).
 - An OmniRT checkout exists next to `opentalking/`.
 
 ## Steps

@@ -77,9 +77,11 @@ case "$device" in
 esac
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
+export OMNIRT_REPO="${OMNIRT_REPO:-$DIGITAL_HUMAN_HOME/omnirt}"
 export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+quickstart_configure_uv_default_index
 
-omnirt_dir="$DIGITAL_HUMAN_HOME/omnirt"
+omnirt_dir="$OMNIRT_REPO"
 run_dir="$DIGITAL_HUMAN_HOME/run"
 log_dir="$DIGITAL_HUMAN_HOME/logs"
 pid_file="$run_dir/omnirt-wav2lip.pid"
@@ -139,7 +141,7 @@ echo "  log:     $log_file"
   if [[ "$install_deps" == "1" ]]; then
     uv_bin="$(quickstart_require_uv "OmniRT dependency installation")"
     if [[ "$backend" == "cuda" ]]; then
-      if grep -Eq '^[[:space:]]*wav2lip-cuda[[:space:]]*=' pyproject.toml; then
+      if grep -Eq '^[[:space:]]*wav2lip-cuda[[:space:]]*=' "$omnirt_dir/pyproject.toml"; then
         "$uv_bin" sync --extra server --extra wav2lip-cuda --python 3.11
       else
         echo "OmniRT extra 'wav2lip-cuda' is not defined; falling back to requirements-wav2lip.txt"

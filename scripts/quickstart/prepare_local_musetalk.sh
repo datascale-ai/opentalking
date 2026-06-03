@@ -43,7 +43,7 @@ export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
 export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
 export OPENTALKING_MUSETALK_MODEL_ROOT="${OPENTALKING_MUSETALK_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT}"
 export OPENTALKING_MUSETALK_REPO="${OPENTALKING_MUSETALK_REPO:-$DIGITAL_HUMAN_HOME/model-repos/MuseTalk}"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="${OPENTALKING_MUSETALK_PREPROCESS_PYTHON:-$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv/bin/python}"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="${OPENTALKING_MUSETALK_PREPROCESS_PYTHON:-$repo_root/.venv/bin/python}"
 export TMPDIR="${TMPDIR:-$DIGITAL_HUMAN_HOME/tmp}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.cache/pip}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.cache/uv}"
@@ -111,7 +111,7 @@ else:
     import subprocess
 
     code = (
-        "import mmcv._ext, mmdet, mmpose, torch; "
+        "import mmcv, mmdet, mmpose, torch; "
         "print(torch.__version__)"
     )
     cp = subprocess.run(
@@ -122,7 +122,7 @@ else:
     )
     if cp.returncode != 0:
         missing.append(
-            "preprocess python lacks full OpenMMLab dependencies: "
+            "preprocess python lacks MuseTalk preprocessing dependencies: "
             + str(preprocess_python)
             + "\n"
             + cp.stderr.strip()

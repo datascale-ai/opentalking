@@ -36,7 +36,7 @@ requirements.
 ## Next Steps
 
 - Not sure which model to choose: start with [Model and Backend Selection](./selection.md).
-- Need local STT/TTS with QuickTalk: read [Model Deployment / Local Audio + QuickTalk](../model-deployment/local-quicktalk-audio.md).
+- Need local STT/TTS with QuickTalk: read [Model Deployment / Local Audio + QuickTalk](../model-deployment/recipes/local-quicktalk-audio.md).
 - Need local runtime details: read [Local Adapter](./runtime-backends/local-adapter.md).
 - Need MuseTalk local setup: read [MuseTalk](./models/musetalk.md).
 - Need camera- or selfie-video-driven cloning: read [FasterLivePortrait](./models/fasterliveportrait.md).

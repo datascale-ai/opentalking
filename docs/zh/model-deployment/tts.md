@@ -73,7 +73,7 @@ OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD=1 \
 python scripts/local_cosyvoice_service.py --host 127.0.0.1 --port 19090
 ```
 
-CosyVoice3 首包延迟仍取决于模型推理，OpenTalking 会把 service 返回的音频切成 `AudioChunk` 流继续驱动 QuickTalk / WebRTC。完整本地语音输入、语音合成和 QuickTalk 视频链路见 [本地 STT/TTS + QuickTalk](local-quicktalk-audio.md)。
+CosyVoice3 首包延迟仍取决于模型推理，OpenTalking 会把 service 返回的音频切成 `AudioChunk` 流继续驱动 QuickTalk / WebRTC。完整本地语音输入、语音合成和 QuickTalk 视频链路见 [本地 STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md)。
 
 ## ElevenLabs
 

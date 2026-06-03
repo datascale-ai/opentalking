@@ -68,9 +68,9 @@
 
 1. 先用 `mock` 验证浏览器、API、LLM、STT、TTS 和 WebRTC。
 2. 想接入最轻量的 talking-head 验证，先用本地 `wav2lip`。
-3. 想验证本地语音输入、本地语音合成和 QuickTalk 实时视频，选 [本地 STT/TTS + QuickTalk](local-quicktalk-audio.md)。
+3. 想验证本地语音输入、本地语音合成和 QuickTalk 实时视频，选 [本地 STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md)。
 4. 想在单张 CUDA 机器上验证 MuseTalk 质量，且可以安装预处理依赖时，选本地 `musetalk`。
-5. 想验证实时 audio2video 且可使用 CUDA 时，选 `quicktalk`。
+5. 想验证实时 audio2video 且可使用 CUDA 时，单机选 [QuickTalk Local](quicktalk/local.md)，服务隔离选 [QuickTalk with OmniRT](quicktalk/omnirt.md)。
 6. 想在单张 CUDA GPU 上做实时音频驱动头像贴回时，选 `fasterliveportrait`。
 7. 质量优先、可接受部署重量时，选 `flashtalk`。
 8. 已经有独立 FlashHead 服务时，再选 `flashhead`。
@@ -81,4 +81,4 @@
 - [LLM 与 STT](llm-stt.md)
 - [语音合成](tts.md)
 - [Avatar 资产](avatar.md)
-- [Talking-head 模型](talking-head.md)
+- [Talking-head 模型](talking-head/index.md)

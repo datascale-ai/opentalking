@@ -28,8 +28,8 @@ def test_frontend_keeps_easy_enhanced_out_of_regular_options() -> None:
 def test_wav2lip_docs_state_default_and_easy_enhanced_contract() -> None:
     zh_avatar = Path("docs/zh/docs/avatar-format.md").read_text(encoding="utf-8")
     en_avatar = Path("docs/en/docs/avatar-format.md").read_text(encoding="utf-8")
-    zh_local = Path("docs/zh/model-deployment/wav2lip-local.md").read_text(encoding="utf-8")
-    en_local = Path("docs/en/model-deployment/wav2lip-local.md").read_text(encoding="utf-8")
+    zh_local = Path("docs/zh/model-deployment/wav2lip/local.md").read_text(encoding="utf-8")
+    en_local = Path("docs/en/model-deployment/wav2lip/local.md").read_text(encoding="utf-8")
 
     assert "默认关闭" not in zh_avatar
     assert "default is disabled" not in en_avatar.lower()

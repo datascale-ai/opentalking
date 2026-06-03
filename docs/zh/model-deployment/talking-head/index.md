@@ -1,4 +1,4 @@
-# Talking-head 模型
+# 数字人模型部署
 
 本页是 talking-head backend 的选型总览。OpenTalking 负责会话编排、TTS、事件和 WebRTC；
 模型权重加载、GPU/NPU 调度和推理吞吐由所选 backend 承担。
@@ -7,13 +7,13 @@
 
 | 模型 | backend | 推荐场景 | 证据等级 | 详情 |
 |------|---------|----------|----------|------|
-| `mock` | `mock` | 首次运行、CI、排查 API/WebRTC | 已内置，已验证 | [Mock](mock.md) |
-| `wav2lip` | `local` / `omnirt` | 第一个真实唇形模型 | local adapter 已内置；OmniRT 路径已验证 | [Local](wav2lip-local.md) / [OmniRT](wav2lip.md) |
-| `musetalk` | `local` / `omnirt` / `direct_ws` | 使用进程内启动或外部服务获得 MuseTalk 质量 | local adapter 已内置；OmniRT/direct_ws 路径已文档化 | [MuseTalk](musetalk.md) |
-| `quicktalk` | `local` | 本地实时 adapter 与开发参考 | 已内置，已验证 | [QuickTalk](quicktalk.md) |
-| `fasterliveportrait` | `omnirt` | 单卡实时音频驱动头像并贴回原始资产图 | 已文档化 | [FasterLivePortrait](fasterliveportrait.md) |
-| `flashtalk` | `omnirt` | 高质量私有化、GPU/NPU 重模型 | OmniRT/Ascend 路径已验证 | [FlashTalk](flashtalk.md) |
-| `flashhead` | `direct_ws` | 已有独立 FlashHead 服务 | 已文档化 | [FlashHead](flashhead.md) |
+| `mock` | `mock` | 首次运行、CI、排查 API/WebRTC | 已内置，已验证 | [Mock](../mock.md) |
+| `wav2lip` | `local` / `omnirt` | 第一个真实唇形模型 | local adapter 已内置；OmniRT 路径已验证 | [Local](../wav2lip/local.md) / [OmniRT](../wav2lip/omnirt.md) |
+| `musetalk` | `local` / `omnirt` / `direct_ws` | 使用进程内启动或外部服务获得 MuseTalk 质量 | local adapter 已内置；OmniRT/direct_ws 路径已文档化 | [Local](../musetalk/local.md) / [OmniRT](../musetalk/omnirt.md) |
+| `quicktalk` | `local` / `omnirt` | 本地实时 adapter 或 OmniRT 服务化部署 | local 已内置；OmniRT 路径已接入 | [Local](../quicktalk/local.md) / [OmniRT](../quicktalk/omnirt.md) |
+| `fasterliveportrait` | `omnirt` | 单卡实时音频驱动头像并贴回原始资产图 | 已文档化 | [FasterLivePortrait](../fasterliveportrait.md) |
+| `flashtalk` | `omnirt` | 高质量私有化、GPU/NPU 重模型 | OmniRT/Ascend 路径已验证 | [FlashTalk](../flashtalk.md) |
+| `flashhead` | `direct_ws` | 已有独立 FlashHead 服务 | 已文档化 | [FlashHead](../flashhead.md) |
 
 ## Backend 行为
 
@@ -22,7 +22,7 @@
 | `mock` | 无外部 runtime，始终可用。 | `mock` |
 | `local` | 本进程可 import adapter，依赖满足。 | `wav2lip`、`quicktalk`、`musetalk` |
 | `direct_ws` | 模型服务提供专属 WebSocket URL。 | `flashhead`、自定义单模型服务 |
-| `omnirt` | OmniRT 暴露 `/v1/audio2video/{model}`。 | `wav2lip`、`musetalk`、`fasterliveportrait`、`flashtalk` |
+| `omnirt` | OmniRT 暴露 `/v1/audio2video/{model}`。 | `wav2lip`、`musetalk`、`quicktalk`、`fasterliveportrait`、`flashtalk` |
 
 ## 通用准备
 

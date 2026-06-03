@@ -42,3 +42,29 @@
 .ot-figure-placeholder span {
   font-size: 0.8rem;
 }
+
+:root {
+  --ot-sidebar-child-indent: 0.85rem;
+}
+
+.md-sidebar--primary
+  .md-nav__item--section
+  > .md-nav
+  > .md-nav__list
+  > .md-nav__item:not(.md-nav__item--section)
+  > .md-nav__link {
+  box-sizing: border-box;
+  padding-left: var(--ot-sidebar-child-indent);
+}
+
+.md-sidebar--primary
+  .md-nav__item--section
+  > .md-nav
+  > .md-nav__list
+  > .md-nav__item:not(.md-nav__item--section)
+  > .md-nav
+  > .md-nav__list
+  > .md-nav__item
+  > .md-nav__link {
+  padding-left: var(--ot-sidebar-child-indent);
+}

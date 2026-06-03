@@ -24,7 +24,7 @@ flowchart LR
 | STT | DashScope Paraformer realtime | 需要接入其它实时 STT provider 时替换。 |
 | TTS | Edge TTS | 生产音色、声音复刻或更高质量语音时切换 DashScope、CosyVoice、ElevenLabs。 |
 | Avatar 资产 | 内置 examples | 选择 Wav2Lip、QuickTalk、FlashHead、FlashTalk 前准备模型匹配资产。 |
-| Talking-head backend | 先用 `mock`，再跑 Wav2Lip local 路径 | 需要 QuickTalk / FlashTalk OmniRT、FlashHead direct WS 或其它模型服务时替换。 |
+| Talking-head backend | 先用 `mock`，再跑 Wav2Lip local 路径 | 需要 QuickTalk local/OmniRT、FlashTalk OmniRT、FlashHead direct WS 或其它模型服务时替换。 |
 
 ## 推荐顺序
 
@@ -33,7 +33,7 @@ flowchart LR
 3. 配置 [LLM 与 STT](llm-stt.md)。
 4. 选择并验证 [TTS](tts.md)。
 5. 准备 [Avatar 资产](avatar.md)。
-6. 启动 [Talking-head 模型](talking-head.md)。
+6. 启动 [Talking-head 模型](talking-head/index.md)。
 7. 验证 `/models`，创建会话，并通过浏览器测试。
 
 ## 模型快捷入口
@@ -41,10 +41,10 @@ flowchart LR
 | 目标 | 入口 |
 |------|------|
 | 无权重端到端自测 | [Mock](mock.md) |
-| 第一个真实唇形模型 | [Wav2Lip Local](wav2lip-local.md) |
-| 本地 STT/TTS + QuickTalk | [本地 STT/TTS + QuickTalk](local-quicktalk-audio.md) |
-| 已有 MuseTalk runtime | [MuseTalk](musetalk.md) |
-| 本地实时 adapter | [QuickTalk](quicktalk.md) |
+| 第一个真实唇形模型 | [Wav2Lip Local](wav2lip/local.md) |
+| 本地 STT/TTS + QuickTalk | [本地 STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md) |
+| 已有 MuseTalk runtime | [MuseTalk with OmniRT](musetalk/omnirt.md) |
+| 本地实时 adapter | [QuickTalk Local](quicktalk/local.md) |
 | 单卡实时头像贴回链路 | [FasterLivePortrait](fasterliveportrait.md) |
 | 高质量重模型 | [FlashTalk](flashtalk.md) |
 | 独立 FlashHead 服务 | [FlashHead](flashhead.md) |

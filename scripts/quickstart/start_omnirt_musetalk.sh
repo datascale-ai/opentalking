@@ -14,7 +14,7 @@ fi
 usage() {
   cat <<'USAGE'
 Usage:
-  bash scripts/quickstart/start_omnirt_musetalk.sh [--device cuda|npu|cpu] [--port PORT] [--musetalk-port PORT] [--skip-install]
+  bash scripts/quickstart/start_omnirt_musetalk.sh [--device cuda|npu|cpu] [--port PORT] [--musetalk-port PORT] [--skip-install] [--no-update]
 
 Examples:
   bash scripts/quickstart/start_omnirt_musetalk.sh --device cuda --port 9001
@@ -28,6 +28,7 @@ host="${OMNIRT_HOST:-0.0.0.0}"
 musetalk_port="${OMNIRT_MUSETALK_PORT:-8766}"
 musetalk_host="${OMNIRT_MUSETALK_HOST:-127.0.0.1}"
 install_deps=1
+update_runtime=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +51,10 @@ while [[ $# -gt 0 ]]; do
     --musetalk-host)
       musetalk_host="$2"
       shift 2
+      ;;
+    --no-update)
+      update_runtime=0
+      shift
       ;;
     --skip-install)
       install_deps=0
@@ -87,11 +92,12 @@ case "$device" in
 esac
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
+export OMNIRT_REPO="${OMNIRT_REPO:-$DIGITAL_HUMAN_HOME/omnirt}"
 export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
-export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt/.omnirt}"
+export OMNIRT_HOME="${OMNIRT_HOME:-$OMNIRT_REPO/.omnirt}"
 export TMPDIR="${TMPDIR:-$DIGITAL_HUMAN_HOME/tmp}"
 
-omnirt_dir="$DIGITAL_HUMAN_HOME/omnirt"
+omnirt_dir="$OMNIRT_REPO"
 run_dir="$DIGITAL_HUMAN_HOME/run"
 log_dir="$DIGITAL_HUMAN_HOME/logs"
 gateway_pid_file="$run_dir/omnirt-musetalk.pid"
@@ -169,6 +175,21 @@ PY
   "$py_bin" -m mim install "mmpose==1.1.0"
 }
 
+check_musetalk_runtime_deps() {
+  local py_bin="$1"
+  "$py_bin" - <<'PY'
+import importlib
+missing = []
+for name in ("torch", "torchvision", "torchaudio", "mmengine", "mmcv", "mmdet", "mmpose"):
+    try:
+        importlib.import_module(name)
+    except Exception as exc:
+        missing.append(f"{name}: {type(exc).__name__}: {exc}")
+if missing:
+    raise SystemExit("MuseTalk runtime dependencies are incomplete:\n" + "\n".join(missing))
+PY
+}
+
 test -f "$OMNIRT_MODEL_ROOT/musetalk/pytorch_model.bin" || { echo "Missing MuseTalk UNet weights" >&2; exit 1; }
 test -f "$OMNIRT_MODEL_ROOT/musetalk/musetalk.json" || { echo "Missing MuseTalk UNet config" >&2; exit 1; }
 test -f "$OMNIRT_MODEL_ROOT/whisper/tiny.pt" || { echo "Missing Whisper tiny checkpoint" >&2; exit 1; }
@@ -190,7 +211,11 @@ echo "  backend log:   $backend_log_file"
   source .venv/bin/activate
   if [[ "$install_deps" == "1" ]]; then
     uv sync --extra server
-    omnirt_cli runtime install musetalk --device "$runtime_device" --home "$OMNIRT_HOME"
+    install_args=(runtime install musetalk --device "$runtime_device" --home "$OMNIRT_HOME")
+    if [[ "$update_runtime" == "0" ]]; then
+      install_args+=(--no-update)
+    fi
+    omnirt_cli "${install_args[@]}"
   fi
 ) >>"$backend_log_file" 2>&1
 
@@ -228,6 +253,11 @@ echo "  python:        $musetalk_python"
 
 if [[ "$install_deps" == "1" ]]; then
   ensure_musetalk_openmmlab "$musetalk_python" >>"$backend_log_file" 2>&1
+fi
+if ! check_musetalk_runtime_deps "$musetalk_python" >>"$backend_log_file" 2>&1; then
+  echo "MuseTalk runtime dependencies are incomplete. Last log lines:" >&2
+  tail -120 "$backend_log_file" >&2 || true
+  exit 1
 fi
 
 (

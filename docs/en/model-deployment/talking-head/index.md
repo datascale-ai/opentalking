@@ -1,4 +1,4 @@
-# Talking-head Models
+# Talking-Head Model Deployment
 
 This page is the selection overview for talking-head backends. OpenTalking owns session
 orchestration, TTS, events, and WebRTC; model weight loading, GPU/NPU scheduling, and
@@ -8,13 +8,13 @@ inference throughput belong to the selected backend.
 
 | Model | Backend | Best for | Evidence level | Details |
 |-------|---------|----------|----------------|---------|
-| `mock` | `mock` | First run, CI, API/WebRTC debugging | Built in, verified | [Mock](mock.md) |
-| `wav2lip` | `local` / `omnirt` | First real lip-sync model | Local adapter is built in; OmniRT path verified | [Local](wav2lip-local.md) / [OmniRT](wav2lip.md) |
-| `musetalk` | `local` / `omnirt` / `direct_ws` | MuseTalk quality with either in-process startup or an external service | Local adapter is built in; OmniRT/direct_ws paths documented | [MuseTalk](musetalk.md) |
-| `quicktalk` | `local` | Local realtime adapter and development reference | Built in, verified | [QuickTalk](quicktalk.md) |
-| `fasterliveportrait` | `omnirt` | Single-GPU realtime audio-driven portrait with pasteback | Documented | [FasterLivePortrait](fasterliveportrait.md) |
-| `flashtalk` | `omnirt` | High-quality private GPU/NPU deployment | OmniRT/Ascend path verified | [FlashTalk](flashtalk.md) |
-| `flashhead` | `direct_ws` | Existing standalone FlashHead service | Documented | [FlashHead](flashhead.md) |
+| `mock` | `mock` | First run, CI, API/WebRTC debugging | Built in, verified | [Mock](../mock.md) |
+| `wav2lip` | `local` / `omnirt` | First real lip-sync model | Local adapter is built in; OmniRT path verified | [Local](../wav2lip/local.md) / [OmniRT](../wav2lip/omnirt.md) |
+| `musetalk` | `local` / `omnirt` / `direct_ws` | MuseTalk quality with either in-process startup or an external service | Local adapter is built in; OmniRT/direct_ws paths documented | [Local](../musetalk/local.md) / [OmniRT](../musetalk/omnirt.md) |
+| `quicktalk` | `local` / `omnirt` | Local realtime adapter or OmniRT-hosted deployment | Local path is built in; OmniRT path is integrated | [Local](../quicktalk/local.md) / [OmniRT](../quicktalk/omnirt.md) |
+| `fasterliveportrait` | `omnirt` | Single-GPU realtime audio-driven portrait with pasteback | Documented | [FasterLivePortrait](../fasterliveportrait.md) |
+| `flashtalk` | `omnirt` | High-quality private GPU/NPU deployment | OmniRT/Ascend path verified | [FlashTalk](../flashtalk.md) |
+| `flashhead` | `direct_ws` | Existing standalone FlashHead service | Documented | [FlashHead](../flashhead.md) |
 
 ## Backend Behavior
 
@@ -23,7 +23,7 @@ inference throughput belong to the selected backend.
 | `mock` | No external runtime; always available. | `mock` |
 | `local` | Adapter can be imported in-process and dependencies are satisfied. | `wav2lip`, `quicktalk`, `musetalk` |
 | `direct_ws` | The model service exposes its own WebSocket URL. | `flashhead`, custom single-model services |
-| `omnirt` | OmniRT exposes `/v1/audio2video/{model}`. | `wav2lip`, `musetalk`, `fasterliveportrait`, `flashtalk` |
+| `omnirt` | OmniRT exposes `/v1/audio2video/{model}`. | `wav2lip`, `musetalk`, `quicktalk`, `fasterliveportrait`, `flashtalk` |
 
 ## Common Setup
 

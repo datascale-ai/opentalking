@@ -119,7 +119,7 @@ documented in [Models](../model-deployment/index.md). The shortest paths are:
 
     Restart `start_all.sh` and select `wav2lip` in the model selector. For
     China-friendly download alternatives, see
-    [Models → Wav2Lip](../model-deployment/wav2lip.md).
+    [Models → Wav2Lip](../model-deployment/wav2lip/local.md).
 
 === "FlashTalk"
 

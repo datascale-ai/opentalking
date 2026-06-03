@@ -8,7 +8,7 @@
 ## 前置条件
 
 - 已完成 [Mock 端到端案例](mock-e2e.md)。
-- 已按 [Talking-head 模型 → Wav2Lip](../../model-deployment/wav2lip.md) 下载
+- 已按 [Talking-head 模型 → Wav2Lip](../../model-deployment/wav2lip/local.md) 下载
   `wav2lip384.pth` 与 `s3fd.pth`。
 - 已准备 OmniRT checkout，且与 `opentalking/` 位于同级目录。
 

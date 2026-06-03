@@ -38,7 +38,7 @@ avatar bundle 与模型不匹配，会话创建仍可能失败或效果异常。
 完整 schema 和准备脚本见：
 
 - [Avatar 资产格式](../docs/avatar-format.md)
-- [模型 → Talking-head 模型](talking-head.md)
+- [模型 → Talking-head 模型](talking-head/index.md)
 
 验证服务是否识别 avatar：
 

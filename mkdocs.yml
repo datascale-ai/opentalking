@@ -106,6 +106,8 @@ plugins:
             Product Demo and Live Sales: 商品讲解与直播导购
             Private Deployment: 企业私有化部署
             Model Deployment: 模型部署
+            Deployment Guide: 部署指南
+            Deployment Basics: 部署基础
             Deployment Overview: 部署概览
             Deployment Topology: 部署拓扑
             Docs: 文档
@@ -123,10 +125,14 @@ plugins:
             LLM and STT: LLM 与 STT
             TTS: TTS
             Text-to-Speech: 语音合成
+            Backend Modes: 后端模式
+            Local: Local
+            Recipes: 部署配方
             Wav2Lip Local: Wav2Lip Local
             Local Audio + QuickTalk: 本地语音 + QuickTalk
             Avatar Assets: Avatar 资产
             Talking-Head Models: Talking-head 模型
+            Talking-Head Model Deployment: 数字人模型部署
             Mock: Mock
             Wav2Lip: Wav2Lip
             MuseTalk: MuseTalk
@@ -227,20 +233,35 @@ nav:
               - FlashTalk: model-support/models/flashtalk.md
               - FlashHead: model-support/models/flashhead.md
               - FasterLivePortrait: model-support/models/fasterliveportrait.md
-      - Model Deployment:
-          - Deployment Overview: model-deployment/index.md
-          - Deployment Topology: model-deployment/deployment.md
-          - Avatar Assets: model-deployment/avatar.md
-          - Talking-Head Models: model-deployment/talking-head.md
-          - Mock Backend: model-deployment/mock.md
-          - QuickTalk: model-deployment/quicktalk.md
-          - Wav2Lip: model-deployment/wav2lip.md
-          - Wav2Lip Local: model-deployment/wav2lip-local.md
-          - MuseTalk: model-deployment/musetalk.md
-          - FlashTalk: model-deployment/flashtalk.md
-          - FlashHead: model-deployment/flashhead.md
-          - FasterLivePortrait: model-deployment/fasterliveportrait.md
-          - Local Audio + QuickTalk: model-deployment/local-quicktalk-audio.md
+      - Deployment Guide:
+          - Deployment Basics:
+              - Deployment Overview: model-deployment/index.md
+              - Deployment Topology: model-deployment/deployment.md
+              - Avatar Assets: model-deployment/avatar.md
+          - Backend Modes:
+              - Overview: model-deployment/backends/index.md
+              - Local Adapter: model-deployment/backends/local.md
+              - OmniRT: model-deployment/backends/omnirt.md
+          - Talking-Head Model Deployment:
+              - Talking-Head Model Deployment: model-deployment/talking-head/index.md
+              - Mock Backend: model-deployment/mock.md
+              - QuickTalk:
+                  - Overview: model-deployment/quicktalk.md
+                  - Local: model-deployment/quicktalk/local.md
+                  - OmniRT: model-deployment/quicktalk/omnirt.md
+              - Wav2Lip:
+                  - Overview: model-deployment/wav2lip.md
+                  - Local: model-deployment/wav2lip/local.md
+                  - OmniRT: model-deployment/wav2lip/omnirt.md
+              - MuseTalk:
+                  - Overview: model-deployment/musetalk.md
+                  - Local: model-deployment/musetalk/local.md
+                  - OmniRT: model-deployment/musetalk/omnirt.md
+              - FlashTalk: model-deployment/flashtalk.md
+              - FlashHead: model-deployment/flashhead.md
+              - FasterLivePortrait: model-deployment/fasterliveportrait.md
+          - Recipes:
+              - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
           - LLM and STT: model-deployment/llm-stt.md
           - TTS: model-deployment/tts.md
           - Support Matrix: model-deployment/support-matrix.md
@@ -286,20 +307,35 @@ nav:
           - FlashTalk: model-support/models/flashtalk.md
           - FlashHead: model-support/models/flashhead.md
           - FasterLivePortrait: model-support/models/fasterliveportrait.md
-  - Model Deployment:
-      - Deployment Overview: model-deployment/index.md
-      - Deployment Topology: model-deployment/deployment.md
-      - Avatar Assets: model-deployment/avatar.md
-      - Talking-Head Models: model-deployment/talking-head.md
-      - Mock Backend: model-deployment/mock.md
-      - QuickTalk: model-deployment/quicktalk.md
-      - Wav2Lip: model-deployment/wav2lip.md
-      - Wav2Lip Local: model-deployment/wav2lip-local.md
-      - MuseTalk: model-deployment/musetalk.md
-      - FlashTalk: model-deployment/flashtalk.md
-      - FlashHead: model-deployment/flashhead.md
-      - FasterLivePortrait: model-deployment/fasterliveportrait.md
-      - Local Audio + QuickTalk: model-deployment/local-quicktalk-audio.md
+  - Deployment Guide:
+      - Deployment Basics:
+          - Deployment Overview: model-deployment/index.md
+          - Deployment Topology: model-deployment/deployment.md
+          - Avatar Assets: model-deployment/avatar.md
+      - Backend Modes:
+          - Overview: model-deployment/backends/index.md
+          - Local Adapter: model-deployment/backends/local.md
+          - OmniRT: model-deployment/backends/omnirt.md
+      - Talking-Head Model Deployment:
+          - Talking-Head Model Deployment: model-deployment/talking-head/index.md
+          - Mock Backend: model-deployment/mock.md
+          - QuickTalk:
+              - Overview: model-deployment/quicktalk.md
+              - Local: model-deployment/quicktalk/local.md
+              - OmniRT: model-deployment/quicktalk/omnirt.md
+          - Wav2Lip:
+              - Overview: model-deployment/wav2lip.md
+              - Local: model-deployment/wav2lip/local.md
+              - OmniRT: model-deployment/wav2lip/omnirt.md
+          - MuseTalk:
+              - Overview: model-deployment/musetalk.md
+              - Local: model-deployment/musetalk/local.md
+              - OmniRT: model-deployment/musetalk/omnirt.md
+          - FlashTalk: model-deployment/flashtalk.md
+          - FlashHead: model-deployment/flashhead.md
+          - FasterLivePortrait: model-deployment/fasterliveportrait.md
+      - Recipes:
+          - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
       - LLM and STT: model-deployment/llm-stt.md
       - TTS: model-deployment/tts.md
       - Support Matrix: model-deployment/support-matrix.md
