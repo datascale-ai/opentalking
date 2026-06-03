@@ -88,6 +88,7 @@ async def test_init_session_sends_fasterliveportrait_realtime_config(tmp_path: P
             "cfg_scale": 3.5,
             "cfg_cond": [],
             "flag_stitching": False,
+            "flag_pasteback": False,
             "flag_relative_motion": True,
             "flag_lip_retargeting": False,
             "disable_frame_interpolation": True,
@@ -109,6 +110,7 @@ async def test_init_session_sends_fasterliveportrait_realtime_config(tmp_path: P
     assert sent["cfg_scale"] == 3.5
     assert sent["cfg_cond"] == []
     assert sent["flag_stitching"] is False
+    assert sent["flag_pasteback"] is False
     assert sent["flag_relative_motion"] is True
     assert sent["flag_lip_retargeting"] is False
     assert sent["disable_frame_interpolation"] is True

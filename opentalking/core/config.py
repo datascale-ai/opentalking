@@ -233,6 +233,7 @@ class Settings(BaseSettings):
     exports_dir: str = "./data/exports"
     export_max_bytes: int = 1024 * 1024 * 1024
     video_creation_audio_max_bytes: int = 50 * 1024 * 1024
+    video_creation_fasterliveportrait_preroll_ms: int = 400
 
     flashtalk_ws_url: str = ""
     flashtalk_ckpt_dir: str = "./models/SoulX-FlashTalk-14B"

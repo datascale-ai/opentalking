@@ -207,6 +207,7 @@ class FlashTalkWSClient:
                 "cfg_scale",
                 "cfg_cond",
                 "flag_stitching",
+                "flag_pasteback",
                 "flag_normalize_lip",
                 "flag_relative_motion",
                 "flag_lip_retargeting",

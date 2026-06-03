@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { BailianVoiceClone } from "./BailianVoiceClone";
+import type { FasterLivePortraitConfig } from "./SettingsPanel";
 import {
   ApiError,
   buildApiDownloadUrl,
@@ -40,6 +41,8 @@ type VideoCreationWorkspaceProps = {
   edgeVoice: string;
   onEdgeVoiceChange: (voiceId: string) => void;
   voiceCatalog: VoiceCatalogItem[];
+  fasterliveportraitConfig: FasterLivePortraitConfig;
+  onFasterLivePortraitConfigChange: (config: FasterLivePortraitConfig) => void;
 };
 
 const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = [
@@ -48,7 +51,67 @@ const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = 
   { id: "voice_clone", label: "复刻音色" },
 ];
 
-const VIDEO_CREATION_MODELS = ["wav2lip", "quicktalk"];
+const VIDEO_CREATION_MODELS = ["fasterliveportrait", "quicktalk", "wav2lip"];
+const VIDEO_CREATION_MODEL_LABELS: Record<string, string> = {
+  fasterliveportrait: "FasterLivePortrait",
+  quicktalk: "QuickTalk",
+  wav2lip: "Wav2Lip",
+};
+const FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS: { id: FasterLivePortraitConfig["animation_region"]; label: string }[] = [
+  { id: "lip", label: "嘴部" },
+  { id: "all", label: "全表情" },
+  { id: "exp", label: "表情" },
+  { id: "pose", label: "姿态" },
+  { id: "eyes", label: "眼睛" },
+];
+export const DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG = {
+  head_motion_multiplier: 0.3,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 1.0,
+  mouth_open_multiplier: 0.9,
+  mouth_corner_multiplier: 0.85,
+  cheek_jaw_multiplier: 0.9,
+  driving_multiplier: 1.0,
+  cfg_scale: 3.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: false,
+  flag_lip_retargeting: false,
+} as const satisfies FasterLivePortraitConfig;
+const FASTERLIVEPORTRAIT_SLIDERS: {
+  key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}[] = [
+  { key: "head_motion_multiplier", label: "整体头部", min: 0, max: 2, step: 0.05 },
+  { key: "pose_motion_multiplier", label: "姿态晃动", min: 0, max: 2, step: 0.05 },
+  { key: "yaw_multiplier", label: "左右摇头", min: 0, max: 2, step: 0.05 },
+  { key: "pitch_multiplier", label: "上下点头", min: 0, max: 2, step: 0.05 },
+  { key: "roll_multiplier", label: "左右歪头", min: 0, max: 2, step: 0.05 },
+  { key: "expression_multiplier", label: "表情唇形", min: 0, max: 3, step: 0.05 },
+  { key: "mouth_open_multiplier", label: "张嘴开合", min: 0, max: 4, step: 0.05 },
+  { key: "mouth_corner_multiplier", label: "嘴角牵动", min: 0, max: 3, step: 0.05 },
+  { key: "cheek_jaw_multiplier", label: "脸颊下颌", min: 0, max: 3, step: 0.05 },
+  { key: "driving_multiplier", label: "整体驱动", min: 0, max: 2, step: 0.05 },
+  { key: "cfg_scale", label: "音频跟随", min: 0, max: 10, step: 0.25 },
+];
+const FASTERLIVEPORTRAIT_SWITCHES: {
+  key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">;
+  label: string;
+}[] = [
+  { key: "flag_stitching", label: "Stitching" },
+  { key: "flag_pasteback", label: "拼回原图" },
+  { key: "flag_relative_motion", label: "相对运动" },
+  { key: "flag_normalize_lip", label: "唇形归一" },
+  { key: "flag_lip_retargeting", label: "唇形重定向" },
+];
 
 function providerLabel(provider: TtsProviderExtended): string {
   if (provider === "edge") return "Edge TTS";
@@ -84,9 +147,11 @@ export function VideoCreationWorkspace({
   edgeVoice,
   onEdgeVoiceChange,
   voiceCatalog,
+  fasterliveportraitConfig,
+  onFasterLivePortraitConfigChange,
 }: VideoCreationWorkspaceProps) {
   const selectedAvatar = avatars.find((avatar) => avatar.id === avatarId) ?? avatars[0] ?? null;
-  const [model, setModel] = useState(() => (models.includes("quicktalk") ? "quicktalk" : "wav2lip"));
+  const [model, setModel] = useState(() => (models.includes("fasterliveportrait") ? "fasterliveportrait" : models.includes("quicktalk") ? "quicktalk" : "wav2lip"));
   const [audioSource, setAudioSource] = useState<VideoCreationAudioSource>("upload");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [sourceImageBusy, setSourceImageBusy] = useState(false);
@@ -107,6 +172,22 @@ export function VideoCreationWorkspace({
     : qwenVoiceOptions.find((voice) => voice.id === qwenVoice)?.label ?? qwenVoice;
   const cloneVoiceCount = voiceCatalog.filter((item) => item.source === "clone").length;
   const canPreviewTts = audioSource !== "upload";
+
+  const updateFasterLivePortraitNumber = useCallback((
+    key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
+    value: string,
+  ) => {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    onFasterLivePortraitConfigChange({ ...fasterliveportraitConfig, [key]: next });
+  }, [fasterliveportraitConfig, onFasterLivePortraitConfigChange]);
+
+  const updateFasterLivePortraitSwitch = useCallback((
+    key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
+    checked: boolean,
+  ) => {
+    onFasterLivePortraitConfigChange({ ...fasterliveportraitConfig, [key]: checked });
+  }, [fasterliveportraitConfig, onFasterLivePortraitConfigChange]);
 
   useEffect(() => {
     return () => {
@@ -211,12 +292,13 @@ export function VideoCreationWorkspace({
         model: effectiveModel,
         avatarId: selectedAvatar.id,
         title,
-        audioSource: audioSource === "upload" ? "upload" : "tts_text",
+        audioSource,
         audioFile,
         text,
         ttsProvider,
         ttsModel: ttsProvider === "edge" ? undefined : qwenModel,
         voice: ttsProvider === "edge" ? edgeVoice : qwenVoice,
+        fasterliveportraitConfig: effectiveModel === "fasterliveportrait" ? fasterliveportraitConfig : undefined,
       });
       setResult(response.export_video);
       onExportCreated?.(response.export_video);
@@ -228,7 +310,7 @@ export function VideoCreationWorkspace({
     } finally {
       setGenerating(false);
     }
-  }, [audioFile, audioSource, edgeVoice, effectiveModel, onExportCreated, onNotify, qwenModel, qwenVoice, selectedAvatar, text, title, ttsProvider]);
+  }, [audioFile, audioSource, edgeVoice, effectiveModel, fasterliveportraitConfig, onExportCreated, onNotify, qwenModel, qwenVoice, selectedAvatar, text, title, ttsProvider]);
 
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
@@ -292,7 +374,7 @@ export function VideoCreationWorkspace({
                 生成模型
                 <select value={effectiveModel} onChange={(event) => setModel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
                   {VIDEO_CREATION_MODELS.map((item) => (
-                    <option key={item} value={item} disabled={!models.includes(item)}>{item}{models.includes(item) ? "" : "（不可用）"}</option>
+                    <option key={item} value={item} disabled={!models.includes(item)}>{VIDEO_CREATION_MODEL_LABELS[item] ?? item}{models.includes(item) ? "" : "（不可用）"}</option>
                   ))}
                 </select>
               </label>
@@ -301,6 +383,76 @@ export function VideoCreationWorkspace({
                 <input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
               </label>
             </div>
+
+            {effectiveModel === "fasterliveportrait" ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800">FasterLivePortrait 参数</p>
+                  <button
+                    type="button"
+                    onClick={() => onFasterLivePortraitConfigChange({ ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG })}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-700"
+                  >
+                    恢复默认
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => onFasterLivePortraitConfigChange({ ...fasterliveportraitConfig, animation_region: option.id })}
+                      className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${fasterliveportraitConfig.animation_region === option.id ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {FASTERLIVEPORTRAIT_SLIDERS.map((control) => {
+                    const value = Number(fasterliveportraitConfig[control.key]);
+                    return (
+                      <label key={control.key} className="block rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                        <span className="flex items-center justify-between gap-2">
+                          <span>{control.label}</span>
+                          <input
+                            type="number"
+                            min={control.min}
+                            max={control.max}
+                            step={control.step}
+                            value={value}
+                            onChange={(event) => updateFasterLivePortraitNumber(control.key, event.target.value)}
+                            className="h-7 w-20 rounded-md border border-slate-200 bg-slate-50 px-2 text-right text-xs font-semibold text-slate-700 outline-none focus:border-cyan-300"
+                          />
+                        </span>
+                        <input
+                          type="range"
+                          min={control.min}
+                          max={control.max}
+                          step={control.step}
+                          value={value}
+                          onChange={(event) => updateFasterLivePortraitNumber(control.key, event.target.value)}
+                          className="mt-2 w-full accent-cyan-600"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {FASTERLIVEPORTRAIT_SWITCHES.map((control) => (
+                    <label key={control.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                      <span className="truncate">{control.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(fasterliveportraitConfig[control.key])}
+                        onChange={(event) => updateFasterLivePortraitSwitch(control.key, event.target.checked)}
+                        className="h-4 w-4 shrink-0 accent-cyan-600"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-5">
               <p className="text-sm font-semibold text-slate-800">音频来源</p>

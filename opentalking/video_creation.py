@@ -1,25 +1,29 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import tempfile
 import uuid
 import wave
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 import cv2
 import numpy as np
 
+from opentalking.avatar.fasterliveportrait_config import normalize_fasterliveportrait_runtime_config
 from opentalking.avatar.loader import load_avatar_bundle
+from opentalking.core.model_config import get_model_config
 from opentalking.core.types.frames import VideoFrameData
 from opentalking.export_store import create_video_export
 from opentalking.models.registry import get_adapter
 from opentalking.providers.stt.dashscope.adapter import decode_audio_file_to_pcm_i16
-from opentalking.providers.synthesis.audio2video_client import LocalAudio2VideoClient
+from opentalking.providers.synthesis.audio2video_client import LocalAudio2VideoClient, OmniRTAudio2VideoClient
+from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
+from opentalking.providers.synthesis.omnirt import auth_headers, resolve_synthesis_ws_url
 from opentalking.providers.tts.factory import build_tts_adapter
 
-SUPPORTED_VIDEO_CREATION_MODELS = {"wav2lip", "quicktalk"}
+SUPPORTED_VIDEO_CREATION_MODELS = {"wav2lip", "quicktalk", "fasterliveportrait"}
 
 
 def _settings_path(settings: object, name: str, default: str) -> Path:
@@ -61,8 +65,124 @@ def _avatar_dir(settings: object, avatar_id: str) -> Path:
 def _normalize_model(model: str) -> str:
     value = (model or "").strip().lower()
     if value not in SUPPORTED_VIDEO_CREATION_MODELS:
-        raise ValueError("video creation only supports wav2lip and quicktalk")
+        raise ValueError("video creation only supports wav2lip, quicktalk, and fasterliveportrait")
     return value
+
+
+def _reference_image_path(avatar_path: Path) -> Path:
+    for name in ("reference.png", "reference.jpg", "reference.jpeg", "reference.webp", "preview.png"):
+        path = avatar_path / name
+        if path.is_file():
+            return path.resolve()
+    raise FileNotFoundError("avatar reference image not found")
+
+
+_FASTLIVEPORTRAIT_VIDEO_CONFIG_KEYS = (
+    "width",
+    "height",
+    "fps",
+    "chunk_samples",
+    "emit_frames_per_chunk",
+    "render_keyframes_per_chunk",
+    "disable_frame_interpolation",
+    "head_motion_multiplier",
+    "pose_motion_multiplier",
+    "yaw_multiplier",
+    "pitch_multiplier",
+    "roll_multiplier",
+    "animation_region",
+    "expression_multiplier",
+    "mouth_open_multiplier",
+    "mouth_corner_multiplier",
+    "cheek_jaw_multiplier",
+    "driving_multiplier",
+    "cfg_scale",
+    "cfg_cond",
+    "flag_stitching",
+    "flag_pasteback",
+    "flag_normalize_lip",
+    "flag_relative_motion",
+    "flag_lip_retargeting",
+    "lip_retargeting_multiplier",
+    "lip_retargeting_min",
+    "lip_retargeting_max",
+    "lip_retargeting_noise_floor",
+    "head_only_pasteback",
+    "lookahead_ms",
+)
+
+VIDEO_CREATION_FASTLIVEPORTRAIT_DEFAULT_CONFIG: dict[str, object] = {
+    "head_motion_multiplier": 0.3,
+    "pose_motion_multiplier": 0.35,
+    "yaw_multiplier": 0.85,
+    "pitch_multiplier": 1.0,
+    "roll_multiplier": 0.85,
+    "animation_region": "lip",
+    "expression_multiplier": 1.0,
+    "mouth_open_multiplier": 0.9,
+    "mouth_corner_multiplier": 0.85,
+    "cheek_jaw_multiplier": 0.9,
+    "driving_multiplier": 1.0,
+    "cfg_scale": 3.0,
+    "flag_stitching": True,
+    "flag_pasteback": True,
+    "flag_relative_motion": True,
+    "flag_normalize_lip": False,
+    "flag_lip_retargeting": False,
+}
+
+
+def _fasterliveportrait_video_config(
+    raw: Mapping[str, object] | None,
+) -> dict[str, object] | None:
+    base = get_model_config("fasterliveportrait")
+    out: dict[str, object] = {}
+    for key in _FASTLIVEPORTRAIT_VIDEO_CONFIG_KEYS:
+        value = base.get(key)
+        if value is not None:
+            out[key] = value
+    out.update(VIDEO_CREATION_FASTLIVEPORTRAIT_DEFAULT_CONFIG)
+    out.update(normalize_fasterliveportrait_runtime_config(dict(raw or {})))
+    return out or None
+
+
+def _fasterliveportrait_preroll_samples(settings: object, model: str, sample_rate: int) -> int:
+    if model != "fasterliveportrait":
+        return 0
+    preroll_ms = _settings_int(settings, "video_creation_fasterliveportrait_preroll_ms", 400)
+    if preroll_ms <= 0 or sample_rate <= 0:
+        return 0
+    return max(0, int(round(float(sample_rate) * float(preroll_ms) / 1000.0)))
+
+
+def _audio2video_client(settings: object, model: str, sample_rate: int):
+    if model == "fasterliveportrait":
+        ws_url = resolve_synthesis_ws_url(model, settings)
+        headers = auth_headers(settings)
+        return OmniRTAudio2VideoClient(
+            FlashTalkWSClient(ws_url, extra_headers=headers or None)
+        )
+    return LocalAudio2VideoClient(
+        get_adapter(model),
+        device=_device_for_model(settings, model),
+        sample_rate=sample_rate,
+    )
+
+
+def _init_session_kwargs(
+    *,
+    model: str,
+    avatar_path: Path,
+    fasterliveportrait_config: Mapping[str, object] | None,
+) -> dict[str, object]:
+    kwargs: dict[str, object] = {"avatar_path": avatar_path}
+    if model != "fasterliveportrait":
+        return kwargs
+    kwargs["ref_image"] = _reference_image_path(avatar_path)
+    video_config = _fasterliveportrait_video_config(fasterliveportrait_config)
+    if video_config:
+        kwargs["video_config"] = video_config
+    return kwargs
 
 
 def _device_for_model(settings: object, model: str) -> str:
@@ -166,6 +286,7 @@ class VideoCreationService:
         upload_path: Path,
         title: str,
         mime_type: str | None = None,
+        fasterliveportrait_config: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         pcm = await decode_audio_file_to_pcm_i16(upload_path)
         if pcm.size == 0:
@@ -176,6 +297,7 @@ class VideoCreationService:
             pcm=pcm,
             title=title,
             source="upload",
+            fasterliveportrait_config=fasterliveportrait_config,
         )
 
     async def create_from_tts_text(
@@ -188,6 +310,8 @@ class VideoCreationService:
         tts_provider: str | None,
         tts_model: str | None,
         voice: str | None,
+        source: str = "tts_text",
+        fasterliveportrait_config: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         text_value = text.strip()
         if not text_value:
@@ -222,7 +346,8 @@ class VideoCreationService:
             avatar_id=avatar_id,
             pcm=pcm,
             title=title,
-            source="tts_text",
+            source=source,
+            fasterliveportrait_config=fasterliveportrait_config,
         )
 
     async def _resample_pcm(self, pcm: np.ndarray, sample_rate: int) -> np.ndarray:
@@ -265,6 +390,7 @@ class VideoCreationService:
         pcm: np.ndarray,
         title: str,
         source: str,
+        fasterliveportrait_config: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         model_value = _normalize_model(model)
         avatar_path = _avatar_dir(self.settings, avatar_id)
@@ -276,14 +402,28 @@ class VideoCreationService:
         audio_wav = work_dir / "audio.wav"
         _write_wav(audio_wav, pcm, sample_rate)
 
-        client = LocalAudio2VideoClient(get_adapter(model_value), device=_device_for_model(self.settings, model_value), sample_rate=sample_rate)
+        client = _audio2video_client(self.settings, model_value, sample_rate)
+        preroll_samples = _fasterliveportrait_preroll_samples(self.settings, model_value, sample_rate)
+        render_source_pcm = pcm
+        if preroll_samples:
+            render_source_pcm = np.concatenate([np.zeros(preroll_samples, dtype=np.int16), pcm])
+
         frames: list[np.ndarray] = []
         try:
-            await client.init_session(avatar_path=avatar_path)
+            await client.init_session(
+                **_init_session_kwargs(
+                    model=model_value,
+                    avatar_path=avatar_path,
+                    fasterliveportrait_config=fasterliveportrait_config,
+                )
+            )
             await client.prewarm()
             chunk_samples = max(1, int(client.audio_chunk_samples or round(sample_rate / max(1, client.fps))))
-            pad_len = (-len(pcm)) % chunk_samples
-            render_pcm = pcm if not pad_len else np.concatenate([pcm, np.zeros(pad_len, dtype=np.int16)])
+            pad_len = (-len(render_source_pcm)) % chunk_samples
+            render_pcm = render_source_pcm if not pad_len else np.concatenate([
+                render_source_pcm,
+                np.zeros(pad_len, dtype=np.int16),
+            ])
             for start in range(0, len(render_pcm), chunk_samples):
                 chunk = render_pcm[start:start + chunk_samples]
                 for frame in await client.generate(chunk):
@@ -293,6 +433,14 @@ class VideoCreationService:
             fps = float(client.fps or 25)
         finally:
             await client.close()
+
+        if preroll_samples:
+            drop_frames = max(0, int(round(float(preroll_samples) * fps / float(sample_rate))))
+            if drop_frames:
+                frames = frames[drop_frames:]
+        target_frames = max(1, int(round(float(pcm.size) * fps / float(sample_rate))))
+        if len(frames) > target_frames:
+            frames = frames[:target_frames]
 
         video_only = work_dir / "video_only.mp4"
         _write_video_only(video_only, frames, fps)

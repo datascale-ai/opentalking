@@ -15,7 +15,10 @@ import { ToastStack, type ToastMessage, type ToastTone } from "./components/Toas
 import { VideoBackground } from "./components/VideoBackground";
 import { AssetLibraryWorkspace } from "./components/AssetLibraryWorkspace";
 import { VideoCloneWorkspace } from "./components/VideoCloneWorkspace";
-import { VideoCreationWorkspace } from "./components/VideoCreationWorkspace";
+import {
+  DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG,
+  VideoCreationWorkspace,
+} from "./components/VideoCreationWorkspace";
 import {
   ApiError,
   apiDelete,
@@ -146,6 +149,7 @@ const CUSTOM_REFERENCE_NAME_KEY = "opentalking-custom-reference-name";
 const SELECTED_AVATAR_STORAGE_KEY = "opentalking-selected-avatar-id";
 const SELECTED_AVATAR_SOURCE_STORAGE_KEY = "opentalking-selected-avatar-source-v1";
 const FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY = "opentalking-fasterliveportrait-config-v2";
+const VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY = "opentalking-video-creation-fasterliveportrait-config-v4";
 const ASR_PROVIDER_STORAGE_KEY = "opentalking-asr-provider-v1";
 const LEGACY_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   head_motion_multiplier: 1.0,
@@ -221,6 +225,25 @@ const OVERDRIVEN_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   flag_pasteback: true,
   flag_relative_motion: true,
   flag_normalize_lip: true,
+  flag_lip_retargeting: false,
+};
+const BROKEN_VIDEO_CREATION_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
+  head_motion_multiplier: 0.25,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "all",
+  expression_multiplier: 1.12,
+  mouth_open_multiplier: 3.35,
+  mouth_corner_multiplier: 0.78,
+  cheek_jaw_multiplier: 0.9,
+  driving_multiplier: 1.12,
+  cfg_scale: 5.15,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: false,
   flag_lip_retargeting: false,
 };
 
@@ -336,11 +359,14 @@ type HealthResponse = {
   stt_providers?: Record<string, { key_set?: boolean; model?: string; model_dir?: string; device?: string }>;
 };
 
-function sanitizeFasterLivePortraitConfig(raw: unknown): FasterLivePortraitConfig {
+function sanitizeFasterLivePortraitConfig(
+  raw: unknown,
+  defaults: FasterLivePortraitConfig = DEFAULT_FASTLIVEPORTRAIT_CONFIG,
+): FasterLivePortraitConfig {
   const source = raw && typeof raw === "object" ? raw as Partial<Record<keyof FasterLivePortraitConfig, unknown>> : {};
   const clamp = (key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">, min: number, max: number) => {
-    const value = Number(source[key] ?? DEFAULT_FASTLIVEPORTRAIT_CONFIG[key]);
-    if (!Number.isFinite(value)) return DEFAULT_FASTLIVEPORTRAIT_CONFIG[key];
+    const value = Number(source[key] ?? defaults[key]);
+    if (!Number.isFinite(value)) return defaults[key];
     return Math.min(max, Math.max(min, value));
   };
   const boolValue = (
@@ -350,7 +376,7 @@ function sanitizeFasterLivePortraitConfig(raw: unknown): FasterLivePortraitConfi
     if (typeof value === "boolean") return value;
     if (typeof value === "string") return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
     if (typeof value === "number") return value !== 0;
-    return DEFAULT_FASTLIVEPORTRAIT_CONFIG[key];
+    return defaults[key];
   };
   return {
     head_motion_multiplier: clamp("head_motion_multiplier", 0, 4),
@@ -359,12 +385,13 @@ function sanitizeFasterLivePortraitConfig(raw: unknown): FasterLivePortraitConfi
     pitch_multiplier: clamp("pitch_multiplier", 0, 4),
     roll_multiplier: clamp("roll_multiplier", 0, 4),
     animation_region:
+      source.animation_region === "lip" ||
       source.animation_region === "all" ||
       source.animation_region === "exp" ||
       source.animation_region === "pose" ||
       source.animation_region === "eyes"
         ? source.animation_region
-        : DEFAULT_FASTLIVEPORTRAIT_CONFIG.animation_region,
+        : defaults.animation_region,
     expression_multiplier: clamp("expression_multiplier", 0, 4),
     mouth_open_multiplier: clamp("mouth_open_multiplier", 0, 4),
     mouth_corner_multiplier: clamp("mouth_corner_multiplier", 0, 4),
@@ -405,6 +432,23 @@ function readStoredFasterLivePortraitConfig(): FasterLivePortraitConfig {
     return stored;
   } catch {
     return { ...DEFAULT_FASTLIVEPORTRAIT_CONFIG };
+  }
+}
+
+function readStoredVideoCreationFasterLivePortraitConfig(): FasterLivePortraitConfig {
+  try {
+    const raw = window.localStorage.getItem(VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG };
+    const stored = sanitizeFasterLivePortraitConfig(JSON.parse(raw), {
+      ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG,
+    });
+    if (sameFasterLivePortraitConfig(stored, BROKEN_VIDEO_CREATION_FASTLIVEPORTRAIT_DEFAULT_CONFIG)) {
+      window.localStorage.removeItem(VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY);
+      return { ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG };
+    }
+    return stored;
+  } catch {
+    return { ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG };
   }
 }
 
@@ -634,6 +678,9 @@ export default function App() {
   );
   const [fasterliveportraitAppliedConfig, setFasterliveportraitAppliedConfig] = useState<FasterLivePortraitConfig>(
     readStoredFasterLivePortraitConfig,
+  );
+  const [videoCreationFasterliveportraitConfig, setVideoCreationFasterliveportraitConfig] = useState<FasterLivePortraitConfig>(
+    readStoredVideoCreationFasterLivePortraitConfig,
   );
   const [fasterliveportraitApplying, setFasterliveportraitApplying] = useState(false);
   const [workflow, setWorkflow] = useState<StudioWorkflow>("realtime");
@@ -952,6 +999,17 @@ export default function App() {
       /* ignore */
     }
   }, [fasterliveportraitConfig]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY,
+        JSON.stringify(videoCreationFasterliveportraitConfig),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [videoCreationFasterliveportraitConfig]);
 
   useEffect(() => {
     try {
@@ -1561,6 +1619,12 @@ export default function App() {
     setFasterliveportraitConfig({ ...DEFAULT_FASTLIVEPORTRAIT_CONFIG });
   }, []);
 
+  const handleVideoCreationFasterLivePortraitConfigChange = useCallback((config: FasterLivePortraitConfig) => {
+    setVideoCreationFasterliveportraitConfig(
+      sanitizeFasterLivePortraitConfig(config, { ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG }),
+    );
+  }, []);
+
   const handleApplyFasterLivePortraitConfig = useCallback(async () => {
     const next = sanitizeFasterLivePortraitConfig(fasterliveportraitConfig);
     setFasterliveportraitConfig(next);
@@ -2114,6 +2178,8 @@ export default function App() {
             edgeVoice={edgeVoice}
             onEdgeVoiceChange={setEdgeVoice}
             voiceCatalog={voiceCatalog}
+            fasterliveportraitConfig={videoCreationFasterliveportraitConfig}
+            onFasterLivePortraitConfigChange={handleVideoCreationFasterLivePortraitConfigChange}
           />
         </div>
       ) : workflow === "videoClone" ? (

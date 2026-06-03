@@ -4,10 +4,14 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from apps.api.routes import video_creation
+from opentalking.core.types.frames import VideoFrameData
+from opentalking.video_creation import VideoCreationService
 
 
 def _write_avatar(root: Path, avatar_id: str = "anchor") -> Path:
@@ -149,6 +153,271 @@ def test_video_creation_tts_text_passes_voice_model_without_audio_preview(tmp_pa
     assert kwargs["tts_model"] == "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
     assert kwargs["voice"] == "local-demo"
     assert response.json()["export_video"]["model"] == "quicktalk"
+
+
+def test_video_creation_audio_upload_passes_fasterliveportrait_config(tmp_path: Path, monkeypatch) -> None:
+    client, creators = _client(tmp_path, monkeypatch)
+    with client:
+        response = client.post(
+            "/video-creation/jobs",
+            data={
+                "model": "fasterliveportrait",
+                "avatar_id": "anchor",
+                "audio_source": "upload",
+                "title": "Upload take",
+                "fasterliveportrait_config": json.dumps(
+                    {
+                        "mouth_open_multiplier": 2.2,
+                        "animation_region": "all",
+                        "flag_pasteback": False,
+                    }
+                ),
+            },
+            files={"audio_file": ("speech.wav", b"RIFFaudio", "audio/wav")},
+        )
+
+    assert response.status_code == 200, response.text
+    call_type, kwargs = creators[0].calls[0]
+    assert call_type == "audio"
+    assert kwargs["fasterliveportrait_config"] == {
+        "mouth_open_multiplier": 2.2,
+        "animation_region": "all",
+        "flag_pasteback": False,
+    }
+    assert response.json()["export_video"]["model"] == "fasterliveportrait"
+
+
+@pytest.mark.parametrize("audio_source", ["tts_text", "voice_clone"])
+def test_video_creation_tts_sources_pass_fasterliveportrait_config(
+    tmp_path: Path,
+    monkeypatch,
+    audio_source: str,
+) -> None:
+    client, creators = _client(tmp_path, monkeypatch)
+    with client:
+        response = client.post(
+            "/video-creation/jobs",
+            data={
+                "model": "fasterliveportrait",
+                "avatar_id": "anchor",
+                "audio_source": audio_source,
+                "title": "TTS take",
+                "text": "这是文本或复刻音色驱动的视频创作。",
+                "tts_provider": "dashscope",
+                "tts_model": "cosyvoice-v2",
+                "voice": "voice-clone-1",
+                "fasterliveportrait_config": json.dumps(
+                    {
+                        "mouth_open_multiplier": 2.2,
+                        "animation_region": "all",
+                        "flag_pasteback": False,
+                    }
+                ),
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    call_type, kwargs = creators[0].calls[0]
+    assert call_type == "tts"
+    assert kwargs["source"] == audio_source
+    assert kwargs["fasterliveportrait_config"] == {
+        "mouth_open_multiplier": 2.2,
+        "animation_region": "all",
+        "flag_pasteback": False,
+    }
+    assert response.json()["export_video"]["model"] == "fasterliveportrait"
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_renders_fasterliveportrait_via_omnirt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_avatar(avatars)
+    uploaded = tmp_path / "speech.wav"
+    uploaded.write_bytes(b"RIFFaudio")
+
+    class FakeWSClient:
+        def __init__(self, ws_url: str, *, extra_headers: dict[str, str] | None = None) -> None:
+            self.ws_url = ws_url
+            self.extra_headers = extra_headers or {}
+
+    class FakeOmniRTClient:
+        instances: list["FakeOmniRTClient"] = []
+
+        def __init__(self, ws_client: FakeWSClient) -> None:
+            self.ws_client = ws_client
+            self.init_kwargs: dict[str, object] | None = None
+            self.generated_chunks: list[np.ndarray] = []
+            self.closed = False
+            self.fps = 25
+            self.audio_chunk_samples = 4
+            FakeOmniRTClient.instances.append(self)
+
+        async def init_session(self, **kwargs: object) -> dict[str, object]:
+            self.init_kwargs = kwargs
+            return {"type": "init_ok"}
+
+        async def prewarm(self) -> dict[str, object]:
+            return {"type": "prewarm_skipped"}
+
+        async def generate(self, audio_pcm: np.ndarray) -> list[VideoFrameData]:
+            self.generated_chunks.append(np.asarray(audio_pcm, dtype=np.int16).copy())
+            return [
+                VideoFrameData(
+                    data=np.zeros((2, 2, 3), dtype=np.uint8),
+                    width=2,
+                    height=2,
+                    timestamp_ms=0.0,
+                )
+            ]
+
+        async def close(self, send_close_msg: bool = True) -> None:
+            self.closed = send_close_msg
+
+    async def fake_decode(_path: Path) -> np.ndarray:
+        return np.arange(6, dtype=np.int16)
+
+    async def fake_mux(_ffmpeg_bin: str, _video_in: Path, _audio_in: Path, out_mp4: Path) -> None:
+        out_mp4.write_bytes(b"mp4")
+
+    def fake_create_video_export(root: Path, **kwargs: object) -> dict[str, object]:
+        return {
+            "id": "export-flp",
+            "kind": "video_creation",
+            "title": kwargs["title"],
+            "duration_sec": kwargs["duration_sec"],
+            "size_bytes": len(kwargs["content"]),
+            "mime_type": "video/mp4",
+            "created_at": "2026-06-04T00:00:00Z",
+            "path": str(root / "export-flp.mp4"),
+            "session_id": kwargs["session_id"],
+            "avatar_id": kwargs["avatar_id"],
+            "model": kwargs["model"],
+        }
+
+    monkeypatch.setattr(video_creation_module, "FlashTalkWSClient", FakeWSClient, raising=False)
+    monkeypatch.setattr(video_creation_module, "OmniRTAudio2VideoClient", FakeOmniRTClient, raising=False)
+    monkeypatch.setattr(video_creation_module, "decode_audio_file_to_pcm_i16", fake_decode)
+    monkeypatch.setattr(video_creation_module, "_write_video_only", lambda path, _frames, _fps: path.write_bytes(b"video"))
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", fake_mux)
+    monkeypatch.setattr(
+        video_creation_module,
+        "get_model_config",
+        lambda _model: {
+            "width": 448,
+            "height": 900,
+            "fps": 25,
+            "emit_frames_per_chunk": 25,
+            "render_keyframes_per_chunk": 25,
+            "disable_frame_interpolation": True,
+        },
+    )
+    monkeypatch.setattr(video_creation_module, "create_video_export", fake_create_video_export)
+
+    settings = SimpleNamespace(
+        avatars_dir=str(avatars),
+        exports_dir=str(exports),
+        export_max_bytes=1024 * 1024,
+        ffmpeg_bin="ffmpeg",
+        omnirt_endpoint="http://127.0.0.1:9000",
+        omnirt_audio2video_path_template="/v1/audio2video/{model}",
+        omnirt_api_key="",
+        video_creation_fasterliveportrait_preroll_ms=0,
+    )
+    service = VideoCreationService(settings)
+
+    result = await service.create_from_audio_file(
+        model="fasterliveportrait",
+        avatar_id="anchor",
+        upload_path=uploaded,
+        title="FasterLivePortrait take",
+        fasterliveportrait_config={
+            "mouth_open_multiplier": 2.0,
+            "animation_region": "all",
+            "flag_pasteback": False,
+            "flag_stitching": False,
+        },
+    )
+
+    client = FakeOmniRTClient.instances[0]
+    assert client.ws_client.ws_url == "ws://127.0.0.1:9000/v1/audio2video/fasterliveportrait"
+    assert client.init_kwargs is not None
+    assert "ref_image" in client.init_kwargs
+    assert client.init_kwargs["avatar_path"] == avatars / "anchor"
+    assert client.init_kwargs["video_config"] == {
+        "width": 448,
+        "height": 900,
+        "fps": 25,
+        "emit_frames_per_chunk": 25,
+        "render_keyframes_per_chunk": 25,
+        "disable_frame_interpolation": True,
+        **video_creation_module.VIDEO_CREATION_FASTLIVEPORTRAIT_DEFAULT_CONFIG,
+        "mouth_open_multiplier": 2.0,
+        "animation_region": "all",
+        "flag_pasteback": False,
+        "flag_stitching": False,
+    }
+    assert [chunk.size for chunk in client.generated_chunks] == [4, 4]
+    assert client.closed is True
+    assert result["source"] == "upload"
+    assert result["export_video"]["model"] == "fasterliveportrait"
+
+
+def test_video_creation_fasterliveportrait_preroll_samples() -> None:
+    from opentalking import video_creation as video_creation_module
+
+    settings = SimpleNamespace(video_creation_fasterliveportrait_preroll_ms=400)
+
+    assert video_creation_module._fasterliveportrait_preroll_samples(settings, "fasterliveportrait", 16000) == 6400
+    assert video_creation_module._fasterliveportrait_preroll_samples(settings, "wav2lip", 16000) == 0
+    assert video_creation_module._fasterliveportrait_preroll_samples(
+        SimpleNamespace(video_creation_fasterliveportrait_preroll_ms=0),
+        "fasterliveportrait",
+        16000,
+    ) == 0
+
+
+def test_video_creation_fasterliveportrait_uses_video_creation_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    monkeypatch.setattr(
+        video_creation_module,
+        "get_model_config",
+        lambda _model: {
+            "width": 448,
+            "height": 900,
+            "fps": 25,
+            "render_keyframes_per_chunk": 25,
+            "disable_frame_interpolation": True,
+            "animation_region": "lip",
+            "expression_multiplier": 1.0,
+            "mouth_open_multiplier": 1.25,
+            "mouth_corner_multiplier": 0.85,
+            "cheek_jaw_multiplier": 0.9,
+            "driving_multiplier": 1.0,
+            "cfg_scale": 4.0,
+            "flag_normalize_lip": True,
+        },
+    )
+
+    config = video_creation_module._fasterliveportrait_video_config(None)
+
+    assert config is not None
+    assert config["width"] == 448
+    assert config["render_keyframes_per_chunk"] == 25
+    assert config["animation_region"] == "lip"
+    assert config["expression_multiplier"] == 1.0
+    assert config["mouth_open_multiplier"] == 0.9
+    assert config["mouth_corner_multiplier"] == 0.85
+    assert config["cheek_jaw_multiplier"] == 0.9
+    assert config["driving_multiplier"] == 1.0
+    assert config["cfg_scale"] == 3.0
+    assert config["flag_normalize_lip"] is False
 
 
 def test_video_creation_rejects_oversized_uploaded_audio(tmp_path: Path, monkeypatch) -> None:

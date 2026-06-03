@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
+from opentalking.avatar.fasterliveportrait_config import normalize_fasterliveportrait_runtime_config
 from opentalking.video_creation import VideoCreationService
 
 router = APIRouter(prefix="/video-creation", tags=["video-creation"])
 
-_AUDIO_SOURCES = {"upload", "tts_text"}
+_AUDIO_SOURCES = {"upload", "tts_text", "voice_clone"}
 
 
 def _audio_max_bytes(settings: object) -> int:
@@ -27,6 +29,20 @@ def _with_download_url(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _parse_fasterliveportrait_config(model: str, raw: str | None) -> dict[str, object] | None:
+    if (model or "").strip().lower() != "fasterliveportrait" or not raw:
+        return None
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="fasterliveportrait_config must be valid JSON") from exc
+    try:
+        config = normalize_fasterliveportrait_runtime_config(decoded)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return dict(config) or None
+
+
 @router.post("/jobs", response_model=None)
 async def create_video_creation_job(
     request: Request,
@@ -39,11 +55,13 @@ async def create_video_creation_job(
     tts_provider: str | None = Form(default=None),
     tts_model: str | None = Form(default=None),
     voice: str | None = Form(default=None),
+    fasterliveportrait_config: str | None = Form(default=None),
 ) -> dict[str, Any]:
     source = audio_source.strip().lower()
     if source not in _AUDIO_SOURCES:
-        raise HTTPException(status_code=400, detail="audio_source must be upload or tts_text")
+        raise HTTPException(status_code=400, detail="audio_source must be upload, tts_text, or voice_clone")
     settings = request.app.state.settings
+    flp_config = _parse_fasterliveportrait_config(model, fasterliveportrait_config)
     service = VideoCreationService(settings)
     try:
         if source == "upload":
@@ -66,6 +84,7 @@ async def create_video_creation_job(
                     upload_path=upload_path,
                     title=title,
                     mime_type=audio_file.content_type,
+                    fasterliveportrait_config=flp_config,
                 )
             finally:
                 upload_path.unlink(missing_ok=True)
@@ -79,6 +98,8 @@ async def create_video_creation_job(
             tts_provider=tts_provider,
             tts_model=tts_model,
             voice=voice,
+            source=source,
+            fasterliveportrait_config=flp_config,
         )
         return _with_download_url(result)
     except HTTPException:

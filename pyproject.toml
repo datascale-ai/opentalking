@@ -152,6 +152,10 @@ target-version = "py310"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "apps/api/tests"]
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated.*",
+  "ignore:Type google\\._upb\\._message\\..* uses PyType_Spec.*:DeprecationWarning",
+]
 
 [[tool.mypy.overrides]]
 module = [
