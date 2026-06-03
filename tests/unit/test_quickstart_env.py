@@ -64,6 +64,29 @@ bash -c 'test "$OPENTALKING_TEST_DEFAULT" = from_quickstart_env'
     subprocess.run(["bash", "-lc", script], cwd=REPO_ROOT, check=True)
 
 
+def test_quickstart_source_env_keeps_new_env_file_assignments(tmp_path: Path) -> None:
+    if shutil.which("bash") is None:
+        pytest.skip("bash is not available")
+    env_file = tmp_path / "quickstart.env"
+    env_file.write_text(
+        "OPENTALKING_QUICKTALK_MODEL_ROOT=/models/quicktalk\n"
+        "OPENTALKING_WAV2LIP_DEVICE=cuda:6\n",
+        encoding="utf-8",
+    )
+
+    script = f"""
+set -euo pipefail
+export OPENTALKING_TORCH_DEVICE=cuda:6
+source scripts/quickstart/_helpers.sh
+quickstart_source_env {env_file}
+bash -c 'test "$OPENTALKING_TORCH_DEVICE" = cuda:6'
+bash -c 'test "$OPENTALKING_QUICKTALK_MODEL_ROOT" = /models/quicktalk'
+bash -c 'test "$OPENTALKING_WAV2LIP_DEVICE" = cuda:6'
+"""
+
+    subprocess.run(["bash", "-lc", script], cwd=REPO_ROOT, check=True)
+
+
 def test_quickstart_source_ascend_env_tolerates_unset_ld_library_path(tmp_path: Path) -> None:
     if shutil.which("bash") is None:
         pytest.skip("bash is not available")

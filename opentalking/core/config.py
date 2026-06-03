@@ -230,6 +230,9 @@ class Settings(BaseSettings):
     avatars_dir: str = "./examples/avatars"
     models_dir: str = "./models"
     worker_url: str = "http://127.0.0.1:9001"
+    exports_dir: str = "./data/exports"
+    export_max_bytes: int = 1024 * 1024 * 1024
+    video_creation_audio_max_bytes: int = 50 * 1024 * 1024
 
     flashtalk_ws_url: str = ""
     flashtalk_ckpt_dir: str = "./models/SoulX-FlashTalk-14B"

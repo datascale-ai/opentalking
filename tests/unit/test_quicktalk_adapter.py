@@ -36,6 +36,26 @@ def _write_quicktalk_pth_assets(asset_root: Path) -> None:
     )
 
 
+def test_quicktalk_runtime_available_rejects_unavailable_explicit_cuda(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset_root = tmp_path / "models" / "quicktalk"
+    _write_quicktalk_pth_assets(asset_root)
+
+    class FakeCuda:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    fake_torch = types.SimpleNamespace(cuda=FakeCuda())
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_MODEL_ROOT", str(asset_root))
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_DEVICE", "cuda:6")
+
+    assert QuickTalkAdapter.runtime_available() is False
+
+
 def test_quicktalk_adapter_treats_empty_asset_root_env_as_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

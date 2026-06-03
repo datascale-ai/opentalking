@@ -268,3 +268,180 @@ def test_frontend_prefers_existing_custom_avatar_before_builtin_default():
     custom_idx = app.index("const customAvatar = pickInitialCustomAvatar")
     builtin_idx = app.index('avatars.find((a) => a.id === "anime-handsome-guy"')
     assert custom_idx < builtin_idx
+
+
+
+def test_frontend_defines_export_video_api_contract():
+    api = (WEB / "lib" / "api.ts").read_text(encoding="utf-8")
+
+    assert "export type ExportVideoItem" in api
+    for field in (
+        "duration_sec",
+        "size_bytes",
+        "download_url",
+        "session_id",
+        "avatar_id",
+        "model",
+    ):
+        assert field in api
+
+
+def test_asset_library_workspace_lists_exported_videos():
+    asset = (WEB / "components" / "AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+    topbar = (WEB / "components" / "TopBar.tsx").read_text(encoding="utf-8")
+
+    assert "AssetLibraryWorkspace" in app
+    assert "assetLibrary" in topbar
+    assert "导出视频" in asset
+    assert "Avatar资产" in asset
+    assert "声音资产" in asset
+    assert 'apiGet<{ items: ExportVideoItem[] }>("/exports/videos")' in asset
+    assert "download_url" in asset
+    assert "navigator.clipboard.writeText" in asset
+    assert "apiDelete(`/exports/videos/${item.id}`)" in asset
+
+
+def test_realtime_recording_uses_browser_media_recorder_and_uploads_export():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+    webrtc = (WEB / "lib" / "webrtc.ts").read_text(encoding="utf-8")
+
+    assert "remoteStream" in webrtc
+    assert "onRemoteStream" in webrtc
+    assert "MediaRecorder" in app
+    assert "getUserMedia({ audio: true" in app
+    assert "uploadExportVideo" in app
+    assert 'kind", "realtime_dialogue"' in app or 'kind: "realtime_dialogue"' in app
+    assert "pendingRealtimeExportRef" in app
+    assert "retryPendingRealtimeExport" in app
+    record_block = app[app.index("const startRealtimeRecording"):app.index("recorder.start(1000)")]
+    assert '"video/mp4' in record_block
+    assert record_block.index('"video/mp4') < record_block.index('"video/webm')
+    assert "录制已保存，可在资产库查看" in app
+
+
+def test_realtime_recording_clones_stage_video_tracks_before_cleanup():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+
+    record_block = app[app.index("const startRealtimeRecording"):app.index("recorder.start(1000)")]
+    cleanup_block = app[app.index("const cleanupRealtimeRecordStreams"):app.index("const uploadRealtimeExport")]
+
+    assert "stageStream.getVideoTracks().map((track) => track.clone())" in record_block
+    assert "new MediaStream(recordVideoTracks)" in record_block
+    assert "realtimeRecordStreamRef.current = outputStream" in record_block
+    assert "realtimeRecordStreamRef.current.getTracks()" in cleanup_block
+
+
+def test_export_upload_uses_blob_mime_type_for_filename_extension():
+    api = (WEB / "lib" / "api.ts").read_text(encoding="utf-8")
+
+    assert "exportVideoExtensionForMimeType" in api
+    assert '"video/mp4"' in api
+    assert '".mp4"' in api
+    assert '"video/webm"' in api
+    assert '".webm"' in api
+    assert "input.blob.type" in api
+    assert "`${input.kind}${exportVideoExtensionForMimeType(input.blob.type)}`" in api
+
+
+def test_realtime_recording_has_microphone_permission_timeout():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+
+    assert "requestUserAudioWithTimeout" in app
+    assert "microphonePermissionTimeoutMs" in app
+    assert "麦克风权限请求超时" in app
+    record_block = app[app.index("const startRealtimeRecording"):app.index("recorder.start(1000)")]
+    assert "requestUserAudioWithTimeout" in record_block
+    assert "navigator.mediaDevices.getUserMedia({ audio: true })" not in record_block
+
+
+def test_realtime_recording_start_failures_show_actionable_copy():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+
+    assert "realtimeRecordingStartErrorMessage" in app
+    assert "当前访问地址不是浏览器安全来源" in app
+    assert "http://127.0.0.1" in app
+    assert "NotSupportedError" in app
+    assert "SecurityError" in app
+    assert "NotReadableError" in app
+    assert "未检测到可用麦克风" in app
+    record_error_block = app[
+        app.index("function realtimeRecordingStartErrorMessage"):app.index("export default function App")
+    ]
+    assert "开始录制失败，请确认浏览器权限和当前会话状态。" not in record_error_block
+
+
+def test_video_clone_records_output_canvas_without_audio():
+    clone = (WEB / "components" / "VideoCloneWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "outputRecordCanvasRef" in clone
+    assert "captureStream(fps)" in clone
+    assert "new MediaRecorder" in clone
+    assert 'kind", "video_clone"' in clone or 'kind: "video_clone"' in clone
+    assert "onExportCreated" in clone
+    record_block = clone[clone.index("const startOutputRecording"):clone.index("recorder.start(1000)")]
+    assert '"video/mp4' in record_block
+    assert record_block.index('"video/mp4') < record_block.index('"video/webm')
+    assert "视频克隆录制已保存，可在资产库查看" in clone
+    assert "audio" not in clone[clone.index("const startOutputRecording"):clone.index("const stopOutputRecording")]
+
+
+def test_video_creation_workspace_wires_offline_generation_flow():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+    topbar = (WEB / "components" / "TopBar.tsx").read_text(encoding="utf-8")
+    api = (WEB / "lib" / "api.ts").read_text(encoding="utf-8")
+    workspace = (WEB / "components" / "VideoCreationWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert '"videoCreation"' in topbar
+    assert "视频创作" in topbar
+    assert "VideoCreationWorkspace" in app
+    assert 'workflow === "videoCreation"' in app
+    assert 'onExportCreated={() => setAssetLibraryRefreshKey((value) => value + 1)}' in app
+    assert '"video_creation"' in api
+    assert "export type VideoCreationJobResponse" in api
+    assert "createVideoCreationJob" in api
+    assert 'apiPostForm<VideoCreationJobResponse>("/video-creation/jobs", form)' in api
+    assert "音频来源" in workspace
+    assert "上传音频" in workspace
+    assert "文本合成" in workspace
+    assert "复刻音色" in workspace
+    assert 'audioSource: audioSource === "upload" ? "upload" : "tts_text"' in workspace
+    assert 'form.set("audio_source", input.audioSource)' in api
+    assert '"upload" | "tts_text"' in api
+    assert "BailianVoiceClone" in workspace
+    assert "onVoiceCloned" in workspace
+    assert "已保存到资产库" in workspace
+    assert "去资产库查看" in workspace
+
+
+def test_video_creation_source_cards_hide_model_type():
+    workspace = (WEB / "components" / "VideoCreationWorkspace.tsx").read_text(encoding="utf-8")
+    source_block = workspace[
+        workspace.index("{avatars.map((avatar) =>"):
+        workspace.index("<section", workspace.index("{avatars.map((avatar) =>"))
+    ]
+
+    assert "avatar.model_type" not in source_block
+    assert "{avatar.width}x{avatar.height}" in source_block
+    assert "{avatar.model_type} · {avatar.width}x{avatar.height}" not in workspace
+
+
+def test_video_creation_workspace_previews_synthesized_voice_audio():
+    workspace = (WEB / "components" / "VideoCreationWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "requestTTSPreview" in workspace
+    assert "buildTTSPreviewPayload" in workspace
+    assert "handlePreviewTts" in workspace
+    assert "ttsPreviewing" in workspace
+    assert "试听中..." in workspace
+    assert "试听口播" in workspace
+    preview_block = workspace[workspace.index("const handlePreviewTts"):workspace.index("const handleGenerate")]
+    assert "audio.play()" in preview_block
+    assert "audioSource !== \"upload\"" in workspace
+
+
+def test_asset_library_labels_video_creation_exports():
+    asset = (WEB / "components" / "AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "video_creation" in asset
+    assert "视频创作" in asset

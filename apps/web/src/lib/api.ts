@@ -93,6 +93,90 @@ export async function apiPostForm<T>(path: string, form: FormData, init?: Reques
   return r.json() as Promise<T>;
 }
 
+export type ExportVideoKind = "realtime_dialogue" | "video_clone" | "video_creation";
+
+export type ExportVideoItem = {
+  id: string;
+  kind: ExportVideoKind;
+  title: string;
+  duration_sec: number | null;
+  size_bytes: number;
+  mime_type: string;
+  created_at: string;
+  path: string;
+  download_url: string;
+  session_id: string | null;
+  avatar_id: string | null;
+  model: string | null;
+};
+
+export type UploadExportVideoInput = {
+  blob: Blob;
+  kind: ExportVideoKind;
+  title: string;
+  durationSec?: number | null;
+  sessionId?: string | null;
+  avatarId?: string | null;
+  model?: string | null;
+};
+
+export function exportVideoExtensionForMimeType(mimeType: string): ".mp4" | ".webm" {
+  const normalized = mimeType.split(";", 1)[0].trim().toLowerCase();
+  if (normalized === "video/mp4") return ".mp4";
+  if (normalized === "video/webm") return ".webm";
+  return ".webm";
+}
+
+export async function uploadExportVideo(input: UploadExportVideoInput): Promise<ExportVideoItem> {
+  const form = new FormData();
+  form.set("file", input.blob, `${input.kind}${exportVideoExtensionForMimeType(input.blob.type)}`);
+  form.set("kind", input.kind);
+  form.set("title", input.title);
+  if (input.durationSec != null) form.set("duration_sec", String(input.durationSec));
+  if (input.sessionId) form.set("session_id", input.sessionId);
+  if (input.avatarId) form.set("avatar_id", input.avatarId);
+  if (input.model) form.set("model", input.model);
+  return apiPostForm<ExportVideoItem>("/exports/videos", form);
+}
+
+
+export type VideoCreationAudioSource = "upload" | "tts_text";
+
+export type VideoCreationJobResponse = {
+  job_id: string;
+  status: "done" | "error" | string;
+  source?: VideoCreationAudioSource | string;
+  export_video: ExportVideoItem;
+};
+
+export type CreateVideoCreationJobInput = {
+  model: string;
+  avatarId: string;
+  title?: string;
+  audioSource: VideoCreationAudioSource;
+  audioFile?: File | null;
+  text?: string;
+  ttsProvider?: string;
+  ttsModel?: string;
+  voice?: string;
+};
+
+export async function createVideoCreationJob(input: CreateVideoCreationJobInput): Promise<VideoCreationJobResponse> {
+  const form = new FormData();
+  form.set("model", input.model);
+  form.set("avatar_id", input.avatarId);
+  form.set("audio_source", input.audioSource);
+  if (input.title) form.set("title", input.title);
+  if (input.audioSource === "upload" && input.audioFile) {
+    form.set("audio_file", input.audioFile);
+  }
+  if (input.text) form.set("text", input.text);
+  if (input.ttsProvider) form.set("tts_provider", input.ttsProvider);
+  if (input.ttsModel) form.set("tts_model", input.ttsModel);
+  if (input.voice) form.set("voice", input.voice);
+  return apiPostForm<VideoCreationJobResponse>("/video-creation/jobs", form);
+}
+
 export async function apiDelete<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(buildApiUrl(path), { ...init, method: "DELETE" });
   await throwIfNotOk(r);

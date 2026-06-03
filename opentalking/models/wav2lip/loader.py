@@ -85,7 +85,9 @@ def _resolve_torch_device(torch: Any, requested: str) -> str:
         _try_import_torch_npu()
         return raw
     if raw.startswith("cuda") and not torch.cuda.is_available():
-        return "cpu"
+        raise RuntimeError(
+            f"CUDA was explicitly requested for Wav2Lip ({requested}), but torch.cuda.is_available() is false"
+        )
     return raw
 
 

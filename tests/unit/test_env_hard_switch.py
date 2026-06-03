@@ -70,6 +70,35 @@ def test_dashscope_tts_only_uses_provider_specific_api_key(monkeypatch):
     assert sambert._ensure_api_key() == "tts-dashscope-key"
 
 
+def test_dashscope_voice_clone_only_uses_provider_specific_api_key(monkeypatch):
+    from opentalking.providers.tts.dashscope_qwen import clone
+
+    monkeypatch.delenv("OPENTALKING_TTS_API_KEY", raising=False)
+    monkeypatch.delenv("OPENTALKING_TTS_DASHSCOPE_API_KEY", raising=False)
+    monkeypatch.setenv("OPENTALKING_LLM_API_KEY", "llm-key")
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "dashscope-key")
+    monkeypatch.setattr(
+        "opentalking.core.config.get_settings",
+        lambda: SimpleNamespace(tts_api_key="", tts_dashscope_api_key=""),
+    )
+
+    with pytest.raises(RuntimeError, match="OPENTALKING_TTS_DASHSCOPE_API_KEY"):
+        clone._dashscope_api_key()
+
+    monkeypatch.setenv("OPENTALKING_TTS_API_KEY", "legacy-tts-key")
+    with pytest.raises(RuntimeError, match="OPENTALKING_TTS_DASHSCOPE_API_KEY"):
+        clone._dashscope_api_key()
+
+    monkeypatch.setattr(
+        "opentalking.core.config.get_settings",
+        lambda: SimpleNamespace(tts_api_key="legacy-settings-key", tts_dashscope_api_key="settings-dashscope-key"),
+    )
+    assert clone._dashscope_api_key() == "settings-dashscope-key"
+
+    monkeypatch.setenv("OPENTALKING_TTS_DASHSCOPE_API_KEY", "env-dashscope-key")
+    assert clone._dashscope_api_key() == "env-dashscope-key"
+
+
 def test_sensevoice_ignores_dashscope_default_stt_model(monkeypatch):
     from opentalking.providers.stt import factory
 

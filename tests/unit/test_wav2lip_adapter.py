@@ -174,6 +174,7 @@ def _install_fake_wav2lip_runtime(monkeypatch) -> type:
 
     loader_mod.resolve_wav2lip_checkpoint = resolve_wav2lip_checkpoint
     loader_mod.resolve_wav2lip_s3fd = resolve_wav2lip_checkpoint
+    loader_mod._resolve_torch_device = lambda _torch, device: device
 
     monkeypatch.setitem(sys.modules, "opentalking.models.wav2lip.runtime", runtime_mod)
     monkeypatch.setitem(sys.modules, "opentalking.models.wav2lip.loader", loader_mod)

@@ -28,7 +28,7 @@ const DOT_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export type FlashtalkRecordPhase = "idle" | "recording" | "stopped";
-export type StudioWorkflow = "realtime" | "videoClone";
+export type StudioWorkflow = "realtime" | "videoCreation" | "videoClone" | "assetLibrary";
 
 interface TopBarProps {
   connection: ConnectionStatus;
@@ -84,7 +84,9 @@ export function TopBar({
       <nav className="hidden items-center gap-1 rounded-lg bg-slate-100 p-1 md:flex" aria-label="工作台模块">
         {[
           ["realtime", "实时对话"],
+          ["videoCreation", "视频创作"],
           ["videoClone", "视频克隆"],
+          ["assetLibrary", "资产库"],
         ].map(([id, label]) => {
           const active = workflow === id;
           return (
@@ -102,7 +104,7 @@ export function TopBar({
             </button>
           );
         })}
-        {["视频创作", "资产库", "运行监控"].map((item) => (
+        {["运行监控"].map((item) => (
           <button
             key={item}
             type="button"
@@ -135,7 +137,7 @@ export function TopBar({
                 disabled={busy}
                 onClick={onFlashtalkRecordStart}
                 className="rounded-lg bg-cyan-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-45 sm:px-3 sm:text-xs"
-                title="从此时起把 FlashTalk 输出帧写入服务端，可随时结束并导出 MP4"
+                title="从此时起录制浏览器中的数字人画面、用户麦克风和可用的远端音轨"
               >
                 {busy ? "请稍候..." : "开始录制"}
               </button>
@@ -150,7 +152,7 @@ export function TopBar({
                   disabled={busy}
                   onClick={onFlashtalkRecordStop}
                   className="rounded-lg bg-red-600 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-45 sm:px-3 sm:text-xs"
-                  title="停止写入帧；之后可保存本次片段"
+                  title="停止浏览器录制；停止后会自动保存到导出视频资产库"
                 >
                   {busy ? "请稍候..." : "结束录制"}
                 </button>
@@ -163,16 +165,16 @@ export function TopBar({
                   disabled={busy}
                   onClick={onFlashtalkRecordSave}
                   className="rounded-lg bg-slate-950 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45 sm:px-3 sm:text-xs"
-                  title="从服务端生成并下载本次结束录制前的 MP4"
+                  title="重试保存上一次未上传成功的浏览器录制"
                 >
-                  {recordingSaving ? "导出中..." : "保存视频"}
+                  {recordingSaving ? "导出中..." : "重试保存"}
                 </button>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={onFlashtalkRecordStart}
                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45 sm:px-3 sm:text-xs"
-                  title="丢弃当前未保存片段并开始新一轮录制"
+                  title="开始新一轮浏览器录制"
                 >
                   重新录制
                 </button>

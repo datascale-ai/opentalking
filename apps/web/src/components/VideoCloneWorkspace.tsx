@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AvatarSummary } from "../lib/api";
-import { ApiError, apiPostForm, buildApiUrl, buildWsUrl } from "../lib/api";
+import type { AvatarSummary, ExportVideoItem } from "../lib/api";
+import { ApiError, apiPostForm, buildApiUrl, buildWsUrl, uploadExportVideo } from "../lib/api";
 import type { FasterLivePortraitConfig } from "./SettingsPanel";
 
 const MAGIC_FRAME = new TextEncoder().encode("FRAM");
@@ -13,6 +13,7 @@ type VideoCloneWorkspaceProps = {
   onAvatarChange: (id: string) => void;
   onAvatarUploaded: (avatar: AvatarSummary) => void;
   onConfigChange: (config: FasterLivePortraitConfig) => void;
+  onExportCreated?: (item: ExportVideoItem) => void;
   onNotify?: (message: string, tone?: "info" | "success" | "error") => void;
 };
 
@@ -117,6 +118,15 @@ function sourceAvatarNameFromFile(file: File): string {
   return stem ? `视频克隆 ${stem}` : "视频克隆 source";
 }
 
+function selectMediaRecorderMimeType(candidates: string[]): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+}
+
+function outputRecordTitle(avatar: AvatarSummary | null): string {
+  return `视频克隆录制 · ${avatar?.name ?? avatar?.id ?? "未命名形象"}`;
+}
+
 export function VideoCloneWorkspace({
   avatars,
   avatarId,
@@ -124,6 +134,7 @@ export function VideoCloneWorkspace({
   onAvatarChange,
   onAvatarUploaded,
   onConfigChange,
+  onExportCreated,
   onNotify,
 }: VideoCloneWorkspaceProps) {
   const selectedAvatar = avatars.find((avatar) => avatar.id === avatarId) ?? avatars[0] ?? null;
@@ -140,17 +151,26 @@ export function VideoCloneWorkspace({
   const [receivedFrames, setReceivedFrames] = useState(0);
   const [droppedFrames, setDroppedFrames] = useState(0);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
+  const [outputRecording, setOutputRecording] = useState(false);
+  const [outputRecordSaving, setOutputRecordSaving] = useState(false);
   const [uploadVideoUrl, setUploadVideoUrl] = useState<string | null>(null);
   const [uploadPreviewName, setUploadPreviewName] = useState("");
   const [sourceUploadBusy, setSourceUploadBusy] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const outputRecordCanvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
   const lastFrameSentAtRef = useRef(0);
   const outputUrlRef = useRef<string | null>(null);
+  const latestOutputBlobRef = useRef<Blob | null>(null);
+  const outputRecorderRef = useRef<MediaRecorder | null>(null);
+  const outputRecordChunksRef = useRef<Blob[]>([]);
+  const outputRecordStartedAtRef = useRef(0);
+  const outputRecordTimerRef = useRef<number | null>(null);
+  const outputRecordStreamRef = useRef<MediaStream | null>(null);
   const uploadVideoUrlRef = useRef<string | null>(null);
   const sourcePanelRef = useRef<HTMLElement | null>(null);
 
@@ -161,7 +181,114 @@ export function VideoCloneWorkspace({
     return "border-slate-200 bg-slate-50 text-slate-600";
   }, [status]);
 
+  const stopOutputRecording = useCallback(() => {
+    const recorder = outputRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }, []);
+
+  const cleanupOutputRecordStream = useCallback(() => {
+    if (outputRecordTimerRef.current !== null) {
+      window.clearInterval(outputRecordTimerRef.current);
+      outputRecordTimerRef.current = null;
+    }
+    if (outputRecordStreamRef.current) {
+      for (const track of outputRecordStreamRef.current.getTracks()) track.stop();
+      outputRecordStreamRef.current = null;
+    }
+  }, []);
+
+  const drawLatestOutputFrame = useCallback(() => {
+    const canvas = outputRecordCanvasRef.current;
+    const blob = latestOutputBlobRef.current;
+    if (!canvas || !blob) return;
+    const img = new Image();
+    img.onload = () => {
+      const width = img.naturalWidth || selectedAvatar?.width || resolution;
+      const height = img.naturalHeight || selectedAvatar?.height || resolution;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+      }
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => URL.revokeObjectURL(img.src);
+    img.src = URL.createObjectURL(blob);
+  }, [resolution, selectedAvatar?.height, selectedAvatar?.width]);
+
+  const startOutputRecording = useCallback(() => {
+    if (!selectedAvatar) {
+      onNotify?.("请先选择数字人形象。", "info");
+      return;
+    }
+    if (!latestOutputBlobRef.current) {
+      onNotify?.("请先启动视频克隆并等待输出画面。", "info");
+      return;
+    }
+    const canvas = outputRecordCanvasRef.current;
+    if (!canvas) return;
+    if (typeof MediaRecorder === "undefined" || !canvas.captureStream) {
+      onNotify?.("当前浏览器不支持录制输出画面，请换用 Chrome。", "error");
+      return;
+    }
+    if (outputRecorderRef.current?.state === "recording") return;
+    cleanupOutputRecordStream();
+    drawLatestOutputFrame();
+    const stream = canvas.captureStream(fps);
+    outputRecordStreamRef.current = stream;
+    const mimeType = selectMediaRecorderMimeType([
+      "video/mp4;codecs=avc1.42E01E",
+      "video/mp4",
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+    ]);
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    outputRecordChunksRef.current = [];
+    outputRecordStartedAtRef.current = performance.now();
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) outputRecordChunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      const chunks = outputRecordChunksRef.current;
+      outputRecordChunksRef.current = [];
+      outputRecorderRef.current = null;
+      cleanupOutputRecordStream();
+      setOutputRecording(false);
+      if (!chunks.length) {
+        onNotify?.("录制内容为空，未生成导出视频。", "error");
+        return;
+      }
+      const durationSec = Math.max(0.1, (performance.now() - outputRecordStartedAtRef.current) / 1000);
+      const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+      setOutputRecordSaving(true);
+      void uploadExportVideo({
+        blob,
+        kind: "video_clone",
+        title: outputRecordTitle(selectedAvatar),
+        durationSec,
+        avatarId: selectedAvatar.id,
+        model: "fasterliveportrait",
+      }).then((saved) => {
+        onExportCreated?.(saved);
+        onNotify?.(`视频克隆录制已保存，可在资产库查看：${saved.title}`, "success");
+      }).catch((error) => {
+        console.warn("upload video clone export failed", error);
+        const detail = error instanceof ApiError ? error.detail : null;
+        onNotify?.(detail ? `视频克隆录制上传失败：${detail}` : "视频克隆录制上传失败。", "error");
+      }).finally(() => setOutputRecordSaving(false));
+    };
+    outputRecordTimerRef.current = window.setInterval(drawLatestOutputFrame, Math.max(20, Math.round(1000 / fps)));
+    recorder.start(1000);
+    outputRecorderRef.current = recorder;
+    setOutputRecording(true);
+    onNotify?.("已开始录制克隆输出画面。", "success");
+  }, [cleanupOutputRecordStream, drawLatestOutputFrame, fps, onExportCreated, onNotify, selectedAvatar]);
+
   const stop = useCallback(() => {
+    stopOutputRecording();
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
@@ -187,16 +314,18 @@ export function VideoCloneWorkspace({
     }
     setStatus((prev) => (prev === "error" ? prev : "idle"));
     setStatusText("已停止");
-  }, []);
+  }, [stopOutputRecording]);
 
   useEffect(() => stop, [stop]);
 
   useEffect(() => {
     return () => {
+      stopOutputRecording();
+      cleanupOutputRecordStream();
       if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
       if (uploadVideoUrlRef.current) URL.revokeObjectURL(uploadVideoUrlRef.current);
     };
-  }, []);
+  }, [cleanupOutputRecordStream, stopOutputRecording]);
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -363,7 +492,9 @@ export function VideoCloneWorkspace({
         const frames = parseVideoPayload(event.data as ArrayBuffer);
         const last = frames[frames.length - 1];
         if (!last) return;
+        latestOutputBlobRef.current = last;
         const nextUrl = URL.createObjectURL(last);
+        if (outputRecording) drawLatestOutputFrame();
         if (outputUrlRef.current) URL.revokeObjectURL(outputUrlRef.current);
         outputUrlRef.current = nextUrl;
         setOutputUrl(nextUrl);
@@ -400,6 +531,7 @@ export function VideoCloneWorkspace({
       URL.revokeObjectURL(outputUrlRef.current);
       outputUrlRef.current = null;
     }
+    latestOutputBlobRef.current = null;
     setOutputUrl(null);
     setSentFrames(0);
     setReceivedFrames(0);
@@ -423,6 +555,7 @@ export function VideoCloneWorkspace({
       URL.revokeObjectURL(outputUrlRef.current);
       outputUrlRef.current = null;
     }
+    latestOutputBlobRef.current = null;
     setOutputUrl(null);
     setSentFrames(0);
     setReceivedFrames(0);
@@ -481,6 +614,7 @@ export function VideoCloneWorkspace({
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
       <canvas ref={canvasRef} className="hidden" />
+      <canvas ref={outputRecordCanvasRef} className="hidden" />
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[20rem_minmax(0,1fr)_22rem]">
         <section ref={sourcePanelRef} className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
@@ -593,6 +727,14 @@ export function VideoCloneWorkspace({
               <h2 className="text-base font-semibold text-slate-950">克隆输出</h2>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={outputRecording ? stopOutputRecording : startOutputRecording}
+                disabled={outputRecordSaving || (!outputRecording && !outputUrl)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${outputRecording ? "bg-red-600 hover:bg-red-500" : "bg-cyan-600 hover:bg-cyan-500"}`}
+              >
+                {outputRecordSaving ? "保存中..." : outputRecording ? "结束录制" : "录制输出"}
+              </button>
               <button
                 type="button"
                 onClick={handleReturnToAvatarSelection}

@@ -402,10 +402,13 @@ class Wav2LipAdapter:
         if _env_bool("OPENTALKING_WAV2LIP_LEGACY_LOCAL_FALLBACK"):
             return True
         try:
-            from opentalking.models.wav2lip.loader import resolve_wav2lip_s3fd
+            import torch
+
+            from opentalking.models.wav2lip.loader import _resolve_torch_device, resolve_wav2lip_s3fd
             from opentalking.models.wav2lip.runtime import Wav2LipRealtimeRuntime
 
             runtime = Wav2LipRealtimeRuntime(device=os.environ.get("OPENTALKING_WAV2LIP_DEVICE", "cpu"))
+            _resolve_torch_device(torch, runtime.device)
             if not _configure_runtime_checkpoint(runtime):
                 return False
             if resolve_wav2lip_s3fd(runtime.models_dir) is None:

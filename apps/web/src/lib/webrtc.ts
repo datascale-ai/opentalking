@@ -14,7 +14,17 @@ function requestVideoPlayback(videoEl: HTMLVideoElement) {
   return attempt;
 }
 
-export async function startPlayback(sessionId: string, videoEl: HTMLVideoElement) {
+export type PlaybackHandle = { pc: RTCPeerConnection; remoteStream: MediaStream };
+
+export type StartPlaybackOptions = {
+  onRemoteStream?: (remoteStream: MediaStream) => void;
+};
+
+export async function startPlayback(
+  sessionId: string,
+  videoEl: HTMLVideoElement,
+  options: StartPlaybackOptions = {},
+): Promise<PlaybackHandle> {
   const pc = new RTCPeerConnection({
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
   });
@@ -28,6 +38,7 @@ export async function startPlayback(sessionId: string, videoEl: HTMLVideoElement
     const hasTrack = mediaStream.getTracks().some((t) => t.id === track.id);
     if (!hasTrack) {
       mediaStream.addTrack(track);
+      options.onRemoteStream?.(mediaStream);
     }
     ensurePlayback();
   };
@@ -68,5 +79,6 @@ export async function startPlayback(sessionId: string, videoEl: HTMLVideoElement
 
   await pc.setRemoteDescription(new RTCSessionDescription(answer));
   ensurePlayback();
-  return pc;
+  options.onRemoteStream?.(mediaStream);
+  return { pc, remoteStream: mediaStream };
 }

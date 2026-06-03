@@ -71,3 +71,25 @@ def test_prefixed_omnirt_endpoint_takes_precedence_over_unprefixed_dotenv(
     settings = Settings()
 
     assert settings.omnirt_endpoint == "http://10.0.0.2:9000"
+
+
+
+def test_export_settings_defaults_and_env_overrides(monkeypatch) -> None:
+    monkeypatch.setenv("OPENTALKING_EXPORTS_DIR", "/tmp/opentalking-exports")
+    monkeypatch.setenv("OPENTALKING_EXPORT_MAX_BYTES", "2048")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.exports_dir == "/tmp/opentalking-exports"
+    assert settings.export_max_bytes == 2048
+
+
+def test_export_settings_have_safe_defaults(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("OPENTALKING_EXPORTS_DIR", raising=False)
+    monkeypatch.delenv("OPENTALKING_EXPORT_MAX_BYTES", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.exports_dir == "./data/exports"
+    assert settings.export_max_bytes == 1024 * 1024 * 1024

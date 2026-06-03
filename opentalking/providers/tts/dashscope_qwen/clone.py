@@ -18,16 +18,16 @@ DASHSCOPE_CUSTOMIZATION_URL = "https://dashscope.aliyuncs.com/api/v1/services/au
 
 
 def _dashscope_api_key() -> str:
-    key = os.environ.get("OPENTALKING_TTS_API_KEY", "").strip()
+    key = os.environ.get("OPENTALKING_TTS_DASHSCOPE_API_KEY", "").strip()
     if not key:
         try:
             from opentalking.core.config import get_settings
 
-            key = (get_settings().tts_api_key or "").strip()
+            key = getattr(get_settings(), "tts_dashscope_api_key", "").strip()
         except Exception:
             pass
     if not key:
-        raise RuntimeError("需要 OPENTALKING_TTS_API_KEY（百炼 TTS API Key）。")
+        raise RuntimeError("需要 OPENTALKING_TTS_DASHSCOPE_API_KEY（DashScope / 百炼 TTS API Key）。")
     return key
 
 

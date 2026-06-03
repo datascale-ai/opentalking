@@ -292,6 +292,18 @@ def _validate_asset_root(asset_root: Path) -> None:
         )
 
 
+def _explicit_cuda_available(device: str) -> bool:
+    raw = (device or "").strip().lower()
+    if not raw.startswith("cuda"):
+        return True
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 @register_model("quicktalk")
 class QuickTalkAdapter:
     """QuickTalk realtime worker integrated into OpenTalking's model API."""
@@ -355,6 +367,19 @@ class QuickTalkAdapter:
                     lo, hi = hi, lo
                 return (lo, hi)
         return None
+
+    @staticmethod
+    def runtime_available() -> bool:
+        try:
+            asset_root = _quicktalk_asset_root_env()
+            if asset_root is None:
+                return False
+            _validate_asset_root(_normalize_asset_root(asset_root))
+            device = _env_value("OPENTALKING_QUICKTALK_DEVICE") or _env_value("OPENTALKING_TORCH_DEVICE", "cuda:0")
+            hubert_device = _env_value("OPENTALKING_QUICKTALK_HUBERT_DEVICE")
+            return _explicit_cuda_available(device) and _explicit_cuda_available(hubert_device)
+        except Exception:
+            return False
 
     def _idle_context_for(self, avatar_state: QuickTalkState, frame_idx: int) -> Any:
         contexts = avatar_state.worker.restore_contexts

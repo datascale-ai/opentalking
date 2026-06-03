@@ -10,10 +10,12 @@ import {
   type FasterLivePortraitConfig,
   type Wav2LipPostprocessMode,
 } from "./components/SettingsPanel";
-import { TopBar } from "./components/TopBar";
+import { TopBar, type StudioWorkflow } from "./components/TopBar";
 import { ToastStack, type ToastMessage, type ToastTone } from "./components/ToastStack";
 import { VideoBackground } from "./components/VideoBackground";
+import { AssetLibraryWorkspace } from "./components/AssetLibraryWorkspace";
 import { VideoCloneWorkspace } from "./components/VideoCloneWorkspace";
+import { VideoCreationWorkspace } from "./components/VideoCreationWorkspace";
 import {
   ApiError,
   apiDelete,
@@ -21,6 +23,7 @@ import {
   apiPost,
   apiPostForm,
   buildApiUrl,
+  uploadExportVideo,
   type AvatarSummary,
   type CreateSessionResponse,
   type VoiceCatalogItem,
@@ -59,8 +62,6 @@ import {
   TTS_PROVIDER_STORAGE_KEY,
 } from "./constants/ttsQwen";
 import type { ConnectionStatus, Message, QueueInfo } from "./types";
-
-type StudioWorkflow = "realtime" | "videoClone";
 
 function bailianModelOptions(provider: TtsProviderExtended): { id: string; label: string }[] {
   switch (provider) {
@@ -513,9 +514,97 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+type CaptureStreamVideoElement = HTMLVideoElement & {
+  captureStream?: (fps?: number) => MediaStream;
+  mozCaptureStream?: (fps?: number) => MediaStream;
+};
+
+type PendingRealtimeExport = {
+  blob: Blob;
+  title: string;
+  durationSec: number;
+  sessionId: string | null;
+  avatarId: string;
+  model: string;
+};
+
+function selectMediaRecorderMimeType(candidates: string[]): string | undefined {
+  if (typeof MediaRecorder === "undefined") return undefined;
+  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+}
+
+function realtimeExportTitle(model: string): string {
+  const label = MODEL_LABELS_FOR_STAGE[model] ?? model;
+  return `实时对话录制 · ${label}`;
+}
+
+async function requestUserAudioWithTimeout(microphonePermissionTimeoutMs = 8000): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new DOMException("media devices unavailable", "NotSupportedError");
+  }
+  let settled = false;
+  let timeoutId: number | null = null;
+  const request = navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+    settled = true;
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+    return stream;
+  });
+  const timeout = new Promise<MediaStream>((_, reject) => {
+    timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      reject(new DOMException("microphone permission timeout", "TimeoutError"));
+    }, microphonePermissionTimeoutMs);
+  });
+  return Promise.race([request, timeout]);
+}
+
+function realtimeRecordingLocalhostHelpUrl(): string {
+  const port = window.location.port ? `:${window.location.port}` : "";
+  return `http://127.0.0.1${port}/`;
+}
+
+function realtimeRecordingStartErrorMessage(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+  const message = error instanceof Error ? error.message : "";
+  const mediaDevicesUnavailable = !navigator.mediaDevices?.getUserMedia;
+  const insecureOrigin = typeof window !== "undefined" && !window.isSecureContext;
+
+  if (insecureOrigin && (name === "NotSupportedError" || name === "SecurityError" || mediaDevicesUnavailable)) {
+    return `当前访问地址不是浏览器安全来源，无法请求麦克风。请通过本机 ${realtimeRecordingLocalhostHelpUrl()} 隧道或 HTTPS 打开后重试。`;
+  }
+  if (name === "TimeoutError") {
+    return "麦克风权限请求超时，请在浏览器地址栏允许麦克风后重试。";
+  }
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "麦克风权限被拒绝，无法录制用户声音。请在浏览器地址栏允许麦克风后重试。";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "未检测到可用麦克风。请连接麦克风，或确认系统输入设备可用后重试。";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "麦克风正在被其他应用占用，关闭占用程序后重试。";
+  }
+  if (name === "NotSupportedError" || mediaDevicesUnavailable) {
+    return "当前浏览器不支持麦克风录制。请换用新版 Chrome，并确认通过 localhost 或 HTTPS 访问。";
+  }
+  if (name === "InvalidStateError") {
+    return "当前会话画面还没有准备好，请等数字人视频出现后再开始录制。";
+  }
+  return name || message
+    ? `开始录制失败（${name || message}），请确认浏览器权限和当前会话状态。`
+    : "开始录制失败：请确认浏览器权限和当前会话状态。";
+}
+
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const realtimeRecorderRef = useRef<MediaRecorder | null>(null);
+  const realtimeRecordChunksRef = useRef<Blob[]>([]);
+  const realtimeRecordStartedAtRef = useRef(0);
+  const realtimeRecordStreamRef = useRef<MediaStream | null>(null);
+  const realtimeRecordMicStreamRef = useRef<MediaStream | null>(null);
+  const pendingRealtimeExportRef = useRef<PendingRealtimeExport | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const speakAudioAbortRef = useRef<AbortController | null>(null);
   const ttsPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -629,6 +718,7 @@ export default function App() {
   const [recordingSaving, setRecordingSaving] = useState(false);
   const [ftRecordPhase, setFtRecordPhase] = useState<"idle" | "recording" | "stopped">("idle");
   const [ftRecordBusy, setFtRecordBusy] = useState(false);
+  const [assetLibraryRefreshKey, setAssetLibraryRefreshKey] = useState(0);
   const [offlineBundleBusy, setOfflineBundleBusy] = useState(false);
   const offlineBundleInputRef = useRef<HTMLInputElement>(null);
   const [voiceCatalog, setVoiceCatalog] = useState<VoiceCatalogItem[]>([]);
@@ -701,6 +791,156 @@ export default function App() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, tone === "error" ? 5200 : 3600);
   }, []);
+
+  const cleanupRealtimeRecordStreams = useCallback(() => {
+    if (realtimeRecordMicStreamRef.current) {
+      for (const track of realtimeRecordMicStreamRef.current.getTracks()) track.stop();
+      realtimeRecordMicStreamRef.current = null;
+    }
+    if (realtimeRecordStreamRef.current) {
+      for (const track of realtimeRecordStreamRef.current.getTracks()) track.stop();
+      realtimeRecordStreamRef.current = null;
+    }
+  }, []);
+
+  const uploadRealtimeExport = useCallback(async (pending: PendingRealtimeExport) => {
+    setRecordingSaving(true);
+    try {
+      const saved = await uploadExportVideo({
+        blob: pending.blob,
+        kind: "realtime_dialogue",
+        title: pending.title,
+        durationSec: pending.durationSec,
+        sessionId: pending.sessionId,
+        avatarId: pending.avatarId,
+        model: pending.model,
+      });
+      pendingRealtimeExportRef.current = null;
+      setAssetLibraryRefreshKey((value) => value + 1);
+      setFtRecordPhase("idle");
+      notify(`录制已保存，可在资产库查看：${saved.title}`, "success");
+    } catch (error) {
+      console.warn("upload realtime export failed", error);
+      pendingRealtimeExportRef.current = pending;
+      setFtRecordPhase("stopped");
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `录制上传失败：${detail}` : "录制上传失败，可点击重试保存。", "error");
+    } finally {
+      setRecordingSaving(false);
+    }
+  }, [notify]);
+
+  const retryPendingRealtimeExport = useCallback(async () => {
+    const pending = pendingRealtimeExportRef.current;
+    if (!pending) {
+      notify("没有待重试保存的录制。", "info");
+      setFtRecordPhase("idle");
+      return;
+    }
+    await uploadRealtimeExport(pending);
+  }, [notify, uploadRealtimeExport]);
+
+  const stopRealtimeRecording = useCallback(() => {
+    const recorder = realtimeRecorderRef.current;
+    if (!recorder) return;
+    if (recorder.state !== "inactive") recorder.stop();
+  }, []);
+
+  const startRealtimeRecording = useCallback(async () => {
+    if (!sessionId || connection !== "live" && connection !== "expiring") {
+      notify("请先连接实时对话会话，再开始录制。", "info");
+      return;
+    }
+    const videoEl = videoRef.current as CaptureStreamVideoElement | null;
+    const captureStream = videoEl?.captureStream ?? videoEl?.mozCaptureStream;
+    if (!videoEl || !captureStream) {
+      notify("当前浏览器不支持录制舞台画面，请换用 Chrome。", "error");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      notify("当前浏览器不支持 MediaRecorder，无法录制。", "error");
+      return;
+    }
+    if (realtimeRecorderRef.current?.state === "recording") return;
+
+    setFtRecordBusy(true);
+    let audioContext: AudioContext | null = null;
+    try {
+      cleanupRealtimeRecordStreams();
+      const stageStream = captureStream.call(videoEl, 30);
+      const recordVideoTracks = stageStream.getVideoTracks().map((track) => track.clone());
+      const outputStream = new MediaStream(recordVideoTracks);
+      realtimeRecordStreamRef.current = outputStream;
+      audioContext = new AudioContext();
+      const destination = audioContext.createMediaStreamDestination();
+      let hasAudio = false;
+
+      const micStream = await requestUserAudioWithTimeout();
+      realtimeRecordMicStreamRef.current = micStream;
+      if (micStream.getAudioTracks().length > 0) {
+        audioContext.createMediaStreamSource(micStream).connect(destination);
+        hasAudio = true;
+      }
+
+      const remoteAudioTracks = remoteStreamRef.current?.getAudioTracks() ?? [];
+      if (remoteAudioTracks.length > 0) {
+        const remoteAudioStream = new MediaStream(remoteAudioTracks);
+        audioContext.createMediaStreamSource(remoteAudioStream).connect(destination);
+        hasAudio = true;
+      }
+      if (hasAudio) {
+        for (const track of destination.stream.getAudioTracks()) outputStream.addTrack(track);
+      }
+      const mimeType = selectMediaRecorderMimeType([
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/mp4",
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+      ]);
+      const recorder = new MediaRecorder(outputStream, mimeType ? { mimeType } : undefined);
+      realtimeRecordChunksRef.current = [];
+      realtimeRecordStartedAtRef.current = performance.now();
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) realtimeRecordChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const chunks = realtimeRecordChunksRef.current;
+        realtimeRecordChunksRef.current = [];
+        realtimeRecorderRef.current = null;
+        void audioContext?.close().catch(() => {});
+        cleanupRealtimeRecordStreams();
+        const durationSec = Math.max(0.1, (performance.now() - realtimeRecordStartedAtRef.current) / 1000);
+        if (!chunks.length) {
+          setFtRecordPhase("idle");
+          notify("录制内容为空，未生成导出视频。", "error");
+          return;
+        }
+        const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+        const pending: PendingRealtimeExport = {
+          blob,
+          title: realtimeExportTitle(model),
+          durationSec,
+          sessionId,
+          avatarId,
+          model,
+        };
+        void uploadRealtimeExport(pending);
+      };
+      recorder.start(1000);
+      realtimeRecorderRef.current = recorder;
+      pendingRealtimeExportRef.current = null;
+      setFtRecordPhase("recording");
+      notify("已开始录制实时对话。", "success");
+    } catch (error) {
+      console.warn("start realtime recording failed", error);
+      void audioContext?.close().catch(() => {});
+      cleanupRealtimeRecordStreams();
+      notify(realtimeRecordingStartErrorMessage(error), "error");
+    } finally {
+      setFtRecordBusy(false);
+    }
+  }, [avatarId, cleanupRealtimeRecordStreams, connection, model, notify, sessionId, uploadRealtimeExport]);
 
   useEffect(() => {
     try {
@@ -896,6 +1136,10 @@ export default function App() {
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
+    }
+    if (remoteStreamRef.current) {
+      for (const track of remoteStreamRef.current.getTracks()) track.stop();
+      remoteStreamRef.current = null;
     }
   }, []);
 
@@ -1264,8 +1508,13 @@ export default function App() {
       }
 
       closePeerConnection();
-      const pc = await startPlayback(created.session_id, videoRef.current!);
-      pcRef.current = pc;
+      const playback = await startPlayback(created.session_id, videoRef.current!, {
+        onRemoteStream: (remoteStream) => {
+          remoteStreamRef.current = remoteStream;
+        },
+      });
+      pcRef.current = playback.pc;
+      remoteStreamRef.current = playback.remoteStream;
       setActiveAsrProvider(lockedAsrProvider);
       videoRef.current!.muted = false;
       setConnection("live");
@@ -1597,70 +1846,34 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (realtimeRecorderRef.current?.state === "recording") {
+      realtimeRecorderRef.current.stop();
+    }
+    cleanupRealtimeRecordStreams();
     setFtRecordPhase("idle");
-  }, [sessionId, model]);
+  }, [cleanupRealtimeRecordStreams, sessionId, model]);
 
   useEffect(() => {
     if (connection !== "live" && connection !== "expiring") {
+      if (realtimeRecorderRef.current?.state === "recording") {
+        realtimeRecorderRef.current.stop();
+      }
+      cleanupRealtimeRecordStreams();
       setFtRecordPhase("idle");
     }
-  }, [connection]);
+  }, [cleanupRealtimeRecordStreams, connection]);
 
   const handleFtRecordStart = useCallback(async () => {
-    if (!sessionId || !isFlashRenderer(model)) return;
-    setFtRecordBusy(true);
-    try {
-      await apiPost(`/sessions/${sessionId}/flashtalk-recording/start`, {});
-      setFtRecordPhase("recording");
-    } catch (error) {
-      console.warn("flashtalk recording start failed", error);
-      notify("开始录制失败：请确认当前会话为 FlashTalk / FlashHead 且已连接。", "error");
-    } finally {
-      setFtRecordBusy(false);
-    }
-  }, [model, notify, sessionId]);
+    await startRealtimeRecording();
+  }, [startRealtimeRecording]);
 
-  const handleFtRecordStop = useCallback(async () => {
-    if (!sessionId || !isFlashRenderer(model)) return;
-    setFtRecordBusy(true);
-    try {
-      await apiPost(`/sessions/${sessionId}/flashtalk-recording/stop`, {});
-      setFtRecordPhase("stopped");
-    } catch (error) {
-      console.warn("flashtalk recording stop failed", error);
-      notify("结束录制失败，请稍后重试或查看网络请求详情。", "error");
-    } finally {
-      setFtRecordBusy(false);
-    }
-  }, [model, notify, sessionId]);
+  const handleFtRecordStop = useCallback(() => {
+    stopRealtimeRecording();
+  }, [stopRealtimeRecording]);
 
   const handleFtRecordSave = useCallback(async () => {
-    if (!sessionId || !isFlashRenderer(model)) return;
-    setRecordingSaving(true);
-    try {
-      const url = buildApiUrl(`/sessions/${sessionId}/flashtalk-recording`);
-      const response = await fetch(url);
-      if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(`${response.status} ${detail}`);
-      }
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = `${sessionId}_flashtalk_capture.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(objectUrl);
-      setFtRecordPhase("idle");
-    } catch (error) {
-      console.warn("save FlashTalk recording failed", error);
-      notify("暂无可保存的视频或导出失败。请先开始录制、结束录制，再保存视频。", "error");
-    } finally {
-      setRecordingSaving(false);
-    }
-  }, [model, notify, sessionId]);
+    await retryPendingRealtimeExport();
+  }, [retryPendingRealtimeExport]);
 
   const handleOfflineBundleFile = useCallback(
     async (e: ChangeEvent<HTMLInputElement>) => {
@@ -1774,9 +1987,10 @@ export default function App() {
   useEffect(() => {
     const handlePageHide = () => {
       const sid = sessionIdRef.current;
-      if (sid && isFlashRenderer(model)) {
-        void apiPost(`/sessions/${sid}/flashtalk-recording/stop`, {}).catch(() => {});
+      if (realtimeRecorderRef.current?.state === "recording") {
+        realtimeRecorderRef.current.stop();
       }
+      cleanupRealtimeRecordStreams();
       if (sid) {
         void releaseSession(sid, true);
       }
@@ -1785,7 +1999,7 @@ export default function App() {
 
     window.addEventListener("pagehide", handlePageHide);
     return () => window.removeEventListener("pagehide", handlePageHide);
-  }, [closePeerConnection, releaseSession, model]);
+  }, [cleanupRealtimeRecordStreams, closePeerConnection, releaseSession]);
 
   useEffect(() => {
     return () => {
@@ -1815,11 +2029,7 @@ export default function App() {
       <TopBar
         connection={connection}
         workflow={workflow}
-        flashtalkRecording={
-          isFlashRenderer(model) &&
-          !!sessionId &&
-          (connection === "live" || connection === "expiring")
-        }
+        flashtalkRecording={!!sessionId && (connection === "live" || connection === "expiring")}
         flashtalkRecordPhase={ftRecordPhase}
         flashtalkRecordBusy={ftRecordBusy}
         recordingSaving={recordingSaving}
@@ -1877,7 +2087,36 @@ export default function App() {
         </div>
       )}
 
-      {workflow === "videoClone" ? (
+      {workflow === "assetLibrary" ? (
+        <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
+          <AssetLibraryWorkspace refreshToken={assetLibraryRefreshKey} onNotify={notify} />
+        </div>
+      ) : workflow === "videoCreation" ? (
+        <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
+          <VideoCreationWorkspace
+            avatars={avatars}
+            avatarId={avatarId}
+            models={models}
+            onAvatarChange={handleAvatarChange}
+            onAvatarUploaded={handleVideoCloneAvatarUploaded}
+            onVoiceCloned={applyClonedVoice}
+            onExportCreated={() => setAssetLibraryRefreshKey((value) => value + 1)}
+            onGoAssetLibrary={() => setWorkflow("assetLibrary")}
+            onNotify={notify}
+            ttsProvider={ttsProvider}
+            onTtsProviderChange={setTtsProvider}
+            qwenModel={qwenModel}
+            onQwenModelChange={setQwenModel}
+            qwenModelOptions={bailianModels}
+            qwenVoice={qwenVoice}
+            onQwenVoiceChange={setQwenVoice}
+            qwenVoiceOptions={bailianVoices}
+            edgeVoice={edgeVoice}
+            onEdgeVoiceChange={setEdgeVoice}
+            voiceCatalog={voiceCatalog}
+          />
+        </div>
+      ) : workflow === "videoClone" ? (
         <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
           <VideoCloneWorkspace
             avatars={avatars}
@@ -1886,6 +2125,7 @@ export default function App() {
             onAvatarChange={handleAvatarChange}
             onAvatarUploaded={handleVideoCloneAvatarUploaded}
             onConfigChange={handleFasterLivePortraitConfigChange}
+            onExportCreated={() => setAssetLibraryRefreshKey((value) => value + 1)}
             onNotify={notify}
           />
         </div>
