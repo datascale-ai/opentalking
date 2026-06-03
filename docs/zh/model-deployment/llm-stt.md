@@ -22,6 +22,35 @@ OPENTALKING_LLM_MODEL=qwen-flash
 | vLLM | 指向 vLLM OpenAI-compatible server。 |
 | Ollama | 使用 Ollama OpenAI-compatible endpoint，通常为 `http://localhost:11434/v1`。 |
 | DeepSeek | 使用 provider 提供的 OpenAI-compatible base URL 和模型 id。 |
+| Atlas Cloud | OpenAI-compatible 网关，托管 DeepSeek、Qwen 等模型。设置 `OPENTALKING_LLM_BASE_URL=https://api.atlascloud.ai/v1`。参见 [Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking)。 |
+
+Atlas Cloud 是 OpenAI-compatible 网关，可作为 LLM 后端直接替换：
+
+```env title=".env"
+OPENTALKING_LLM_BASE_URL=https://api.atlascloud.ai/v1
+OPENTALKING_LLM_API_KEY=<atlascloud-api-key>
+OPENTALKING_LLM_MODEL=deepseek-ai/deepseek-v4-pro
+```
+
+`deepseek-ai/deepseek-v4-pro` 是带推理（reasoning）的模型，请给足 `max_tokens`
+（≥ 512），否则回复可能在产生可见文本前被截断。
+
+<details>
+<summary>Atlas Cloud 全部对话模型（59 个）</summary>
+
+- **Anthropic (Claude)：** `anthropic/claude-haiku-4.5-20251001`, `anthropic/claude-opus-4.8`, `anthropic/claude-sonnet-4.6`
+- **OpenAI (GPT)：** `openai/gpt-5.4`, `openai/gpt-5.5`
+- **Google (Gemini)：** `google/gemini-3.1-flash-lite`, `google/gemini-3.1-pro-preview`, `google/gemini-3.5-flash`
+- **Qwen：** `qwen/qwen2.5-7b-instruct`, `Qwen/Qwen3-235B-A22B-Instruct-2507`, `qwen/qwen3-235b-a22b-thinking-2507`, `qwen/qwen3-30b-a3b`, `Qwen/Qwen3-30B-A3B-Instruct-2507`, `qwen/qwen3-30b-a3b-thinking-2507`, `qwen/qwen3-32b`, `qwen/qwen3-8b`, `Qwen/Qwen3-Coder`, `qwen/qwen3-coder-next`, `qwen/qwen3-max-2026-01-23`, `Qwen/Qwen3-Next-80B-A3B-Instruct`, `Qwen/Qwen3-Next-80B-A3B-Thinking`, `Qwen/Qwen3-VL-235B-A22B-Instruct`, `qwen/qwen3-vl-235b-a22b-thinking`, `qwen/qwen3-vl-30b-a3b-instruct`, `qwen/qwen3-vl-30b-a3b-thinking`, `qwen/qwen3-vl-8b-instruct`, `qwen/qwen3.5-122b-a10b`, `qwen/qwen3.5-27b`, `qwen/qwen3.5-35b-a3b`, `qwen/qwen3.5-397b-a17b`, `qwen/qwen3.6-35b-a3b`, `qwen/qwen3.6-plus`
+- **DeepSeek：** `deepseek-ai/deepseek-ocr`, `deepseek-ai/deepseek-r1-0528`, `deepseek-ai/DeepSeek-V3-0324`, `deepseek-ai/DeepSeek-V3.1`, `deepseek-ai/DeepSeek-V3.1-Terminus`, `deepseek-ai/deepseek-v3.2`, `deepseek-ai/DeepSeek-V3.2-Exp`, `deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`
+- **Moonshot (Kimi)：** `moonshotai/Kimi-K2-Instruct`, `moonshotai/Kimi-K2-Instruct-0905`, `moonshotai/Kimi-K2-Thinking`, `moonshotai/kimi-k2.5`, `moonshotai/kimi-k2.6`
+- **智谱 (GLM)：** `zai-org/GLM-4.6`, `zai-org/glm-4.7`, `zai-org/glm-5`, `zai-org/glm-5-turbo`, `zai-org/glm-5.1`, `zai-org/glm-5v-turbo`
+- **MiniMax：** `MiniMaxAI/MiniMax-M2`, `minimaxai/minimax-m2.1`, `minimaxai/minimax-m2.5`, `minimaxai/minimax-m2.7`
+- **xAI：** `xai/grok-4.3`
+- **Kwaipilot：** `kwaipilot/kat-coder-pro-v2`
+- **其他：** `owl`
+
+</details>
 
 ## STT
 

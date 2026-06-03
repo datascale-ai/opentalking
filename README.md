@@ -392,6 +392,18 @@ bash scripts/start_unified.sh \
 
 更多的权重下载、Docker、故障排查和模型配置见 [索引](docs/zh/model-deployment/index.md)、[模型部署文档](docs/zh/model-deployment/talking-head.md)、[部署文档](docs/zh/user-guide/deployment.md)。
 
+### 云端模型 API：Atlas Cloud
+
+<p align="center">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking">
+    <img src="docs/assets/images/atlas-cloud-logo.png" alt="Atlas Cloud" width="200">
+  </a>
+</p>
+
+> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking)** 是一个全模态 AI 推理平台，用一套 API 即可访问视频生成、图像生成和 LLM，无需分别对接多家厂商，一次接入即可统一调用全模态的 300+ 精选模型。
+
+OpenTalking 的 LLM 走 OpenAI-compatible 接口，把 `OPENTALKING_LLM_BASE_URL` 指向 `https://api.atlascloud.ai/v1` 即可直接使用 Atlas 托管的 DeepSeek / Qwen 等模型，配置见 [LLM 与 STT](docs/zh/model-deployment/llm-stt.md)。更多预算友好的 API 方案见 Atlas Cloud [coding plan](https://www.atlascloud.ai/console/coding-plan)。
+
 ## 能力进展与 Roadmap
 
 ### Coming soon

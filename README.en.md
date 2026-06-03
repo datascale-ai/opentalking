@@ -471,6 +471,18 @@ The table below contains tested deployment data. More 4090 / 5090 and other GPU 
 
 For more weight downloads, Docker, troubleshooting, and model configuration, see the [model deployment index](docs/en/model-deployment/index.md), [talking-head model deployment](docs/en/model-deployment/talking-head.md), and [deployment guide](docs/en/user-guide/deployment.md).
 
+### Cloud Model API: Atlas Cloud
+
+<p align="center">
+  <a href="https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking">
+    <img src="docs/assets/images/atlas-cloud-logo.png" alt="Atlas Cloud" width="200">
+  </a>
+</p>
+
+> 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking)** is a full-modal AI inference platform that gives developers a single API to access video generation, image generation, and LLM APIs — connect once and get unified access to 300+ curated models across all modalities.
+
+OpenTalking's LLM uses the OpenAI-compatible interface, so pointing `OPENTALKING_LLM_BASE_URL` at `https://api.atlascloud.ai/v1` lets you use Atlas-hosted models such as DeepSeek and Qwen directly; see [LLM and STT](docs/en/model-deployment/llm-stt.md). For more budget-friendly API access, see the Atlas Cloud [coding plan](https://www.atlascloud.ai/console/coding-plan).
+
 ## Progress And Roadmap
 
 ### Coming Soon
