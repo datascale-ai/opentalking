@@ -52,10 +52,9 @@ TTS Provider 是实际合成语音的服务或模型。不同 Provider 的配置
 
 WebUI 支持在创建会话前试听音色。试听文本建议控制在较短范围内，当前预览接口最多处理 240 个字符。
 
-<div class="ot-figure-placeholder">
-  <strong>截图占位：音色试听</strong>
-  <span>后续补充：展示 TTS Provider、voice 选择和试听按钮。</span>
-</div>
+![WebUI 音色与 TTS 面板。](../../../assets/images/usage/webui/voice-tts-panel.png)
+
+*WebUI 音色与 TTS 面板：选择 Provider、音色，并点击“试听一句”预览声音。*
 
 试听失败时，先检查 Provider Key、网络访问和 voice 标识，再查看后端日志。
 

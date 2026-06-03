@@ -52,10 +52,9 @@ If the voice identifier is invalid, the provider may return a missing voice, inv
 
 WebUI supports voice preview before session creation. Keep preview text short; the current preview endpoint accepts up to 240 characters.
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: voice preview</strong>
-  <span>To be added: TTS provider, voice selector, and preview button.</span>
-</div>
+![Voice and TTS panel in WebUI.](../../../assets/images/usage/webui/voice-tts-panel.png)
+
+*Voice and TTS panel in WebUI. Select a provider and voice, then click the preview button.*
 
 If preview fails, check provider credentials, network access, voice identifier, and backend logs.
 

@@ -77,6 +77,8 @@ plugins:
             Basic Usage: 基础使用
             Command Line Usage: 命令行使用
             Examples: 案例教程
+            Video Creation: 视频创作
+            Video Clone: 视频克隆
             Examples Overview: 案例概览
             AI Customer Support: AI 客服数字人
             Product Demo and Live Sales: 商品讲解与直播导购
@@ -209,6 +211,8 @@ nav:
               - Advanced CLI Arguments: usage/cli-advanced.md
           - WebUI Usage:
               - Basic Usage: usage/webui/basic.md
+              - Video Creation: usage/webui/video-creation.md
+              - Video Clone: usage/webui/video-clone.md
               - Custom Avatar: usage/webui/custom-avatar.md
               - Voice and TTS: usage/webui/voice-and-tts.md
       - Examples:
@@ -283,6 +287,8 @@ nav:
           - Advanced CLI Arguments: usage/cli-advanced.md
       - WebUI Usage:
           - Basic Usage: usage/webui/basic.md
+          - Video Creation: usage/webui/video-creation.md
+          - Video Clone: usage/webui/video-clone.md
           - Custom Avatar: usage/webui/custom-avatar.md
           - Voice and TTS: usage/webui/voice-and-tts.md
   - Examples:

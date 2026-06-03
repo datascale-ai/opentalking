@@ -61,10 +61,9 @@ Video assets are currently best prepared with scripts and placed under the avata
 5. Enter a new avatar name and upload an image.
 6. Select the new avatar after processing completes.
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: upload custom avatar</strong>
-  <span>To be added: base avatar, name input, and image upload entry.</span>
-</div>
+![Custom avatar upload entry in WebUI.](../../../assets/images/usage/webui/custom-avatar-upload.png)
+
+*Custom avatar upload entry in WebUI. Click it to choose a local image and create a new avatar.*
 
 If the result is not good, try a clearer image with a more frontal face.
 

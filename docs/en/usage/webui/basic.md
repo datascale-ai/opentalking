@@ -19,9 +19,10 @@ WebUI is not a production admin system or a full asset management platform. It i
 The top navigation exposes different workflows:
 
 - “Realtime Conversation”: select avatar, model, and voice, then enter the LLM / TTS / talking-head pipeline.
+- “Video Creation”: select an avatar and audio source, then generate an offline digital-human video.
 - “Video Clone”: keep one digital-human asset as the source, then drive its expression and head motion with a camera or uploaded video.
 
-Video Clone is independent from the realtime conversation `speak` queue and does not call LLM, STT, or TTS. Use it after the FasterLivePortrait runtime is available to validate camera-driven expression cloning.
+Video Creation and Video Clone are independent from the realtime conversation `speak` queue. Video Creation is for downloadable narrated videos. Video Clone is for validating camera-driven expression cloning after the FasterLivePortrait runtime is available.
 
 ## Open WebUI
 
@@ -39,10 +40,9 @@ http://127.0.0.1:5173
 
 If you changed ports, use the URL printed by the terminal.
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: WebUI first screen</strong>
-  <span>To be added: avatar list, settings area, and conversation panel after successful startup.</span>
-</div>
+![WebUI first screen: workflow tabs, model selection, avatar library, and session panel.](../../../assets/images/usage/webui/webui-first-screen.png)
+
+*WebUI first screen: workflow tabs, model selection, avatar library, and session panel.*
 
 ## Page Layout
 
@@ -70,6 +70,16 @@ The conversation panel is used for text input, replies, and digital human playba
 
 Start with short text to verify first frame, audio, and captions before testing long prompts or continuous voice.
 
+### Video Creation Panel
+
+After entering “Video Creation”, the page has three columns:
+
+- Left Source: select the avatar for the narrated video, or upload an image to create a new avatar.
+- Center Offline Generation: choose the generation model, title, and audio source. Audio can come from an upload, TTS text, or a cloned voice.
+- Right Result: preview, download, or open the asset library after generation completes.
+
+See [Video Creation](./video-creation.md) for the detailed workflow.
+
 ### Video Clone Panel
 
 After entering “Video Clone”, the page has three columns:
@@ -86,6 +96,8 @@ Useful controls:
 - “Crop driving face”: off by default; enable it only when the driving face is small or unstable.
 - “Mouth opening” and “lip retargeting”: tune mouth motion. Retargeting can improve mouth shape, but aggressive settings may reduce motion to simple vertical opening.
 - “Animation region”: choose mouth-only for lip tests, or full expression for richer motion.
+
+See [Video Clone](./video-clone.md) for the detailed workflow.
 
 ### Status and Errors
 
@@ -127,10 +139,9 @@ Hello, please briefly introduce OpenTalking.
 
 After reply, audio, and video are working, test more complex input.
 
-<div class="ot-figure-placeholder">
-  <strong>Screenshot placeholder: complete session</strong>
-  <span>To be added: selected avatar, model, voice, and a generated digital human response.</span>
-</div>
+![Pre-session confirmation: selected avatar, driver model, and voice.](../../../assets/images/usage/webui/webui-session-ready.png)
+
+*Pre-session confirmation: check avatar, driver model, and voice before clicking Start Conversation.*
 
 ## Common Operations
 
@@ -149,6 +160,17 @@ Voice changes affect future replies. Already generated audio is not re-synthesiz
 ### View Captions and Events
 
 The page shows conversation text, generated replies, and some status events. For detailed backend events, inspect API logs or later reference materials.
+
+### Use Video Creation
+
+After OpenTalking is running:
+
+1. Switch the top navigation to “Video Creation”.
+2. Select an existing avatar on the left, or upload an image to create a narrated-video avatar.
+3. Choose `quicktalk` or `wav2lip` as the generation model.
+4. Choose an audio source: upload audio, synthesize text, or clone a voice first.
+5. Click Generate and Save.
+6. Preview the result on the right or open the asset library to download it.
 
 ### Use Video Clone
 

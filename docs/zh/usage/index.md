@@ -25,9 +25,9 @@
 
 ### WebUI
 
-WebUI 更适合交互式验证。它提供 Avatar 选择、模型选择、TTS Provider 和音色配置、文字/语音会话、状态提示等能力。产品、算法、解决方案同学也可以通过 WebUI 快速确认一个 Avatar 或音色是否符合预期。
+WebUI 更适合交互式验证。它提供 Avatar 选择、模型选择、TTS Provider 和音色配置、文字/语音会话、视频创作、视频克隆、状态提示等能力。产品、算法、解决方案同学也可以通过 WebUI 快速确认一个 Avatar、音色或离线视频结果是否符合预期。
 
-推荐先看[WebUI 基础使用](./webui/basic.md)，再按需求查看[自定义 Avatar](./webui/custom-avatar.md)和[音色与 TTS](./webui/voice-and-tts.md)。
+推荐先看[WebUI 基础使用](./webui/basic.md)，再按需求查看[自定义 Avatar](./webui/custom-avatar.md)、[音色与 TTS](./webui/voice-and-tts.md)、[视频创作](./webui/video-creation.md)和[视频克隆](./webui/video-clone.md)。
 
 ## 推荐路径
 
@@ -51,6 +51,22 @@ Mock 模式不依赖模型权重，适合确认前后端流程、页面交互和
 1. 阅读[音色与 TTS](./webui/voice-and-tts.md)，确认当前要使用的 TTS Provider。
 2. 在 WebUI 中选择默认音色或试听音色。
 3. 如需声音复刻，再补充 Provider Key、样本音频和公开访问地址等配置。
+
+### 我想制作一段数字人口播视频
+
+1. 先确认 WebUI 能打开，并至少有一个可用 Avatar。
+2. 阅读[视频创作](./webui/video-creation.md)，选择 `quicktalk` 或 `wav2lip` 作为离线生成模型。
+3. 选择音频来源：上传音频、文本合成，或先复刻音色再生成口播。
+4. 生成后在右侧预览结果，或进入资产库下载生成视频。
+
+视频创作是离线/准实时生成流程，不需要进入实时对话会话，也不会占用 WebRTC 会话。
+
+### 我想用摄像头驱动数字人表情
+
+1. 先按 FasterLivePortrait 部署文档启动 OmniRT runtime。
+2. 阅读[视频克隆](./webui/video-clone.md)，选择 source 数字人形象。
+3. 使用摄像头或上传 driving video 作为表情和头动输入。
+4. 根据画面效果调整拼回原图、裁剪 driving、驱动区域和嘴部参数。
 
 ### 我想用命令行启动服务
 
@@ -78,3 +94,5 @@ Mock 模式不依赖模型权重，适合确认前后端流程、页面交互和
 - 想配置页面交互流程：继续阅读[WebUI 基础使用](./webui/basic.md)。
 - 想补充自己的形象：继续阅读[自定义 Avatar](./webui/custom-avatar.md)。
 - 想调整声音效果：继续阅读[音色与 TTS](./webui/voice-and-tts.md)。
+- 想生成离线口播视频：继续阅读[视频创作](./webui/video-creation.md)。
+- 想用摄像头或自拍视频驱动数字人：继续阅读[视频克隆](./webui/video-clone.md)。
