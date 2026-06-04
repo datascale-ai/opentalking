@@ -552,7 +552,15 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         except Exception:
             log.warning("Failed to resolve model backend for session wait policy: model=%s", body.model, exc_info=True)
 
-        if body.model == "quicktalk" or (body.model == "musetalk" and backend_name == "local"):
+        if (
+            (
+                _is_flashtalk_compatible_model(body.model)
+                and not uses_flashtalk_slot
+                and backend_name in {"omnirt", "direct_ws"}
+            )
+            or body.model == "quicktalk"
+            or (body.model == "musetalk" and backend_name == "local")
+        ):
             return CreateSessionResponse(session_id=sid, status="initializing")
 
         # Non-FlashTalk: wait synchronously until runner is ready (fast, local model).
