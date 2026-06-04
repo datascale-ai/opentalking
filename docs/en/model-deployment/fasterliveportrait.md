@@ -18,7 +18,7 @@
 | Browser sees the model but session creation fails | Select an avatar whose `model_type` matches `fasterliveportrait`, or prepare a matching avatar bundle. |
 
 
-FasterLivePortrait also runs through the OmniRT `audio2video` compatibility path. OpenTalking owns sessions, TTS/audio streaming, WebRTC playback, and frontend parameter updates. OmniRT keeps FasterLivePortrait and JoyVASA resident and exposes `/v1/audio2video/fasterliveportrait`.
+FasterLivePortrait also runs through the OmniRT `audio2video` compatibility path. OpenTalking owns sessions, TTS/audio streaming, WebRTC playback, and frontend parameter updates. OmniRT keeps FasterLivePortrait and JoyVASA resident and exposes `/v1/audio2video/fasterliveportrait`. This repository does not include an in-process `local` backend for FasterLivePortrait; even for single-machine deployments, start OmniRT on the same host and point OpenTalking at `http://127.0.0.1:9000`.
 
 This path is intended for single-GPU realtime avatars. The default live profile uses 25fps, one-second audio chunks, a 448px width, and pasteback into the original avatar image. Full-body uploads are still driven through the detected face region; body motion is not synthesized by this runtime.
 
@@ -31,7 +31,7 @@ Prepare the shared directory variables first. `FASTERLIVEPORTRAIT_HOME` is the F
 ```bash title="terminal"
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-/path/to/digital_human}"
 export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
-export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
+export OMNIRT_REPO="${OMNIRT_REPO:-$DIGITAL_HUMAN_HOME/omnirt}"
 export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
 export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-/path/to/model}"
 export FASTERLIVEPORTRAIT_REF="${FASTERLIVEPORTRAIT_REF:-5dcf03aa2e6b2eb2a55b971efdc28fc0afdb1494}"
@@ -84,7 +84,7 @@ test -f "$OMNIRT_MODEL_ROOT/FasterLivePortrait/checkpoints/chinese-hubert-base/p
 On servers, keep the `uv` cache on a data disk and use a PyPI mirror to speed up dependency installation. `PIP_INDEX_URL` is a fallback for build steps that still read pip settings.
 
 ```bash title="terminal"
-cd "$OMNIRT_HOME"
+cd "$OMNIRT_REPO"
 export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-$UV_DEFAULT_INDEX}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.uv-cache}"
@@ -95,10 +95,18 @@ The realtime FasterLivePortrait path uses TensorRT by default. The `fasterlivepo
 
 Before deployment, verify that `uv run python -c "import tensorrt as trt; print(trt.__version__)"` prints a version.
 
+The TensorRT wheel places `libnvinfer.so.10` under the OmniRT `.venv` `site-packages/tensorrt_libs` directory. Add that directory to the dynamic library search path before starting the TRT runtime; otherwise `libgrid_sample_3d_plugin.so` fails with `libnvinfer.so.10: cannot open shared object file`:
+
+```bash title="terminal"
+export TRT_LIB_DIR="$OMNIRT_REPO/.venv/lib/python3.11/site-packages/tensorrt_libs"
+export LD_LIBRARY_PATH="$TRT_LIB_DIR:${LD_LIBRARY_PATH:-}"
+```
+
+
 ## 3. Start the OmniRT FasterLivePortrait runtime
 
 ```bash title="terminal"
-cd "$OMNIRT_HOME"
+cd "$OMNIRT_REPO"
 mkdir -p "$DIGITAL_HUMAN_HOME/logs"
 nohup env \
   OMNIRT_FASTLIVEPORTRAIT_RUNTIME=1 \
@@ -116,7 +124,7 @@ echo $! > "$DIGITAL_HUMAN_HOME/logs/omnirt-fasterliveportrait-9000.pid"
 Verify OmniRT reports the model:
 
 ```bash title="terminal"
-curl -s http://127.0.0.1:9000/v1/audio2video/models | jq '.statuses[] | select(.id=="fasterliveportrait")'
+curl -s http://127.0.0.1:9000/v1/audio2video/models | python3 -m json.tool
 ```
 
 Expected status:
@@ -161,35 +169,30 @@ flag_stitching: true
 head_only_pasteback: false
 ```
 
-Start OpenTalking against OmniRT:
+Start OpenTalking against OmniRT. `scripts/start_unified.sh` sets `OPENTALKING_FASTLIVEPORTRAIT_BACKEND=omnirt`, `OPENTALKING_DEFAULT_MODEL=fasterliveportrait`, and `OMNIRT_ENDPOINT`, then starts the WebUI after the API is ready:
 
 ```bash title="terminal"
 cd "$OPENTALKING_HOME"
-mkdir -p "$DIGITAL_HUMAN_HOME/logs"
-nohup env \
-  OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
-  OPENTALKING_OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
-  uv run opentalking-unified --host 0.0.0.0 --port 8000 \
-  > "$DIGITAL_HUMAN_HOME/logs/opentalking-8000.log" 2>&1 &
-echo $! > "$DIGITAL_HUMAN_HOME/logs/opentalking-8000.pid"
+bash scripts/start_unified.sh \
+  --backend omnirt \
+  --model fasterliveportrait \
+  --omnirt http://127.0.0.1:9000 \
+  --api-port 8000 \
+  --web-port 5173 \
+  --host 0.0.0.0
 ```
 
-Frontend:
+The previous command already starts the WebUI. To restart only the frontend while the API is already running on port `8000`, use a second terminal:
 
 ```bash title="terminal"
-cd "$OPENTALKING_HOME/apps/web"
-npm ci --registry=https://registry.npmmirror.com
-mkdir -p "$DIGITAL_HUMAN_HOME/logs"
-nohup env VITE_BACKEND_PORT=8000 \
-  npm run dev -- --host 0.0.0.0 --port 5282 \
-  > "$DIGITAL_HUMAN_HOME/logs/opentalking-web-5282.log" 2>&1 &
-echo $! > "$DIGITAL_HUMAN_HOME/logs/opentalking-web-5282.pid"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
 ```
 
 Verify OpenTalking sees the model:
 
 ```bash title="terminal"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="fasterliveportrait")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 Expected status:
@@ -201,7 +204,7 @@ Expected status:
 Also verify the video-clone entry:
 
 ```bash title="terminal"
-curl -s http://127.0.0.1:8000/video-clone/status | jq
+curl -s http://127.0.0.1:8000/video-clone/status | python3 -m json.tool
 ```
 
 Expected:
@@ -263,7 +266,7 @@ When stopped or when the page changes, the frontend releases the camera track, W
 ## 7. Performance check
 
 ```bash title="terminal"
-cd "$OMNIRT_HOME"
+cd "$OMNIRT_REPO"
 uv run python scripts/bench_fasterliveportrait_ws.py \
   --url ws://127.0.0.1:9000/v1/audio2video/fasterliveportrait \
   --duration 30 \

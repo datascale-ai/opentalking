@@ -99,10 +99,21 @@ bash scripts/start_unified.sh --backend local --model musetalk --api-port 8000 -
 
 `start_unified.sh` calls `scripts/quickstart/prepare_local_musetalk.sh` to check and install the MuseTalk local runtime packages in the OpenTalking `.venv`. If an avatar does not already contain `prepared/prepared_info.json` with `source_preprocess=musetalk_official`, OpenTalking runs the official preprocessing step first.
 
+## Frontend Startup
+
+`scripts/start_unified.sh` starts the WebUI as well as the OpenTalking API. To restart only the frontend while the API is already running on port `8000`, use a second terminal:
+
+```bash title="Terminal"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.
+
 ## 5. Verify
 
 ```bash title="Terminal"
-curl -s http://127.0.0.1:8000/models | jq ".statuses[] | select(.id==\"musetalk\")"
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 Expected status:

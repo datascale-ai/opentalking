@@ -96,7 +96,7 @@ bash scripts/start_unified.sh --backend local --model quicktalk
 ```bash title="终端"
 curl -fsS http://127.0.0.1:19090/health
 curl -fsS http://127.0.0.1:8000/api/runtime/status
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="quicktalk")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望：
@@ -111,3 +111,14 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="quicktalk"
 ## 与 API provider 混用
 
 全本地部署不是强制固定。用户可以在前端选择 API STT 或 API TTS，但后端不会隐式使用 LLM key 或 `DASHSCOPE_API_KEY`。API provider 缺少 key 时，前端启动前会提示错误；会话中 API 返回错误时，数字人对话界面会显示错误消息。
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

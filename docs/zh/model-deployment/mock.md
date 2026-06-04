@@ -46,7 +46,7 @@ bash scripts/quickstart/start_mock.sh
 ## `/models` 验证
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="mock")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望：
@@ -62,3 +62,14 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="mock")'
 | LLM 返回 401 | 分别检查 `OPENTALKING_LLM_API_KEY` 与 `OPENTALKING_STT_DASHSCOPE_API_KEY`。 |
 | 浏览器没有视频 | 使用 Chromium 内核浏览器并检查 WebRTC/CORS 报错。 |
 | 端口占用 | 使用 `bash scripts/quickstart/start_mock.sh --api-port 8010 --web-port 5180`。 |
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

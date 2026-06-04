@@ -15,7 +15,7 @@
 常见检查：
 
 ```bash
-curl -s http://127.0.0.1:8000/video-clone/status | jq
+curl -s http://127.0.0.1:8000/video-clone/status | python3 -m json.tool
 ```
 
 如果状态显示未连接，先检查 OmniRT endpoint、FasterLivePortrait 源码依赖和模型权重路径。

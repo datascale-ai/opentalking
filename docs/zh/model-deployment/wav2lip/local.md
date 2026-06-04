@@ -22,19 +22,19 @@ source .venv/bin/activate
 ## 2. 准备 Wav2Lip 权重
 
 ```bash title="终端"
-cd "$OPENTALKING_HOME"
-mkdir -p models/wav2lip
+export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
+mkdir -p "$OPENTALKING_WAV2LIP_MODEL_ROOT"
 uv pip install -U "huggingface_hub[cli]"
-hf download Pypa/wav2lip384 wav2lip384.pth --local-dir models/wav2lip
-hf download rippertnt/wav2lip s3fd.pth --local-dir models/wav2lip
+hf download Pypa/wav2lip384 wav2lip384.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_ROOT"
+hf download rippertnt/wav2lip s3fd.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_ROOT"
 ```
 
-无法直连 Hugging Face 时，可以先在可联网机器下载，再同步到同样目录。
+无法直连 Hugging Face 时，可以先在可联网机器下载，再同步到同样目录。不要把大模型权重提交到 OpenTalking 仓库。
 
 ## 3. 启动 OpenTalking
 
 ```bash title="终端"
-export OPENTALKING_WAV2LIP_MODEL_ROOT="$OPENTALKING_HOME/models/wav2lip"
+export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
 export OPENTALKING_WAV2LIP_DEVICE=cuda
 export OPENTALKING_WAV2LIP_BATCH_SIZE=16
 export OPENTALKING_WAV2LIP_MAX_LONG_EDGE=832
@@ -48,7 +48,18 @@ bash scripts/start_unified.sh --backend local --model wav2lip --api-port 8000 --
 
 local Wav2Lip 默认使用 `easy_improved` 后处理。前端提供 `auto`、`basic`、`opentalking_improved`、`easy_improved` 四个普通选项；后端仍接受 `easy_enhanced` 用于 API/env 测试，但该模式需要安装 GFPGAN 并通过 `OPENTALKING_WAV2LIP_GFPGAN_CHECKPOINT` 指向 checkpoint。
 
-## 4. 调优参数
+## 4. 启动或重启前端
+
+上一步的 `scripts/start_unified.sh` 已经会启动 WebUI。若只需要重启前端，或后端已经在 `8000` 端口运行，另开终端执行：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。
+
+## 5. 调优参数
 
 | 参数 | 默认建议 | 作用 |
 |------|----------|------|
@@ -58,10 +69,10 @@ local Wav2Lip 默认使用 `easy_improved` 后处理。前端提供 `auto`、`ba
 | `OPENTALKING_WAV2LIP_JPEG_QUALITY` | `85` | 输出帧 JPEG 质量。 |
 | `OPENTALKING_PREWARM_AVATARS` | `singer` | 服务启动时提前预热形象。 |
 
-## 5. 验证
+## 6. 验证
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="wav2lip")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望：

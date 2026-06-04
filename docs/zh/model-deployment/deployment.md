@@ -74,7 +74,9 @@ source .venv/bin/activate
 OPENTALKING_REDIS_MODE=memory opentalking-unified --host 0.0.0.0 --port 8000
 ```
 
-另开一个终端启动前端：
+#### 前端入口
+
+API 监听 `8000` 后，另开一个终端启动 WebUI：
 
 ```bash title="终端"
 cd apps/web
@@ -139,7 +141,7 @@ OPENTALKING_FLASHHEAD_BASE_URL=http://<flashhead-host>:8766
 验证模型可用性：
 
 ```bash title="终端"
-curl -fsS http://127.0.0.1:8000/models | jq '.statuses[] | {id, backend, connected, reason}'
+curl -fsS http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 ## Docker Compose

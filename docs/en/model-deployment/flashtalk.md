@@ -71,7 +71,7 @@ bash scripts/quickstart/start_omnirt_flashtalk.sh --device npu --nproc 8
 ## `/models` Verification
 
 ```bash title="Terminal"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="flashtalk")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 Expected:
@@ -88,3 +88,14 @@ Expected:
 | CUDA OOM | Lower `OPENTALKING_FLASHTALK_FRAME_NUM`, `OPENTALKING_FLASHTALK_SAMPLE_STEPS`, or resolution. |
 | NPU import failure | Confirm CANN is sourced and `torch_npu`, driver, and CANN versions match. |
 | `reason=not_configured` | Configure `OMNIRT_ENDPOINT` or run `start_all.sh --omnirt ...`. |
+
+## Frontend Entry
+
+After the model or backend service is running, use the OpenTalking WebUI:
+
+```bash title="Terminal"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.

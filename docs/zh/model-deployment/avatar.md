@@ -43,7 +43,18 @@ avatar bundle 与模型不匹配，会话创建仍可能失败或效果异常。
 验证服务是否识别 avatar：
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/avatars | jq
+curl -s http://127.0.0.1:8000/avatars | python3 -m json.tool
 ```
 
 排查时同时检查三项：会话 `model`、avatar `model_type`、`/models` 中的 `backend`。
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

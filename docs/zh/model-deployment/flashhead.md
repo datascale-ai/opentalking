@@ -50,7 +50,7 @@ bash scripts/quickstart/start_all.sh
 ## `/models` 验证
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="flashhead")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 配置 WebSocket URL 后，期望：
@@ -66,3 +66,14 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="flashhead"
 | `reason=not_configured` | 设置 `OPENTALKING_FLASHHEAD_WS_URL`。 |
 | WebSocket 握手失败 | 检查 FlashHead 服务路径、端口和跨机器网络。 |
 | Avatar 不匹配 | 使用 `model_type: flashhead` 的 avatar。 |
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

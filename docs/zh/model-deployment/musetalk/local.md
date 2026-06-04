@@ -99,10 +99,21 @@ bash scripts/start_unified.sh --backend local --model musetalk --api-port 8000 -
 
 `start_unified.sh` 会调用 `scripts/quickstart/prepare_local_musetalk.sh` 检查依赖并补齐 OpenTalking `.venv` 中的 MuseTalk local runtime 包。如果当前头像目录没有 `prepared/prepared_info.json`，或其中不是 `source_preprocess=musetalk_official`，OpenTalking 会先运行 MuseTalk 官方预处理。
 
-## 5. 验证
+## 5. 启动或重启前端
+
+上一步的 `scripts/start_unified.sh` 已经会启动 WebUI。若只需要重启前端，或后端已经在 `8000` 端口运行，另开终端执行：
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq ".statuses[] | select(.id==\"musetalk\")"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。
+
+## 6. 验证
+
+```bash title="终端"
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望：

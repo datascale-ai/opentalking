@@ -32,7 +32,7 @@ MuseTalk local 会额外执行 `scripts/quickstart/prepare_local_musetalk.sh`，
 ## 验证
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.backend=="local")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望选中的模型返回：
@@ -48,3 +48,14 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.backend=="local
 - [QuickTalk Local](../quicktalk/local.md)
 - [Wav2Lip Local](../wav2lip/local.md)
 - [MuseTalk Local](../musetalk/local.md)
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

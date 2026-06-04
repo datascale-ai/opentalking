@@ -44,3 +44,14 @@ $OPENTALKING_QUICKTALK_ASSET_ROOT/
 - [QuickTalk with OmniRT](quicktalk/omnirt.md)
 - [Local Audio + QuickTalk](recipes/local-quicktalk-audio.md)
 - [Support Matrix](support-matrix.md)
+
+## Frontend Entry
+
+After the model or backend service is running, use the OpenTalking WebUI:
+
+```bash title="Terminal"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.

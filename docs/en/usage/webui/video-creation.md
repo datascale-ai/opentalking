@@ -23,6 +23,7 @@ Start OpenTalking and make sure the target talking-head model is available:
 
 - `quicktalk`: lightweight realtime or near-realtime narration generation.
 - `wav2lip`: lip-sync generation from existing audio.
+- `fasterliveportrait`: video generation with pasteback, motion multipliers, and finer expression controls.
 
 You can open WebUI in Mock mode to learn the interface, but real video generation requires a model backend.
 
@@ -38,7 +39,7 @@ Use a clear frontal or half-body image for uploads. After processing, the new im
 
 The center area controls generation:
 
-- “Generation model”: choose `quicktalk` or `wav2lip`.
+- “Generation model”: choose a connected talking-head model, such as `quicktalk`, `wav2lip`, or `fasterliveportrait`.
 - “Title”: saved title in the exported video library.
 - “Audio source”: where the narration audio comes from.
 
@@ -58,7 +59,7 @@ The right Result area shows the generated preview, download link, and asset-libr
 
 1. Open WebUI and switch the top navigation to “Video Creation”.
 2. Select an avatar on the left, or upload an image to create one.
-3. Choose the generation model in the center.
+3. Choose a generation model that is connected in the current backend.
 4. Enter a title.
 5. Choose the audio source.
 6. For text synthesis or cloned voice, preview the narration first.
@@ -83,7 +84,7 @@ Use this when the video needs a fixed brand or host voice. After cloning succeed
 
 ### Generation Model Is Disabled
 
-The backend has not exposed that model. Check `--backend`, `--model`, or whether the OmniRT / local runtime is running.
+The backend has not exposed that model. Check `--backend`, `--model`, whether the OmniRT / local runtime is running, or query `/models` for the connected status.
 
 ### Uploaded Audio Fails
 

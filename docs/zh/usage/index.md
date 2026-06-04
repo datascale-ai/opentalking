@@ -55,7 +55,7 @@ Mock 模式不依赖模型权重，适合确认前后端流程、页面交互和
 ### 我想制作一段数字人口播视频
 
 1. 先确认 WebUI 能打开，并至少有一个可用 Avatar。
-2. 阅读[视频创作](./webui/video-creation.md)，选择 `quicktalk` 或 `wav2lip` 作为离线生成模型。
+2. 阅读[视频创作（视频制作）](./webui/video-creation.md)，选择当前后端已连接的 talking-head 生成模型。
 3. 选择音频来源：上传音频、文本合成，或先复刻音色再生成口播。
 4. 生成后在右侧预览结果，或进入资产库下载生成视频。
 
@@ -94,5 +94,5 @@ Mock 模式不依赖模型权重，适合确认前后端流程、页面交互和
 - 想配置页面交互流程：继续阅读[WebUI 基础使用](./webui/basic.md)。
 - 想补充自己的形象：继续阅读[自定义 Avatar](./webui/custom-avatar.md)。
 - 想调整声音效果：继续阅读[音色与 TTS](./webui/voice-and-tts.md)。
-- 想生成离线口播视频：继续阅读[视频创作](./webui/video-creation.md)。
+- 想生成离线口播视频：继续阅读[视频创作（视频制作）](./webui/video-creation.md)。
 - 想用摄像头或自拍视频驱动数字人：继续阅读[视频克隆](./webui/video-clone.md)。

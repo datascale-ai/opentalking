@@ -96,7 +96,7 @@ bash scripts/start_unified.sh --backend local --model quicktalk
 ```bash title="terminal"
 curl -fsS http://127.0.0.1:19090/health
 curl -fsS http://127.0.0.1:8000/api/runtime/status
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="quicktalk")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 Expected:
@@ -111,3 +111,14 @@ In the frontend, select local STT, local CosyVoice3, and a QuickTalk avatar. Tes
 ## Mixing API Providers
 
 The local path is not mandatory. Users can choose API STT or API TTS in the frontend, but the backend will not implicitly reuse the LLM key or `DASHSCOPE_API_KEY`. Missing API provider keys are blocked before session startup. API errors during a conversation are shown in the digital-human chat view.
+
+## Frontend Entry
+
+After the model or backend service is running, use the OpenTalking WebUI:
+
+```bash title="Terminal"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.

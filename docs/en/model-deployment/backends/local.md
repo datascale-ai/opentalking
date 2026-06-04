@@ -12,7 +12,7 @@ bash scripts/start_unified.sh --backend local --model MODEL --api-port 8000 --we
 `MODEL` can be `wav2lip`, `quicktalk`, or `musetalk` when their local dependencies and weights are available.
 
 ```bash title="Terminal"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.backend=="local")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 Expected for the selected model:
@@ -26,3 +26,14 @@ Expected for the selected model:
 - [QuickTalk Local](../quicktalk/local.md)
 - [Wav2Lip Local](../wav2lip/local.md)
 - [MuseTalk Local](../musetalk/local.md)
+
+## Frontend Entry
+
+After the model or backend service is running, use the OpenTalking WebUI:
+
+```bash title="Terminal"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.

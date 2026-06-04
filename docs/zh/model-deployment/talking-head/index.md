@@ -69,13 +69,13 @@ uv pip install -U "huggingface_hub[cli]" modelscope
 
 ```bash title="终端"
 curl -fsS http://127.0.0.1:8000/health
-curl -s http://127.0.0.1:8000/models | jq
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 OmniRT 承载的模型可额外检查：
 
 ```bash title="终端"
-curl -fsS http://127.0.0.1:9000/v1/audio2video/models | jq
+curl -fsS http://127.0.0.1:9000/v1/audio2video/models | python3 -m json.tool
 ```
 
 ## 常见状态
@@ -86,3 +86,14 @@ curl -fsS http://127.0.0.1:9000/v1/audio2video/models | jq
 | `reason=not_configured` | 端点或 WebSocket URL 为空。 | 配置 `OMNIRT_ENDPOINT` 或模型专属 `WS_URL`。 |
 | `reason=omnirt_unavailable` | OmniRT 可达性或模型注册异常。 | 查 OmniRT `/v1/audio2video/models`、模型列表和日志。 |
 | `reason=local_adapter_missing` | 配置为 `local`，但未注册本地 adapter。 | 切换 backend 或补本地 adapter。 |
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

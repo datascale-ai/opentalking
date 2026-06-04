@@ -98,3 +98,14 @@ curl -s -X POST http://127.0.0.1:8000/sessions \
 ```
 
 随后在前端麦克风流程中确认 session event stream 出现 STT 事件和 LLM 回复。
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

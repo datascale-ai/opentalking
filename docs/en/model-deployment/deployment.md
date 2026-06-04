@@ -76,7 +76,9 @@ source .venv/bin/activate
 OPENTALKING_REDIS_MODE=memory opentalking-unified --host 0.0.0.0 --port 8000
 ```
 
-In another terminal:
+#### Frontend Entry
+
+Start the WebUI in another terminal after the API is listening on `8000`:
 
 ```bash title="terminal"
 cd apps/web
@@ -142,7 +144,7 @@ OPENTALKING_FLASHHEAD_BASE_URL=http://<flashhead-host>:8766
 Verify backend visibility:
 
 ```bash title="terminal"
-curl -fsS http://127.0.0.1:8000/models | jq '.statuses[] | {id, backend, connected, reason}'
+curl -fsS http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 ## Docker Compose

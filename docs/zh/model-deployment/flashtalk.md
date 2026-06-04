@@ -69,7 +69,7 @@ bash scripts/quickstart/start_omnirt_flashtalk.sh --device npu --nproc 8
 ## `/models` 验证
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="flashtalk")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望：
@@ -86,3 +86,14 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="flashtalk"
 | CUDA OOM | 降低 `OPENTALKING_FLASHTALK_FRAME_NUM`、`OPENTALKING_FLASHTALK_SAMPLE_STEPS` 或分辨率。 |
 | NPU import 失败 | 确认已 source CANN，且 `torch_npu`、驱动和 CANN 版本匹配。 |
 | `reason=not_configured` | 配置 `OMNIRT_ENDPOINT` 或用 `start_all.sh --omnirt ...`。 |
+
+## 前端入口
+
+模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
+
+```bash title="终端"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。

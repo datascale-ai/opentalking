@@ -29,8 +29,8 @@ bash scripts/start_unified.sh \
 ```
 
 ```bash title="Terminal"
-curl -fsS http://127.0.0.1:9000/v1/audio2video/models | jq
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.backend=="omnirt")'
+curl -fsS http://127.0.0.1:9000/v1/audio2video/models | python3 -m json.tool
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 ## Model Guides
@@ -40,3 +40,14 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.backend=="omnir
 - [MuseTalk with OmniRT](../musetalk/omnirt.md)
 - [FasterLivePortrait](../fasterliveportrait.md)
 - [FlashTalk](../flashtalk.md)
+
+## Frontend Entry
+
+After the model or backend service is running, use the OpenTalking WebUI:
+
+```bash title="Terminal"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```
+
+For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.

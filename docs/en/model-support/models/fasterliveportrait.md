@@ -31,7 +31,7 @@ First follow [FasterLivePortrait deployment](../../model-deployment/fasterlivepo
 Check whether OpenTalking sees the video-clone service:
 
 ```bash
-curl -s http://127.0.0.1:8000/video-clone/status | jq
+curl -s http://127.0.0.1:8000/video-clone/status | python3 -m json.tool
 ```
 
 `connected` should be `true`. If it is `false`, check whether OmniRT started the FasterLivePortrait runtime and whether `OMNIRT_ENDPOINT` points to that service.

@@ -18,7 +18,7 @@
 | 浏览器能看到模型但创建会话失败 | 选择 `model_type` 匹配 `fasterliveportrait` 的 avatar，或准备对应 avatar bundle。 |
 
 
-FasterLivePortrait 当前也走 OmniRT `audio2video` 兼容路径。OpenTalking 负责会话、TTS/音频流、WebRTC 播放和前端参数下发；OmniRT 常驻加载 FasterLivePortrait 与 JoyVASA，统一暴露 `/v1/audio2video/fasterliveportrait`。
+FasterLivePortrait 当前也走 OmniRT `audio2video` 兼容路径。OpenTalking 负责会话、TTS/音频流、WebRTC 播放和前端参数下发；OmniRT 常驻加载 FasterLivePortrait 与 JoyVASA，统一暴露 `/v1/audio2video/fasterliveportrait`。OpenTalking 仓内没有进程内 `local` 后端；即使单机部署，也需要在同一台机器上启动 OmniRT，再让 OpenTalking 指向本机 `http://127.0.0.1:9000`。
 
 该路径适合单卡实时数字人：默认使用 25fps、1 秒音频 chunk、448 宽实时档，并把动头贴回原始资产图。上传整身图时仍以 FasterLivePortrait 检测到的人脸区域驱动，身体本身不会生成新动作。
 
@@ -31,7 +31,7 @@ FasterLivePortrait 当前也走 OmniRT `audio2video` 兼容路径。OpenTalking 
 ```bash title="终端"
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-/path/to/digital_human}"
 export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
-export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
+export OMNIRT_REPO="${OMNIRT_REPO:-$DIGITAL_HUMAN_HOME/omnirt}"
 export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
 export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-/path/to/model}"
 export FASTERLIVEPORTRAIT_REF="${FASTERLIVEPORTRAIT_REF:-5dcf03aa2e6b2eb2a55b971efdc28fc0afdb1494}"
@@ -84,7 +84,7 @@ test -f "$OMNIRT_MODEL_ROOT/FasterLivePortrait/checkpoints/chinese-hubert-base/p
 服务器上建议把 `uv` 缓存放到数据盘，并通过 PyPI 镜像加速依赖安装。`PIP_INDEX_URL` 是给少数仍读取 pip 配置的构建步骤兜底。
 
 ```bash title="终端"
-cd "$OMNIRT_HOME"
+cd "$OMNIRT_REPO"
 export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-$UV_DEFAULT_INDEX}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.uv-cache}"
@@ -95,10 +95,18 @@ FasterLivePortrait 实时路径默认使用 TensorRT。`fasterliveportrait` extr
 
 部署前可确认 `uv run python -c "import tensorrt as trt; print(trt.__version__)"` 能正常输出版本号。
 
+TensorRT wheel 会把 `libnvinfer.so.10` 放在 OmniRT `.venv` 的 `site-packages/tensorrt_libs` 下。启动 TRT runtime 前需要把这个目录加入动态库搜索路径，否则 `libgrid_sample_3d_plugin.so` 会报 `libnvinfer.so.10: cannot open shared object file`：
+
+```bash title="终端"
+export TRT_LIB_DIR="$OMNIRT_REPO/.venv/lib/python3.11/site-packages/tensorrt_libs"
+export LD_LIBRARY_PATH="$TRT_LIB_DIR:${LD_LIBRARY_PATH:-}"
+```
+
+
 ## 3. 启动 OmniRT FasterLivePortrait runtime
 
 ```bash title="终端"
-cd "$OMNIRT_HOME"
+cd "$OMNIRT_REPO"
 mkdir -p "$DIGITAL_HUMAN_HOME/logs"
 nohup env \
   OMNIRT_FASTLIVEPORTRAIT_RUNTIME=1 \
@@ -116,7 +124,7 @@ echo $! > "$DIGITAL_HUMAN_HOME/logs/omnirt-fasterliveportrait-9000.pid"
 服务启动后验证 OmniRT 是否报告模型：
 
 ```bash title="终端"
-curl -s http://127.0.0.1:9000/v1/audio2video/models | jq '.statuses[] | select(.id=="fasterliveportrait")'
+curl -s http://127.0.0.1:9000/v1/audio2video/models | python3 -m json.tool
 ```
 
 期望状态类似：
@@ -161,35 +169,30 @@ flag_stitching: true
 head_only_pasteback: false
 ```
 
-启动 OpenTalking 并指向 OmniRT：
+启动 OpenTalking 并指向 OmniRT。`scripts/start_unified.sh` 会设置 `OPENTALKING_FASTLIVEPORTRAIT_BACKEND=omnirt`、`OPENTALKING_DEFAULT_MODEL=fasterliveportrait` 和 `OMNIRT_ENDPOINT`，并在 API 启动后拉起 WebUI：
 
 ```bash title="终端"
 cd "$OPENTALKING_HOME"
-mkdir -p "$DIGITAL_HUMAN_HOME/logs"
-nohup env \
-  OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
-  OPENTALKING_OMNIRT_ENDPOINT=http://127.0.0.1:9000 \
-  uv run opentalking-unified --host 0.0.0.0 --port 8000 \
-  > "$DIGITAL_HUMAN_HOME/logs/opentalking-8000.log" 2>&1 &
-echo $! > "$DIGITAL_HUMAN_HOME/logs/opentalking-8000.pid"
+bash scripts/start_unified.sh \
+  --backend omnirt \
+  --model fasterliveportrait \
+  --omnirt http://127.0.0.1:9000 \
+  --api-port 8000 \
+  --web-port 5173 \
+  --host 0.0.0.0
 ```
 
-前端：
+上一步已经会启动 WebUI。若只需要重启前端，或后端已经在 `8000` 端口运行，另开终端执行：
 
 ```bash title="终端"
-cd "$OPENTALKING_HOME/apps/web"
-npm ci --registry=https://registry.npmmirror.com
-mkdir -p "$DIGITAL_HUMAN_HOME/logs"
-nohup env VITE_BACKEND_PORT=8000 \
-  npm run dev -- --host 0.0.0.0 --port 5282 \
-  > "$DIGITAL_HUMAN_HOME/logs/opentalking-web-5282.log" 2>&1 &
-echo $! > "$DIGITAL_HUMAN_HOME/logs/opentalking-web-5282.pid"
+cd "$OPENTALKING_HOME"
+bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
 ```
 
 验证 OpenTalking 能看到模型：
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="fasterliveportrait")'
+curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 ```
 
 期望：
@@ -201,7 +204,7 @@ curl -s http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="fasterlive
 同时验证视频克隆入口：
 
 ```bash title="终端"
-curl -s http://127.0.0.1:8000/video-clone/status | jq
+curl -s http://127.0.0.1:8000/video-clone/status | python3 -m json.tool
 ```
 
 期望：
@@ -263,7 +266,7 @@ ws://<omnirt-host>/v1/avatar/video-clone/fasterliveportrait
 ## 7. 性能验收
 
 ```bash title="终端"
-cd "$OMNIRT_HOME"
+cd "$OMNIRT_REPO"
 uv run python scripts/bench_fasterliveportrait_ws.py \
   --url ws://127.0.0.1:9000/v1/audio2video/fasterliveportrait \
   --duration 30 \

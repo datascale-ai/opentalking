@@ -55,7 +55,7 @@ Mock mode does not require model weights, so it is the fastest way to verify the
 ### I Want to Create a Digital-Human Video
 
 1. Confirm WebUI opens and at least one avatar is available.
-2. Read [Video Creation](./webui/video-creation.md), then choose `quicktalk` or `wav2lip` as the offline generation model.
+2. Read [Video Creation](./webui/video-creation.md), then choose a connected talking-head model for offline generation.
 3. Choose an audio source: upload audio, synthesize text, or clone a voice first.
 4. Preview the result on the right or open the asset library to download the generated video.
 

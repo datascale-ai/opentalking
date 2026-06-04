@@ -15,7 +15,7 @@ Video Clone depends on the FasterLivePortrait runtime. Start OmniRT according to
 Common check:
 
 ```bash
-curl -s http://127.0.0.1:8000/video-clone/status | jq
+curl -s http://127.0.0.1:8000/video-clone/status | python3 -m json.tool
 ```
 
 If the status is disconnected, check the OmniRT endpoint, FasterLivePortrait source dependency, and model weight paths.
