@@ -250,7 +250,7 @@ def _quicktalk_video_config(avatar_path: Path) -> dict[str, int]:
 
 
 def _settings_or_env_int(settings: object, attr: str, env_names: tuple[str, ...], default: int) -> int:
-    raw: object = getattr(settings, attr, None)
+    raw: Any = getattr(settings, attr, None)
     if raw in (None, ""):
         for env_name in env_names:
             env_value = os.environ.get(env_name)
@@ -258,7 +258,8 @@ def _settings_or_env_int(settings: object, attr: str, env_names: tuple[str, ...]
                 raw = env_value
                 break
     try:
-        return int(raw if raw not in (None, "") else default)
+        value: Any = raw if raw not in (None, "") else default
+        return int(value)
     except (TypeError, ValueError):
         return default
 
