@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AvatarSelectionStage, type AgentConfig } from "./components/AvatarSelectionStage";
 import { BailianVoiceClone } from "./components/BailianVoiceClone";
 import { ChatInput } from "./components/ChatInput";
@@ -816,8 +816,6 @@ export default function App() {
   const [ftRecordPhase, setFtRecordPhase] = useState<"idle" | "recording" | "stopped">("idle");
   const [ftRecordBusy, setFtRecordBusy] = useState(false);
   const [assetLibraryRefreshKey, setAssetLibraryRefreshKey] = useState(0);
-  const [offlineBundleBusy, setOfflineBundleBusy] = useState(false);
-  const offlineBundleInputRef = useRef<HTMLInputElement>(null);
   const [voiceCatalog, setVoiceCatalog] = useState<VoiceCatalogItem[]>([]);
   const [voiceApplyNotice, setVoiceApplyNotice] = useState<string | null>(null);
   const [ttsPreviewText, setTtsPreviewText] = useState(DEFAULT_TTS_PREVIEW_TEXT);
@@ -2103,76 +2101,6 @@ export default function App() {
     await retryPendingRealtimeExport();
   }, [retryPendingRealtimeExport]);
 
-  const handleOfflineBundleFile = useCallback(
-    async (e: ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
-      if (!file || !sessionId || !isFlashRenderer(model)) return;
-      setOfflineBundleBusy(true);
-      try {
-        const fd = new FormData();
-        fd.append("file", file);
-        const enq = await apiPostForm<{ session_id: string; job_id: string; status: string }>(
-          `/sessions/${sessionId}/flashtalk-offline-bundle`,
-          fd,
-        );
-        const jobId = enq.job_id;
-        const deadline = Date.now() + 45 * 60 * 1000;
-        type St = {
-          session_id: string;
-          job_id: string;
-          status: string;
-          message?: string;
-        };
-        let last: St = { session_id: sessionId, job_id: jobId, status: "queued" };
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 2000));
-          last = await apiGet<St>(`/sessions/${sessionId}/flashtalk-offline-bundle/${jobId}`);
-          if (last.status === "done" || last.status === "error") break;
-        }
-        if (last.status !== "done" && last.status !== "error") {
-          throw new Error("离线导出超时（超过 45 分钟），请稍后重试。");
-        }
-        if (last.status === "error") {
-          throw new Error(last.message || "Worker 处理失败");
-        }
-        const url = buildApiUrl(
-          `/sessions/${sessionId}/flashtalk-offline-bundle/${jobId}/download?artifact=bundle`,
-        );
-        const response = await fetch(url);
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error(`${response.status} ${detail}`);
-        }
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = objectUrl;
-        a.download = `${sessionId}_offline_${jobId}_bundle.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(objectUrl);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: makeId(),
-            role: "user",
-            text: `[离线导出完成] ${file.name} → bundle.mp4`,
-            timestamp: Date.now(),
-          },
-        ]);
-      } catch (error) {
-        console.warn("flashtalk offline bundle failed", error);
-        const msg = error instanceof Error ? error.message : String(error);
-        notify(`离线整段导出失败：${msg}`, "error");
-      } finally {
-        setOfflineBundleBusy(false);
-      }
-    },
-    [model, notify, sessionId],
-  );
-
   const handleAvatarChange = useCallback(
     (newId: string) => {
       setAvatarId(newId);
@@ -2271,20 +2199,6 @@ export default function App() {
         onFlashtalkRecordStart={() => void handleFtRecordStart()}
         onFlashtalkRecordStop={() => void handleFtRecordStop()}
         onFlashtalkRecordSave={() => void handleFtRecordSave()}
-        flashtalkOfflineBundleBusy={offlineBundleBusy}
-        onFlashtalkOfflineBundleClick={
-          isFlashRenderer(model) ? () => offlineBundleInputRef.current?.click() : undefined
-        }
-      />
-
-      <input
-        ref={offlineBundleInputRef}
-        type="file"
-        accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg"
-        className="hidden"
-        tabIndex={-1}
-        aria-hidden
-        onChange={(ev) => void handleOfflineBundleFile(ev)}
       />
 
       {voiceCloneOpen ? (
@@ -2601,18 +2515,8 @@ export default function App() {
                       </p>
                     </div>
                     <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs leading-relaxed text-cyan-800">
-                      音频驱动数字人会话连接后，可在顶部使用录制和离线整段导出。
+                      音频驱动数字人会话连接后，可在顶部使用录制保存当前实时画面。
                     </div>
-                    {isFlashRenderer(model) && sessionId ? (
-                      <button
-                        type="button"
-                        disabled={offlineBundleBusy}
-                        onClick={() => offlineBundleInputRef.current?.click()}
-                        className="w-full rounded-lg bg-cyan-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:opacity-60"
-                      >
-                        {offlineBundleBusy ? "离线导出中..." : "上传音频并离线导出"}
-                      </button>
-                    ) : null}
                   </div>
                 ) : null}
               </div>

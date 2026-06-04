@@ -45,7 +45,7 @@ const events = [
 
 const exportJobs = [
   { title: "直播介绍片段", meta: "00:42 · 1080p", status: "可下载", progress: 100 },
-  { title: "离线整段导出", meta: "上传音频 demo.wav", status: "渲染中", progress: 64 },
+  { title: "实时录制导出", meta: "会话录制 demo.webm", status: "渲染中", progress: 64 },
   { title: "口型验证样片", meta: "00:12 · 竖屏", status: "已完成", progress: 100 },
 ];
 
