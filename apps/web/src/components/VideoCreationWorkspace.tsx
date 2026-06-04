@@ -51,9 +51,12 @@ const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = 
   { id: "voice_clone", label: "复刻音色" },
 ];
 
-const VIDEO_CREATION_MODELS = ["fasterliveportrait", "quicktalk", "wav2lip"];
+const VIDEO_CREATION_MODELS = ["flashtalk", "flashhead", "fasterliveportrait", "musetalk", "quicktalk", "wav2lip"];
 const VIDEO_CREATION_MODEL_LABELS: Record<string, string> = {
+  flashtalk: "FlashTalk",
+  flashhead: "FlashHead",
   fasterliveportrait: "FasterLivePortrait",
+  musetalk: "MuseTalk",
   quicktalk: "QuickTalk",
   wav2lip: "Wav2Lip",
 };
@@ -151,7 +154,7 @@ export function VideoCreationWorkspace({
   onFasterLivePortraitConfigChange,
 }: VideoCreationWorkspaceProps) {
   const selectedAvatar = avatars.find((avatar) => avatar.id === avatarId) ?? avatars[0] ?? null;
-  const [model, setModel] = useState(() => (models.includes("fasterliveportrait") ? "fasterliveportrait" : models.includes("quicktalk") ? "quicktalk" : "wav2lip"));
+  const [model, setModel] = useState(() => VIDEO_CREATION_MODELS.find((item) => models.includes(item)) ?? "fasterliveportrait");
   const [audioSource, setAudioSource] = useState<VideoCreationAudioSource>("upload");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [sourceImageBusy, setSourceImageBusy] = useState(false);

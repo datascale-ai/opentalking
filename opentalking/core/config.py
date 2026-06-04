@@ -57,6 +57,10 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "model": "llm_model",
             "system_prompt": "llm_system_prompt",
         },
+        "agent": {
+            "memory_sqlite_path": "agent_memory_sqlite_path",
+            "knowledge_root": "agent_knowledge_root",
+        },
         "tts": {
             "default_provider": "tts_default_provider",
             "enabled_providers": "tts_enabled_providers",
@@ -308,6 +312,10 @@ class Settings(BaseSettings):
 
     #: 音色目录 SQLite；默认 ./data/opentalking.sqlite3
     sqlite_path: str = Field(default="./data/opentalking.sqlite3")
+    #: Agent 长期记忆 SQLite；默认 ./data/agent_memory.sqlite
+    agent_memory_sqlite_path: str = Field(default="./data/agent_memory.sqlite")
+    #: Agent 默认知识库原始文档目录；默认 ./data/knowledge
+    agent_knowledge_root: str = Field(default="./data/knowledge")
 
     #: CosyVoice 复刻时，百炼需拉取公网 URL；若留空则用请求的 Host 拼 URL（内网部署请填公网可达地址）
     public_base_url: str = ""

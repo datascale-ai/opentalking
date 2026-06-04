@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import tempfile
 import uuid
 import wave
@@ -19,11 +21,21 @@ from opentalking.export_store import create_video_export
 from opentalking.models.registry import get_adapter
 from opentalking.providers.stt.dashscope.adapter import decode_audio_file_to_pcm_i16
 from opentalking.providers.synthesis.audio2video_client import LocalAudio2VideoClient, OmniRTAudio2VideoClient
+from opentalking.providers.synthesis.backends import resolve_model_backend
 from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClient
 from opentalking.providers.synthesis.omnirt import auth_headers, resolve_synthesis_ws_url
 from opentalking.providers.tts.factory import build_tts_adapter
 
-SUPPORTED_VIDEO_CREATION_MODELS = {"wav2lip", "quicktalk", "fasterliveportrait"}
+log = logging.getLogger(__name__)
+
+SUPPORTED_VIDEO_CREATION_MODELS = {
+    "flashtalk",
+    "flashhead",
+    "fasterliveportrait",
+    "musetalk",
+    "quicktalk",
+    "wav2lip",
+}
 
 
 def _settings_path(settings: object, name: str, default: str) -> Path:
@@ -65,7 +77,9 @@ def _avatar_dir(settings: object, avatar_id: str) -> Path:
 def _normalize_model(model: str) -> str:
     value = (model or "").strip().lower()
     if value not in SUPPORTED_VIDEO_CREATION_MODELS:
-        raise ValueError("video creation only supports wav2lip, quicktalk, and fasterliveportrait")
+        raise ValueError(
+            "video creation only supports flashtalk, flashhead, fasterliveportrait, musetalk, quicktalk, and wav2lip"
+        )
     return value
 
 
@@ -155,13 +169,34 @@ def _fasterliveportrait_preroll_samples(settings: object, model: str, sample_rat
     return max(0, int(round(float(sample_rate) * float(preroll_ms) / 1000.0)))
 
 
-def _audio2video_client(settings: object, model: str, sample_rate: int):
-    if model == "fasterliveportrait":
-        ws_url = resolve_synthesis_ws_url(model, settings)
+def _audio2video_client(settings: object, model: str, sample_rate: int, backend: object | None = None):
+    backend = backend or resolve_model_backend(model, settings)
+    backend_name = str(getattr(backend, "backend", "") or "").strip().lower()
+    if backend_name in {"omnirt", "direct_ws"}:
+        if model == "flashhead":
+            from opentalking.providers.synthesis.flashhead import FlashHeadWSClient
+
+            return OmniRTAudio2VideoClient(
+                FlashHeadWSClient(
+                    ws_url=str(getattr(backend, "ws_url", "") or getattr(settings, "flashhead_ws_url", "") or ""),
+                    model=str(getattr(settings, "flashhead_model", "") or "soulx-flashhead-1.3b"),
+                    config={
+                        "fps": int(getattr(settings, "flashhead_fps", 25) or 25),
+                        "sample_rate": int(getattr(settings, "flashhead_sample_rate", 16000) or 16000),
+                        "width": int(getattr(settings, "flashhead_width", 416) or 416),
+                        "height": int(getattr(settings, "flashhead_height", 704) or 704),
+                        "frame_num": int(getattr(settings, "flashhead_frame_num", 25) or 25),
+                        "chunk_samples": int(getattr(settings, "flashhead_chunk_samples", 16000) or 16000),
+                    },
+                )
+            )
+        ws_url = str(getattr(backend, "ws_url", "") or "") if backend_name == "direct_ws" else resolve_synthesis_ws_url(model, settings)
         headers = auth_headers(settings)
         return OmniRTAudio2VideoClient(
             FlashTalkWSClient(ws_url, extra_headers=headers or None)
         )
+    if backend_name != "local":
+        raise ValueError(f"video creation does not support {model} backend: {backend_name or 'unknown'}")
     return LocalAudio2VideoClient(
         get_adapter(model),
         device=_device_for_model(settings, model),
@@ -169,16 +204,220 @@ def _audio2video_client(settings: object, model: str, sample_rate: int):
     )
 
 
+def _remote_audio2video_backend(backend: object) -> bool:
+    return str(getattr(backend, "backend", "") or "").strip().lower() in {"omnirt", "direct_ws"}
+
+
+def _avatar_manifest(avatar_path: Path):
+    return load_avatar_bundle(avatar_path, strict=False).manifest
+
+
+def _resolve_avatar_relative_path(avatar_path: Path, raw: object) -> Path | None:
+    value = str(raw or "").strip()
+    if not value:
+        return None
+    avatar_root = avatar_path.resolve()
+    path = (avatar_root / value).resolve()
+    try:
+        path.relative_to(avatar_root)
+    except ValueError:
+        return None
+    return path
+
+
+def _avatar_manifest_metadata(avatar_path: Path) -> dict[str, Any]:
+    metadata = _avatar_manifest(avatar_path).metadata
+    return dict(metadata or {}) if isinstance(metadata, dict) else {}
+
+
+def _quicktalk_manifest_section(avatar_path: Path) -> dict[str, Any]:
+    quicktalk = _avatar_manifest_metadata(avatar_path).get("quicktalk")
+    return dict(quicktalk) if isinstance(quicktalk, dict) else {}
+
+
+def _quicktalk_video_config(avatar_path: Path) -> dict[str, int]:
+    manifest = _avatar_manifest(avatar_path)
+    out: dict[str, int] = {}
+    for key in ("width", "height"):
+        try:
+            value = int(getattr(manifest, key) or 0)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            out[key] = value
+    out["fps"] = 25
+    return out
+
+
+def _settings_or_env_int(settings: object, attr: str, env_names: tuple[str, ...], default: int) -> int:
+    raw: object = getattr(settings, attr, None)
+    if raw in (None, ""):
+        for env_name in env_names:
+            env_value = os.environ.get(env_name)
+            if env_value not in (None, ""):
+                raw = env_value
+                break
+    try:
+        return int(raw if raw not in (None, "") else default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _even_video_dim(value: int) -> int:
+    value = max(2, int(value))
+    return value + (value % 2)
+
+
+def _quicktalk_cache_video_size(settings: object, avatar_path: Path) -> tuple[int, int] | None:
+    config = _quicktalk_video_config(avatar_path)
+    width = int(config.get("width") or 0)
+    height = int(config.get("height") or 0)
+    if width <= 0 or height <= 0:
+        return None
+    max_long_edge = _settings_or_env_int(
+        settings,
+        "quicktalk_max_long_edge",
+        ("OPENTALKING_QUICKTALK_MAX_LONG_EDGE", "OMNIRT_QUICKTALK_MAX_LONG_EDGE"),
+        900,
+    )
+    if max_long_edge <= 0:
+        max_long_edge = 900
+    long_edge = max(width, height)
+    if long_edge > max_long_edge:
+        scale = float(max_long_edge) / float(long_edge)
+        width = max(2, int(round(width * scale)))
+        height = max(2, int(round(height * scale)))
+        width -= width % 2
+        height -= height % 2
+    else:
+        width = _even_video_dim(width)
+        height = _even_video_dim(height)
+    return width, height
+
+
+def _prepared_quicktalk_path(settings: object, avatar_path: Path, prefix: str, suffix: str) -> Path | None:
+    quicktalk_dir = avatar_path / "quicktalk"
+    cache_size = _quicktalk_cache_video_size(settings, avatar_path)
+    if not quicktalk_dir.is_dir() or cache_size is None:
+        return None
+    width, height = cache_size
+    path = (quicktalk_dir / f"{prefix}_{width}x{height}.{suffix}").resolve()
+    try:
+        path.relative_to(avatar_path.resolve())
+    except ValueError:
+        return None
+    return path if path.is_file() else None
+
+
+def _quicktalk_template_video(settings: object, avatar_path: Path) -> Path | None:
+    prepared = _prepared_quicktalk_path(settings, avatar_path, "template", "mp4")
+    if prepared is not None:
+        return prepared
+
+    metadata = _avatar_manifest_metadata(avatar_path)
+    quicktalk = _quicktalk_manifest_section(avatar_path)
+    for source in (quicktalk, metadata):
+        for key in ("template_video", "source_video"):
+            path = _resolve_avatar_relative_path(avatar_path, source.get(key))
+            if path is not None and path.is_file():
+                return path
+
+    quicktalk_dir = avatar_path / "quicktalk"
+    preferred = quicktalk_dir / "template_900.mp4"
+    if preferred.is_file():
+        return preferred.resolve()
+    if quicktalk_dir.is_dir():
+        for candidate in sorted(quicktalk_dir.glob("template_*.mp4")):
+            candidate = candidate.resolve()
+            try:
+                candidate.relative_to(avatar_path.resolve())
+            except ValueError:
+                continue
+            if candidate.is_file():
+                return candidate
+
+    for name in ("idle.mp4", "idle.mov", "idle.webm", "idle.avi", "source.mp4"):
+        path = avatar_path / name
+        if path.is_file():
+            return path.resolve()
+    return None
+
+
+def _quicktalk_template_frame_dir(avatar_path: Path) -> Path | None:
+    metadata = _avatar_manifest_metadata(avatar_path)
+    if str(metadata.get("reference_mode") or "").strip().lower() != "frames":
+        return None
+    raw = str(metadata.get("frame_dir") or "frames").strip() or "frames"
+    frame_dir = _resolve_avatar_relative_path(avatar_path, raw)
+    return frame_dir if frame_dir is not None and frame_dir.is_dir() else None
+
+
+def _quicktalk_face_cache(settings: object, avatar_path: Path) -> Path | None:
+    prepared = _prepared_quicktalk_path(settings, avatar_path, "face_cache_v3", "npz")
+    if prepared is not None:
+        return prepared
+
+    quicktalk = _quicktalk_manifest_section(avatar_path)
+    path = _resolve_avatar_relative_path(avatar_path, quicktalk.get("face_cache"))
+    if path is not None and path.is_file():
+        return path
+
+    quicktalk_dir = avatar_path / "quicktalk"
+    if not quicktalk_dir.is_dir():
+        return None
+    candidates = [quicktalk_dir / "face_cache_v3_900.npz", *sorted(quicktalk_dir.glob("face_cache_v3_*.npz"))]
+    seen: set[Path] = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            candidate.relative_to(avatar_path.resolve())
+        except ValueError:
+            continue
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _quicktalk_init_session_kwargs(settings: object, avatar_path: Path) -> dict[str, object]:
+    kwargs: dict[str, object] = {"video_config": _quicktalk_video_config(avatar_path)}
+    template_video = _quicktalk_template_video(settings, avatar_path)
+    template_frame_dir = _quicktalk_template_frame_dir(avatar_path)
+    if template_video is not None:
+        kwargs["template_mode"] = "video"
+        kwargs["template_video"] = template_video
+    elif template_frame_dir is not None:
+        kwargs["template_mode"] = "frames"
+        kwargs["template_frame_dir"] = template_frame_dir
+    else:
+        kwargs["template_mode"] = "image"
+    face_cache = _quicktalk_face_cache(settings, avatar_path)
+    if face_cache is not None:
+        kwargs["quicktalk_face_cache"] = face_cache
+    return kwargs
+
+
 def _init_session_kwargs(
     *,
+    settings: object,
     model: str,
     avatar_path: Path,
+    backend: object,
     fasterliveportrait_config: Mapping[str, object] | None,
 ) -> dict[str, object]:
     kwargs: dict[str, object] = {"avatar_path": avatar_path}
+    if not _remote_audio2video_backend(backend):
+        return kwargs
+
+    kwargs["ref_image"] = _reference_image_path(avatar_path)
+    if model == "quicktalk":
+        kwargs.update(_quicktalk_init_session_kwargs(settings, avatar_path))
+        return kwargs
     if model != "fasterliveportrait":
         return kwargs
-    kwargs["ref_image"] = _reference_image_path(avatar_path)
+
     video_config = _fasterliveportrait_video_config(fasterliveportrait_config)
     if video_config:
         kwargs["video_config"] = video_config
@@ -402,7 +641,24 @@ class VideoCreationService:
         audio_wav = work_dir / "audio.wav"
         _write_wav(audio_wav, pcm, sample_rate)
 
-        client = _audio2video_client(self.settings, model_value, sample_rate)
+        backend = resolve_model_backend(model_value, self.settings)
+        backend_name = str(getattr(backend, "backend", "") or "").strip().lower()
+        ws_url = ""
+        if backend_name in {"omnirt", "direct_ws"}:
+            ws_url = (
+                str(getattr(backend, "ws_url", "") or "")
+                if backend_name == "direct_ws"
+                else resolve_synthesis_ws_url(model_value, self.settings)
+            )
+        log.info(
+            "video creation audio2video backend: job=%s model=%s avatar=%s backend=%s ws_url=%s",
+            job_id,
+            model_value,
+            avatar_id,
+            backend_name or "unknown",
+            ws_url,
+        )
+        client = _audio2video_client(self.settings, model_value, sample_rate, backend=backend)
         preroll_samples = _fasterliveportrait_preroll_samples(self.settings, model_value, sample_rate)
         render_source_pcm = pcm
         if preroll_samples:
@@ -414,6 +670,8 @@ class VideoCreationService:
                 **_init_session_kwargs(
                     model=model_value,
                     avatar_path=avatar_path,
+                    settings=self.settings,
+                    backend=backend,
                     fasterliveportrait_config=fasterliveportrait_config,
                 )
             )
@@ -459,6 +717,14 @@ class VideoCreationService:
             avatar_id=avatar_id,
             model=model_value,
             max_bytes=_settings_int(self.settings, "export_max_bytes", 1024 * 1024 * 1024),
+        )
+        log.info(
+            "video creation export complete: job=%s export_id=%s model=%s avatar=%s path=%s",
+            job_id,
+            item.get("id"),
+            model_value,
+            avatar_id,
+            item.get("path"),
         )
         return {
             "job_id": job_id,

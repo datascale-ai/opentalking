@@ -69,10 +69,19 @@ def _effective_tts_provider(requested: str | None) -> str:
 
 _BAILIAN_TTS = BAILIAN_TTS_PROVIDERS
 _LOCAL_TTS = LOCAL_TTS_PROVIDERS
+_AUDIO_RENDERER_MODELS = frozenset(
+    {"flashtalk", "flashhead", "fasterliveportrait", "quicktalk", "musetalk", "wav2lip"}
+)
+_AUDIO_RENDERER_MODELS_LABEL = "flashtalk/flashhead/fasterliveportrait/quicktalk/musetalk/wav2lip"
+_FLASHTALK_SLOT_MODELS = frozenset({"flashtalk", "flashhead"})
 
 
 def _is_flashtalk_compatible_model(model: str | None) -> bool:
-    return (model or "").strip().lower() in {"flashtalk", "flashhead", "fasterliveportrait"}
+    return (model or "").strip().lower() in _AUDIO_RENDERER_MODELS
+
+
+def _uses_flashtalk_slot_model(model: str | None) -> bool:
+    return (model or "").strip().lower() in _FLASHTALK_SLOT_MODELS
 
 
 def _settings_value(settings: object, name: str) -> str:
@@ -150,6 +159,28 @@ def _normalize_voice_for_speak(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+def _normalize_agent_user_id(value: str | None) -> str | None:
+    user_id = (value or "").strip()
+    if not user_id:
+        return None
+    if len(user_id) > 128:
+        raise HTTPException(status_code=400, detail="user_id is too long")
+    if any(ch.isspace() for ch in user_id):
+        raise HTTPException(status_code=400, detail="user_id must not contain whitespace")
+    return user_id
+
+
+def _normalize_agent_session_config(
+    body: CreateSessionRequest,
+) -> tuple[str | None, bool, bool, bool, str]:
+    agent_user_id = _normalize_agent_user_id(body.user_id)
+    memory_enabled = bool(agent_user_id and body.memory_enabled)
+    knowledge_enabled = body.knowledge_enabled is not False
+    agent_enabled = bool(body.agent_enabled or memory_enabled or knowledge_enabled)
+    knowledge_base_id = (body.knowledge_base_id or "default").strip() or "default"
+    return agent_user_id, agent_enabled, memory_enabled, knowledge_enabled, knowledge_base_id
+
+
 log = logging.getLogger(__name__)
 
 
@@ -221,7 +252,7 @@ async def _flashtalk_disk_recording_control(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="FlashTalk 兼容录制仅支持 flashtalk/flashhead/fasterliveportrait 模型会话",
+            detail=f"音频驱动录制仅支持 {_AUDIO_RENDERER_MODELS_LABEL} 模型会话",
         )
     status = "stopped" if stop else "recording"
 
@@ -447,6 +478,13 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     tts_voice = (body.tts_voice or "").strip() or None
+    (
+        agent_user_id,
+        agent_enabled,
+        memory_enabled,
+        knowledge_enabled,
+        knowledge_base_id,
+    ) = _normalize_agent_session_config(body)
 
     custom = _session_customizations(request).get(body.avatar_id, {})
     llm_system_prompt = (body.llm_system_prompt or "").strip() or custom.get("llm_system_prompt")
@@ -472,15 +510,20 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         custom_ref_image_path=custom_ref_image_path,
         wav2lip_postprocess_mode=body.wav2lip_postprocess_mode,
         fasterliveportrait_config=fasterliveportrait_config or None,
+        user_id=agent_user_id,
+        agent_enabled=agent_enabled,
+        memory_enabled=memory_enabled,
+        knowledge_enabled=knowledge_enabled,
+        knowledge_base_id=knowledge_base_id,
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").
-    is_flashtalk = _is_flashtalk_compatible_model(body.model)
+    uses_flashtalk_slot = _uses_flashtalk_slot_model(body.model)
     runners = getattr(request.app.state, "session_runners", None)
     if runners is not None:
         settings = request.app.state.settings
 
-        if is_flashtalk:
+        if uses_flashtalk_slot:
             from opentalking.runtime.task_consumer import slot_is_occupied
             if slot_is_occupied():
                 # Slot busy: return immediately, client waits via SSE session.queued
@@ -528,7 +571,7 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
                 status_code=503,
                 detail="Session worker did not become ready in time.",
             )
-    elif is_flashtalk:
+    elif uses_flashtalk_slot:
         qs = await get_flashtalk_queue_status(r)
         if qs["slot_occupied"] or qs["queue_size"] > 0:
             return CreateSessionResponse(session_id=sid, status="queued")
@@ -870,7 +913,7 @@ async def speak_flashtalk_audio(
 ) -> dict[str, str]:
     """上传音频 → 解码为 16kHz mono PCM → 直接驱动兼容音频数字人（不经语音识别、LLM、TTS）。
 
-    要求会话 ``model`` 为 ``flashtalk``、``flashhead`` 或 ``fasterliveportrait``。
+    要求会话 ``model`` 为音频驱动数字人模型。
     """
     r: redis.Redis = request.app.state.redis
     s = await session_service.get_session(r, session_id)
@@ -879,7 +922,7 @@ async def speak_flashtalk_audio(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="仅 flashtalk/flashhead/fasterliveportrait 会话可使用本接口（上传音频直驱口型）",
+            detail=f"仅 {_AUDIO_RENDERER_MODELS_LABEL} 会话可使用本接口（上传音频直驱口型）",
         )
 
     body = await file.read()
@@ -1136,7 +1179,7 @@ async def flashtalk_offline_bundle_enqueue(
 ) -> dict[str, str]:
     """上传音频 → 入队离线推理；完成后音视频对齐保存在服务端目录，并可下载。
 
-    需 **flashtalk/flashhead/fasterliveportrait** 会话且 Worker 已加载该 session；PCM 临时文件须与 Worker 共享文件系统。
+    需音频驱动数字人会话且 Worker 已加载该 session；PCM 临时文件须与 Worker 共享文件系统。
     进度与结果见 ``GET .../flashtalk-offline-bundle/{job_id}``。
     """
     r: redis.Redis = request.app.state.redis
@@ -1146,7 +1189,7 @@ async def flashtalk_offline_bundle_enqueue(
     if not _is_flashtalk_compatible_model(s.get("model")):
         raise HTTPException(
             status_code=400,
-            detail="仅 flashtalk/flashhead/fasterliveportrait 会话可使用离线导出",
+            detail=f"仅 {_AUDIO_RENDERER_MODELS_LABEL} 会话可使用离线导出",
         )
 
     body = await file.read()
@@ -1199,6 +1242,14 @@ async def flashtalk_offline_bundle_enqueue(
         session_id,
         pcm_path=str(pcm_path.resolve()),
         job_id=job_id,
+    )
+    log.info(
+        "flashtalk offline bundle queued: session=%s job=%s model=%s pcm_samples=%d pcm_path=%s",
+        session_id,
+        job_id,
+        s.get("model"),
+        int(pcm.size),
+        pcm_path.resolve(),
     )
     return {"session_id": session_id, "job_id": job_id, "status": "queued"}
 

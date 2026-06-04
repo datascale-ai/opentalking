@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
-import { AvatarSelectionStage } from "./components/AvatarSelectionStage";
+import { AvatarSelectionStage, type AgentConfig } from "./components/AvatarSelectionStage";
 import { BailianVoiceClone } from "./components/BailianVoiceClone";
 import { ChatInput } from "./components/ChatInput";
 import { ChatMessages } from "./components/ChatMessages";
@@ -29,6 +29,8 @@ import {
   uploadExportVideo,
   type AvatarSummary,
   type CreateSessionResponse,
+  type KnowledgeDocument,
+  type KnowledgeDocumentsResponse,
   type VoiceCatalogItem,
 } from "./lib/api";
 import { modelConnectionBadge, type ModelStatus } from "./lib/modelStatus";
@@ -151,6 +153,8 @@ const SELECTED_AVATAR_SOURCE_STORAGE_KEY = "opentalking-selected-avatar-source-v
 const FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY = "opentalking-fasterliveportrait-config-v2";
 const VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG_STORAGE_KEY = "opentalking-video-creation-fasterliveportrait-config-v4";
 const ASR_PROVIDER_STORAGE_KEY = "opentalking-asr-provider-v1";
+const CLIENT_USER_ID_KEY = "opentalking-client-user-id";
+const AGENT_CONFIG_STORAGE_KEY = "opentalking-agent-config-v1";
 const LEGACY_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   head_motion_multiplier: 1.0,
   pose_motion_multiplier: 0.35,
@@ -302,6 +306,49 @@ function writeStoredAvatarId(avatarId: string, source: "auto" | "explicit" = "ex
   }
 }
 
+function readOrCreateClientUserId(): string {
+  try {
+    const existing = window.localStorage.getItem(CLIENT_USER_ID_KEY)?.trim();
+    if (existing) return existing;
+    const randomPart =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replace(/-/g, "").slice(0, 16)
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+    const next = `client_${randomPart}`;
+    window.localStorage.setItem(CLIENT_USER_ID_KEY, next);
+    return next;
+  } catch {
+    return `client_${Date.now().toString(36)}`;
+  }
+}
+
+function readStoredAgentConfig(): AgentConfig {
+  try {
+    const raw = window.localStorage.getItem(AGENT_CONFIG_STORAGE_KEY);
+    if (!raw) {
+      return { memoryEnabled: false, knowledgeEnabled: true, knowledgeBaseId: "default" };
+    }
+    const parsed = JSON.parse(raw) as Partial<AgentConfig>;
+    return {
+      memoryEnabled: false,
+      knowledgeEnabled: parsed.knowledgeEnabled !== false,
+      knowledgeBaseId: typeof parsed.knowledgeBaseId === "string" && parsed.knowledgeBaseId.trim()
+        ? parsed.knowledgeBaseId.trim()
+        : "default",
+    };
+  } catch {
+    return { memoryEnabled: false, knowledgeEnabled: true, knowledgeBaseId: "default" };
+  }
+}
+
+function writeStoredAgentConfig(config: AgentConfig): void {
+  try {
+    window.localStorage.setItem(AGENT_CONFIG_STORAGE_KEY, JSON.stringify(config));
+  } catch {
+    /* ignore */
+  }
+}
+
 function apiErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.detail) return error.detail;
   if (error instanceof Error && error.message) return error.message;
@@ -339,8 +386,9 @@ type AvatarPrewarmResponse = {
   avatar_id: string;
   model: string;
   status: "ready" | "failed" | string;
-  cache?: { status?: string; frames?: number | null };
-  runtime?: { type?: string; cache_hit?: boolean; elapsed_ms?: number };
+  runtime_status?: "ready" | "failed" | "skipped" | string;
+  cache?: { status?: string; frames?: number | null; detail?: string | null };
+  runtime?: { type?: string; cache_hit?: boolean; elapsed_ms?: number; message?: string | null };
 };
 type HealthResponse = {
   status: string;
@@ -534,8 +582,10 @@ function pickInitialModel(
   return firstConnected ?? registeredModels[0] ?? avatarModel ?? currentModel;
 }
 
+const SERVER_AUDIO_RENDERERS = new Set(["flashtalk", "flashhead", "fasterliveportrait", "quicktalk", "musetalk", "wav2lip"]);
+
 function isFlashRenderer(model: string): boolean {
-  return model === "flashtalk" || model === "flashhead" || model === "fasterliveportrait";
+  return SERVER_AUDIO_RENDERERS.has(model);
 }
 
 function usesCompactSquareStage(model: string): boolean {
@@ -772,6 +822,20 @@ export default function App() {
   const [voiceApplyNotice, setVoiceApplyNotice] = useState<string | null>(null);
   const [ttsPreviewText, setTtsPreviewText] = useState(DEFAULT_TTS_PREVIEW_TEXT);
   const [ttsPreviewing, setTtsPreviewing] = useState(false);
+  const [clientUserId] = useState(readOrCreateClientUserId);
+  const [agentConfig, setAgentConfigState] = useState<AgentConfig>(readStoredAgentConfig);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [knowledgeUploading, setKnowledgeUploading] = useState(false);
+  const setAgentConfig = useCallback((next: AgentConfig) => {
+    const normalized = {
+      memoryEnabled: false,
+      knowledgeEnabled: next.knowledgeEnabled !== false,
+      knowledgeBaseId: next.knowledgeBaseId?.trim() || "default",
+    };
+    setAgentConfigState(normalized);
+    writeStoredAgentConfig(normalized);
+  }, []);
   const selectedModelStatus = modelStatuses.find((item) => item.id === model);
   const selectedModelBadge = modelConnectionBadge(selectedModelStatus, models.includes(model));
   const selectedModelConnected = selectedModelBadge.connected;
@@ -838,6 +902,83 @@ export default function App() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, tone === "error" ? 5200 : 3600);
   }, []);
+
+  const refreshKnowledgeDocuments = useCallback(async () => {
+    setKnowledgeLoading(true);
+    try {
+      const response = await apiGet<KnowledgeDocumentsResponse>("/agent/knowledge-bases/default/documents");
+      setKnowledgeDocuments(response.documents);
+    } catch (error) {
+      console.warn("load knowledge documents failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `知识库读取失败：${detail}` : "知识库读取失败，请查看后端日志。", "error");
+    } finally {
+      setKnowledgeLoading(false);
+    }
+  }, [notify]);
+
+  const handleKnowledgeUpload = useCallback(async (file: File) => {
+    setKnowledgeUploading(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const document = await apiPostForm<KnowledgeDocument>("/agent/knowledge-bases/default/documents", form);
+      setKnowledgeDocuments((prev) => [document, ...prev.filter((item) => item.id !== document.id)]);
+      notify(
+        document.status === "ready"
+          ? `知识库已上传：${document.filename}`
+          : `知识库已上传，索引失败：${document.error ?? document.filename}`,
+        document.status === "ready" ? "success" : "error",
+      );
+      await refreshKnowledgeDocuments();
+    } catch (error) {
+      console.warn("upload knowledge document failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `知识库上传失败：${detail}` : "知识库上传失败，请查看后端日志。", "error");
+    } finally {
+      setKnowledgeUploading(false);
+    }
+  }, [notify, refreshKnowledgeDocuments]);
+
+  const handleKnowledgeDelete = useCallback(async (documentId: string) => {
+    try {
+      await apiDelete(`/agent/knowledge-bases/default/documents/${encodeURIComponent(documentId)}`);
+      setKnowledgeDocuments((prev) => prev.filter((document) => document.id !== documentId));
+      notify("知识库文档已删除。", "success");
+      await refreshKnowledgeDocuments();
+    } catch (error) {
+      console.warn("delete knowledge document failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `知识库删除失败：${detail}` : "知识库删除失败，请查看后端日志。", "error");
+    }
+  }, [notify, refreshKnowledgeDocuments]);
+
+  const handleKnowledgeReindex = useCallback(async (documentId: string) => {
+    setKnowledgeUploading(true);
+    try {
+      const document = await apiPost<KnowledgeDocument>(
+        `/agent/knowledge-bases/default/documents/${encodeURIComponent(documentId)}/reindex`,
+      );
+      setKnowledgeDocuments((prev) => prev.map((item) => (item.id === document.id ? document : item)));
+      notify(
+        document.status === "ready"
+          ? `知识库已重新索引：${document.filename}`
+          : `重新索引失败：${document.error ?? document.filename}`,
+        document.status === "ready" ? "success" : "error",
+      );
+      await refreshKnowledgeDocuments();
+    } catch (error) {
+      console.warn("reindex knowledge document failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `知识库重新索引失败：${detail}` : "知识库重新索引失败，请查看后端日志。", "error");
+    } finally {
+      setKnowledgeUploading(false);
+    }
+  }, [notify, refreshKnowledgeDocuments]);
+
+  useEffect(() => {
+    void refreshKnowledgeDocuments();
+  }, [refreshKnowledgeDocuments]);
 
   const cleanupRealtimeRecordStreams = useCallback(() => {
     if (realtimeRecordMicStreamRef.current) {
@@ -1234,6 +1375,12 @@ export default function App() {
     return `${targetModel}:${targetAvatarId}`;
   }, []);
 
+  const isPrewarmAssetReady = useCallback((response: AvatarPrewarmResponse) => {
+    if (response.status === "ready") return true;
+    const cacheStatus = String(response.cache?.status ?? "").trim().toLowerCase();
+    return Boolean(cacheStatus && !["error", "failed", "missing", "skipped", "unknown"].includes(cacheStatus));
+  }, []);
+
   const requestAvatarPrewarm = useCallback(async (
     targetAvatarId: string,
     targetModel: string,
@@ -1255,7 +1402,7 @@ export default function App() {
           `/avatars/${encodeURIComponent(targetAvatarId)}/prewarm`,
           { model: targetModel },
         );
-        const ready = response.status === "ready";
+        const ready = isPrewarmAssetReady(response);
         setPrewarmByKey((prev) => ({
           ...prev,
           [key]: ready ? "ready" : "failed",
@@ -1263,7 +1410,12 @@ export default function App() {
         if (ready && seq === prewarmSeqRef.current) {
           const cacheStatus = response.cache?.status;
           const label = MODEL_LABELS_FOR_STAGE[targetModel] ?? targetModel;
-          notify(cacheStatus ? `${label} 已准备：${cacheStatus}` : `${label} 已准备`, "success");
+          if (response.runtime_status === "failed") {
+            const detail = response.runtime?.message;
+            notify(detail ? `${label} 资产已准备，运行时预热失败：${detail}` : `${label} 资产已准备，运行时预热失败。`, "info");
+          } else {
+            notify(cacheStatus ? `${label} 已准备：${cacheStatus}` : `${label} 已准备`, "success");
+          }
         }
         return ready;
       } catch (error) {
@@ -1281,7 +1433,7 @@ export default function App() {
     })();
     prewarmInFlightRef.current.set(key, task);
     return task;
-  }, [notify, prewarmByKey, prewarmKey]);
+  }, [isPrewarmAssetReady, notify, prewarmByKey, prewarmKey]);
 
   const selectedPrewarmState = prewarmByKey[prewarmKey(avatarId, model)] ?? "idle";
 
@@ -1481,6 +1633,10 @@ export default function App() {
   // ---------- Actions ----------
   const handleStart = useCallback(async () => {
     if (!videoRef.current) return;
+    if (agentConfig.knowledgeEnabled && knowledgeUploading) {
+      notify("知识库文档正在上传或索引中，请完成后再开始对话，或先取消勾选知识库。", "info");
+      return;
+    }
     const lockedAsrProvider = normalizeAsrProvider(asrProvider, "dashscope");
     let latestRuntimeStatus: HealthResponse | null = null;
     try {
@@ -1530,6 +1686,11 @@ export default function App() {
           model === "wav2lip" && wav2lipPostprocessMode !== "auto" ? wav2lipPostprocessMode : undefined,
         fasterliveportrait_config:
           model === "fasterliveportrait" ? fasterliveportraitConfig : undefined,
+        user_id: clientUserId,
+        agent_enabled: agentConfig.memoryEnabled || agentConfig.knowledgeEnabled,
+        memory_enabled: agentConfig.memoryEnabled,
+        knowledge_enabled: agentConfig.knowledgeEnabled,
+        knowledge_base_id: agentConfig.knowledgeBaseId || "default",
       });
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
@@ -1592,8 +1753,10 @@ export default function App() {
       notify(msg, "error");
     }
   }, [
+    agentConfig,
     asrProvider,
     avatarId,
+    clientUserId,
     closePeerConnection,
     edgeVoice,
     llmSystemPrompt,
@@ -1608,6 +1771,7 @@ export default function App() {
     ttsProvider,
     waitForSessionReady,
     fasterliveportraitConfig,
+    knowledgeUploading,
     wav2lipPostprocessMode,
   ]);
 
@@ -2108,7 +2272,9 @@ export default function App() {
         onFlashtalkRecordStop={() => void handleFtRecordStop()}
         onFlashtalkRecordSave={() => void handleFtRecordSave()}
         flashtalkOfflineBundleBusy={offlineBundleBusy}
-        onFlashtalkOfflineBundleClick={() => offlineBundleInputRef.current?.click()}
+        onFlashtalkOfflineBundleClick={
+          isFlashRenderer(model) ? () => offlineBundleInputRef.current?.click() : undefined
+        }
       />
 
       <input
@@ -2248,6 +2414,13 @@ export default function App() {
             onSavePrompt={() => void handleSavePrompt()}
             promptSaving={promptSaving}
             onOpenVoiceClone={() => setVoiceCloneOpen(true)}
+            knowledgeDocuments={knowledgeDocuments}
+            knowledgeLoading={knowledgeLoading}
+            knowledgeUploading={knowledgeUploading}
+            onKnowledgeUpload={(file) => void handleKnowledgeUpload(file)}
+            onKnowledgeDelete={(documentId) => void handleKnowledgeDelete(documentId)}
+            onKnowledgeReindex={(documentId) => void handleKnowledgeReindex(documentId)}
+            onKnowledgeRefresh={() => void refreshKnowledgeDocuments()}
           />
         </div>
 
@@ -2314,6 +2487,9 @@ export default function App() {
                     modelBadge={selectedModelBadge}
                     queueInfo={queueInfo}
                     prewarmState={selectedPrewarmState}
+                    agentConfig={agentConfig}
+                    onAgentConfigChange={setAgentConfig}
+                    knowledgeUploading={knowledgeUploading}
                     onAvatarChange={handleAvatarChange}
                     onStart={() => void handleStart()}
                     onCustomAvatarCreate={(file, name) => void handleCreateCustomAvatar(file, name)}
@@ -2425,7 +2601,7 @@ export default function App() {
                       </p>
                     </div>
                     <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs leading-relaxed text-cyan-800">
-                      FlashTalk / FlashHead 会话连接后，可在顶部使用录制和离线整段导出。
+                      音频驱动数字人会话连接后，可在顶部使用录制和离线整段导出。
                     </div>
                     {isFlashRenderer(model) && sessionId ? (
                       <button

@@ -122,6 +122,17 @@ def _local_runner_device(model: str, settings: Any, default_device: str) -> str:
     return default_device
 
 
+def _task_bool(task: dict[str, Any], key: str) -> bool:
+    value = task.get(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
 def _create_runner(
     task: dict[str, Any],
     r: Any,
@@ -134,6 +145,13 @@ def _create_runner(
     avatar_id = str(task["avatar_id"])
     settings = get_settings()
     backend = resolve_model_backend(model, settings)
+    agent_kwargs = {
+        "agent_user_id": str(task.get("user_id", "") or "").strip() or None,
+        "agent_enabled": _task_bool(task, "agent_enabled"),
+        "memory_enabled": _task_bool(task, "memory_enabled"),
+        "knowledge_enabled": _task_bool(task, "knowledge_enabled"),
+        "knowledge_base_id": str(task.get("knowledge_base_id", "") or "default").strip() or "default",
+    }
 
     # Mock mode: pick the in-process mock client (echoes reference image).
     # Selected explicitly when the user picks model=mock in the UI.
@@ -215,6 +233,7 @@ def _create_runner(
             fasterliveportrait_config=task.get("fasterliveportrait_config")
             if isinstance(task.get("fasterliveportrait_config"), dict)
             else None,
+            **agent_kwargs,
         )
 
     local_device = _local_runner_device(model, settings, device)
@@ -231,6 +250,7 @@ def _create_runner(
         llm_system_prompt=str(task.get("llm_system_prompt", "") or settings.llm_system_prompt)
         or "你是一个友好的数字人助手，请用简洁的语言回答问题。不要使用表情符号或emoji。",
         wav2lip_postprocess_mode=str(task.get("wav2lip_postprocess_mode", "") or ""),
+        **agent_kwargs,
     )
 
 
@@ -566,6 +586,12 @@ async def handle_worker_task(
                     "zip": paths["zip"],
                     "work_dir": paths["work_dir"],
                 },
+            )
+            log.info(
+                "flashtalk_offline_bundle done session=%s job=%s bundle=%s",
+                sid,
+                job_id,
+                paths["bundle_mp4"],
             )
         except Exception as e:  # noqa: BLE001
             log.exception("flashtalk_offline_bundle failed session=%s job=%s", sid, job_id)

@@ -187,6 +187,24 @@ export async function apiDelete<T>(path: string, init?: RequestInit): Promise<T>
   return r.json() as Promise<T>;
 }
 
+export type KnowledgeDocument = {
+  id: string;
+  kb_id: string;
+  filename: string;
+  mime_type: string;
+  bytes: number;
+  sha256: string;
+  status: "ready" | "error" | string;
+  error: string | null;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KnowledgeDocumentsResponse = {
+  documents: KnowledgeDocument[];
+};
+
 export type AvatarSummary = {
   id: string;
   name: string | null;

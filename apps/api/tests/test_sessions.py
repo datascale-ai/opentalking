@@ -8,18 +8,19 @@ from types import SimpleNamespace
 import pytest
 import numpy as np
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 import apps.api.main as api_main
 import apps.api.routes.health as health_routes
 import apps.api.routes.sessions as sessions_routes
+from apps.api.schemas.session import CreateSessionRequest
 import apps.unified.main as unified_main
 import opentalking.runtime.task_consumer as task_consumer
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.core.model_config import clear_model_config_cache
 from opentalking.core.redis_keys import FLASHTALK_QUEUE_STATUS
-from opentalking.core.session_store import set_session_state
+from opentalking.core.session_store import session_key, set_session_state
 from opentalking.pipeline.recording.recording import append_flashtalk_frames
 
 
@@ -35,8 +36,89 @@ def test_normalize_voice_for_speak_accepts_elevenlabs_voice_id() -> None:
     assert model is None
 
 
-def test_fasterliveportrait_is_flashtalk_compatible_for_audio_upload() -> None:
-    assert sessions_routes._is_flashtalk_compatible_model("fasterliveportrait") is True
+@pytest.mark.parametrize(
+    "model",
+    ["fasterliveportrait", "quicktalk", "musetalk", "wav2lip"],
+)
+def test_audio_renderer_models_are_flashtalk_compatible_for_audio_upload(model: str) -> None:
+    assert sessions_routes._is_flashtalk_compatible_model(model) is True
+
+
+@pytest.mark.parametrize("model", ["flashtalk", "flashhead"])
+def test_only_flashtalk_slot_models_use_flashtalk_slot(model: str) -> None:
+    assert sessions_routes._uses_flashtalk_slot_model(model) is True
+
+
+@pytest.mark.parametrize("model", ["fasterliveportrait", "quicktalk", "musetalk", "wav2lip"])
+def test_other_audio_renderers_do_not_use_flashtalk_slot(model: str) -> None:
+    assert sessions_routes._uses_flashtalk_slot_model(model) is False
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["flashtalk", "flashhead", "fasterliveportrait", "quicktalk", "musetalk", "wav2lip"],
+)
+def test_audio_renderer_offline_bundle_enqueue_accepts_session(
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+) -> None:
+    sid = f"sess_{model}_offline"
+    pcm = np.array([1, -2, 3, -4], dtype=np.int16)
+
+    async def fake_decode_audio_file_to_pcm_i16(_upload_path: Path) -> np.ndarray:
+        return pcm
+
+    queued: list[dict[str, str]] = []
+
+    async def fake_enqueue(
+        _redis: object,
+        session_id: str,
+        *,
+        pcm_path: str,
+        job_id: str,
+    ) -> None:
+        queued.append({"session_id": session_id, "pcm_path": pcm_path, "job_id": job_id})
+
+    monkeypatch.setattr(sessions_routes, "decode_audio_file_to_pcm_i16", fake_decode_audio_file_to_pcm_i16)
+    monkeypatch.setattr(
+        sessions_routes.session_service,
+        "enqueue_flashtalk_offline_bundle",
+        fake_enqueue,
+    )
+
+    class FakeUpload:
+        filename = "speech.wav"
+
+        async def read(self) -> bytes:
+            return b"fake-audio"
+
+    async def run() -> dict[str, str]:
+        redis = InMemoryRedis()
+        await redis.hset(
+            session_key(sid),
+            mapping={
+                "session_id": sid,
+                "avatar_id": f"{model}-avatar",
+                "model": model,
+                "state": "worker_ready",
+            },
+        )
+        app = FastAPI()
+        app.state.redis = redis
+        request = Request({"type": "http", "app": app})
+        return await sessions_routes.flashtalk_offline_bundle_enqueue(sid, request, FakeUpload())  # type: ignore[arg-type]
+
+    payload = asyncio.run(run())
+    assert payload["session_id"] == sid
+    assert payload["status"] == "queued"
+    assert len(queued) == 1
+    assert queued[0]["session_id"] == sid
+    assert queued[0]["job_id"] == payload["job_id"]
+    pcm_path = Path(queued[0]["pcm_path"])
+    try:
+        assert pcm_path.read_bytes() == pcm.tobytes()
+    finally:
+        pcm_path.unlink(missing_ok=True)
 
 
 class FakeRunner:
@@ -135,6 +217,7 @@ def unified_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClien
     monkeypatch.setenv("OPENTALKING_AVATARS_DIR", str(avatars_dir))
     monkeypatch.setenv("OPENTALKING_FLASHTALK_WS_URL", "ws://127.0.0.1:8765")
     monkeypatch.setenv("OPENTALKING_STT_DEFAULT_PROVIDER", "sensevoice")
+    monkeypatch.setenv("OPENTALKING_STT_PREWARM_ON_STARTUP", "0")
     monkeypatch.setenv("OPENTALKING_TTS_DEFAULT_PROVIDER", "edge")
     unified_main.get_settings.cache_clear()
     try:
@@ -145,11 +228,15 @@ def unified_client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClien
         unified_main.get_settings.cache_clear()
 
 
-def test_create_session_avatar_model_decoupled_within_supported(unified_client: TestClient) -> None:
+def test_create_session_avatar_model_decoupled_within_supported(
+    monkeypatch: pytest.MonkeyPatch,
+    unified_client: TestClient,
+) -> None:
     """Avatar and model are decoupled — any (avatar, supported_model) is accepted.
 
     Runtime model availability lives in /models and the synthesis availability helper.
     """
+    monkeypatch.setattr(task_consumer, "slot_is_occupied", lambda: True)
     pairs = [
         ("singer", "flashtalk"),  # wav2lip avatar + portrait-only model
         ("anime-handsome-guy", "flashtalk"),
@@ -281,6 +368,100 @@ def test_create_session_passes_fasterliveportrait_config_to_task(
         "flag_pasteback": True,
         "flag_lip_retargeting": False,
     }
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["flashtalk", "flashhead", "fasterliveportrait", "quicktalk", "musetalk", "wav2lip"],
+)
+def test_create_session_passes_agent_config_to_service_for_audio_renderer_models(
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def fake_create_session(*args: object, **kwargs: object) -> str:
+        calls.append(kwargs)
+        sid = f"sess_agent_config_{model}"
+        redis = args[0]
+        await redis.hset(
+            session_key(sid),
+            mapping={
+                "session_id": sid,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+                "state": "worker_ready",
+            },
+        )
+        return sid
+
+    monkeypatch.setattr(sessions_routes.session_service, "create_session", fake_create_session)
+
+    async def fake_connected_model_ids(_settings: object) -> set[str]:
+        return {model}
+
+    monkeypatch.setattr(
+        "opentalking.providers.synthesis.availability.connected_model_ids",
+        fake_connected_model_ids,
+    )
+
+    avatars_dir = Path(__file__).resolve().parents[3] / "examples" / "avatars"
+    app = FastAPI()
+    app.state.redis = InMemoryRedis()
+    app.state.settings = SimpleNamespace(
+        avatars_dir=str(avatars_dir),
+        normalized_stt_default_provider="sensevoice",
+        normalized_stt_provider="sensevoice",
+        normalized_tts_default_provider="edge",
+        normalized_tts_provider="edge",
+        omnirt_endpoint="",
+    )
+    request = Request({"type": "http", "app": app})
+
+    response = asyncio.run(
+        sessions_routes.create_session(
+            CreateSessionRequest(
+                avatar_id="singer",
+                model=model,
+                user_id="client_test",
+                agent_enabled=True,
+                memory_enabled=True,
+                knowledge_enabled=True,
+                knowledge_base_id="default",
+            ),
+            request,
+        )
+    )
+
+    assert response.status == "created"
+    assert calls[0]["model"] == model
+    assert calls[0]["user_id"] == "client_test"
+    assert calls[0]["agent_enabled"] is True
+    assert calls[0]["memory_enabled"] is True
+    assert calls[0]["knowledge_enabled"] is True
+    assert calls[0]["knowledge_base_id"] == "default"
+
+
+def test_agent_session_config_defaults_to_default_knowledge_base() -> None:
+    body = CreateSessionRequest(
+        avatar_id="singer",
+        model="flashtalk",
+        user_id="client_test",
+    )
+
+    (
+        agent_user_id,
+        agent_enabled,
+        memory_enabled,
+        knowledge_enabled,
+        knowledge_base_id,
+    ) = sessions_routes._normalize_agent_session_config(body)
+
+    assert agent_user_id == "client_test"
+    assert agent_enabled is True
+    assert memory_enabled is False
+    assert knowledge_enabled is True
+    assert knowledge_base_id == "default"
 
 
 def test_speak_audio_passes_request_level_stt_provider(

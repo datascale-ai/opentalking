@@ -21,6 +21,8 @@ import numpy as np
 from av import AudioFrame
 from av.audio.resampler import AudioResampler
 
+from opentalking.agent.context_builder import AgentSessionConfig, build_agent_context, default_memory_store
+from opentalking.agent.prompt import inject_agent_context
 from opentalking.core.session_store import set_session_state
 from opentalking.core.config import Settings, get_settings
 from opentalking.avatar.wav2lip_config import optional_wav2lip_postprocess_mode
@@ -246,6 +248,11 @@ class SessionRunner:
         llm_model: str = "qwen-turbo",
         llm_system_prompt: str = "",
         wav2lip_postprocess_mode: str | None = None,
+        agent_user_id: str | None = None,
+        agent_enabled: bool = False,
+        memory_enabled: bool = False,
+        knowledge_enabled: bool = False,
+        knowledge_base_id: str | None = "default",
     ) -> None:
         self.session_id = session_id
         self.avatar_id = avatar_id
@@ -269,6 +276,13 @@ class SessionRunner:
         self._llm_api_key = llm_api_key
         self._llm_model = llm_model
         self._llm_system_prompt = llm_system_prompt or _SETTINGS.llm_system_prompt
+        self.agent_config = AgentSessionConfig(
+            user_id=agent_user_id,
+            agent_enabled=agent_enabled,
+            memory_enabled=memory_enabled,
+            knowledge_enabled=knowledge_enabled,
+            knowledge_base_id=knowledge_base_id or "default",
+        )
         self._llm_client: Any = None
         self._conversation: Any = None
         self._frame_idx = 0
@@ -317,6 +331,40 @@ class SessionRunner:
         # rendered, the idle loop can repeat this frame instead of falling back
         # to a stale idle template that visibly snaps the mouth closed.
         self._last_speech_frame: VideoFrameData | None = None
+
+    async def _build_agent_context(self, query: str = "") -> str | None:
+        if not self.agent_config.agent_enabled:
+            return None
+        try:
+            return await build_agent_context(
+                config=self.agent_config,
+                avatar_id=self.avatar_id,
+                query=query,
+            )
+        except Exception:
+            log.warning("Failed to build agent context: session=%s", self.session_id, exc_info=True)
+            return None
+
+    async def _save_agent_turn(self, *, user_text: str, assistant_text: str) -> None:
+        if not self.agent_config.has_memory:
+            return
+        try:
+            store = default_memory_store()
+            turn = await store.save_turn(
+                user_id=str(self.agent_config.user_id),
+                avatar_id=self.avatar_id,
+                session_id=self.session_id,
+                user_text=user_text,
+                assistant_text=assistant_text,
+            )
+            await store.save_explicit_memory_from_turn(
+                user_id=str(self.agent_config.user_id),
+                avatar_id=self.avatar_id,
+                source_turn_id=turn.id,
+                user_text=user_text,
+            )
+        except Exception:
+            log.warning("Failed to save agent turn: session=%s", self.session_id, exc_info=True)
 
     def avatar_path(self) -> Path:
         return (self.avatars_root / self.avatar_id).resolve()
@@ -1698,6 +1746,11 @@ class SessionRunner:
                 llm = self._ensure_llm_client()
                 conversation = self._ensure_conversation()
                 conversation.add_user(prompt_text)
+                agent_context = await self._build_agent_context(prompt_text)
+                llm_messages = inject_agent_context(
+                    conversation.get_messages(),
+                    agent_context,
+                )
 
                 self._interrupt.clear()
                 self._speech_video_ready.clear()
@@ -1858,7 +1911,7 @@ class SessionRunner:
                 try:
                     llm_started_at = _time.perf_counter()
                     first_token_marked = False
-                    async for delta in llm.chat_stream(conversation.get_messages()):
+                    async for delta in llm.chat_stream(llm_messages):
                         if self._interrupt.is_set():
                             break
                         if not first_token_marked:
@@ -1956,6 +2009,7 @@ class SessionRunner:
                 full_response = sanitize_tts_text(full_response_raw)
                 if full_response:
                     conversation.add_assistant(full_response)
+                    await self._save_agent_turn(user_text=prompt_text, assistant_text=full_response)
                     await publish_event(
                         self.redis,
                         self.session_id,

@@ -5,6 +5,12 @@ import type { ModelConnectionBadge } from "../lib/modelStatus";
 
 const CUSTOM_REFERENCE_NAME_KEY = "opentalking-custom-reference-name";
 
+export type AgentConfig = {
+  memoryEnabled: boolean;
+  knowledgeEnabled: boolean;
+  knowledgeBaseId: string;
+};
+
 type AvatarSelectionStageProps = {
   avatars: AvatarSummary[];
   selectedAvatar: AvatarSummary | null;
@@ -21,6 +27,9 @@ type AvatarSelectionStageProps = {
   onCustomAvatarCreate: (file: File, name: string) => void;
   onAvatarDelete?: (avatar: AvatarSummary) => void;
   referenceSaving?: boolean;
+  agentConfig: AgentConfig;
+  onAgentConfigChange: (next: AgentConfig) => void;
+  knowledgeUploading?: boolean;
 };
 
 function AvatarPreviewImage({ avatar, className }: { avatar: AvatarSummary; className: string }) {
@@ -65,6 +74,9 @@ export function AvatarSelectionStage({
   onCustomAvatarCreate,
   onAvatarDelete,
   referenceSaving = false,
+  agentConfig,
+  onAgentConfigChange,
+  knowledgeUploading = false,
 }: AvatarSelectionStageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customUploadOpen, setCustomUploadOpen] = useState(false);
@@ -77,8 +89,18 @@ export function AvatarSelectionStage({
   });
   const [customFile, setCustomFile] = useState<File | null>(null);
   const [customPreviewUrl, setCustomPreviewUrl] = useState<string | null>(null);
-  const startLabel = queued ? "排队中" : loading ? "启动中..." : prewarmState === "preparing" ? "准备资产中..." : "开始对话";
-  const disabled = loading || queued || prewarmState === "preparing" || !selectedAvatar || !modelConnected;
+  const baseDisabled = loading || queued || prewarmState === "preparing" || !selectedAvatar || !modelConnected;
+  const knowledgeStartBlocked = agentConfig.knowledgeEnabled && knowledgeUploading;
+  const startLabel = queued
+    ? "排队中"
+    : loading
+      ? "启动中..."
+      : prewarmState === "preparing"
+        ? "准备资产中..."
+        : knowledgeStartBlocked
+          ? "知识库处理中..."
+          : "开始对话";
+  const startDisabled = baseDisabled || knowledgeStartBlocked;
 
   useEffect(() => {
     return () => {
@@ -260,6 +282,31 @@ export function AvatarSelectionStage({
                     <p className="mt-1 truncate text-sm font-semibold text-slate-950">{selectedVoiceLabel}</p>
                   </div>
                 </div>
+                <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-600">Agent 增强</p>
+                    <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                      {agentConfig.knowledgeBaseId || "default"}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <label className="flex min-h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={agentConfig.knowledgeEnabled}
+                        disabled={baseDisabled}
+                        onChange={(event) =>
+                          onAgentConfigChange({
+                            ...agentConfig,
+                            knowledgeEnabled: event.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                      />
+                      知识库
+                    </label>
+                  </div>
+                </div>
                 {queued ? (
                   <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
                     前面还有 {queueInfo?.position ?? 1} 人，请稍候...
@@ -283,7 +330,7 @@ export function AvatarSelectionStage({
                 <button
                   type="button"
                   onClick={onStart}
-                  disabled={disabled}
+                  disabled={startDisabled}
                   className="w-full rounded-lg bg-cyan-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {startLabel}

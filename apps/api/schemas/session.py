@@ -14,6 +14,11 @@ class CreateSessionRequest(BaseModel):
     llm_system_prompt: str | None = None
     wav2lip_postprocess_mode: str | None = None
     fasterliveportrait_config: dict[str, Any] | None = None
+    user_id: str | None = None
+    agent_enabled: bool = True
+    memory_enabled: bool = False
+    knowledge_enabled: bool = True
+    knowledge_base_id: str | None = "default"
 
 
 class FasterLivePortraitConfigRequest(BaseModel):

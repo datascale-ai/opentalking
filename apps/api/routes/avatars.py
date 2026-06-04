@@ -480,6 +480,14 @@ def _prepared_cache_response(model: str, cache: PreparedAssetResult) -> dict[str
     }
 
 
+def _runtime_preload_error_payload(exc: Exception) -> dict[str, str]:
+    return {
+        "type": "error",
+        "code": "preload_failed",
+        "message": str(exc),
+    }
+
+
 def _omnirt_audio2video_preload_path(settings: Any, model: str) -> str:
     template = (
         getattr(settings, "omnirt_audio2video_path_template", "")
@@ -971,6 +979,7 @@ async def prewarm_avatar(avatar_id: str, request: Request) -> dict[str, Any]:
             "avatar_id": avatar_id,
             "model": model,
             "status": "ready",
+            "runtime_status": "ready",
             "cache": cache_response,
             "runtime": runtime,
         }
@@ -1003,6 +1012,7 @@ async def prewarm_avatar(avatar_id: str, request: Request) -> dict[str, Any]:
             "avatar_id": avatar_id,
             "model": model,
             "status": "ready",
+            "runtime_status": "skipped",
             "cache": _wav2lip_cache_response(runtime_payload, runtime),
             "runtime": runtime,
         }
@@ -1014,16 +1024,17 @@ async def prewarm_avatar(avatar_id: str, request: Request) -> dict[str, Any]:
             runtime_payload,
         )
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"failed to preload {model} runtime: {exc}") from exc
+        runtime = _runtime_preload_error_payload(exc)
 
     runtime_type = str(runtime.get("type") or "")
-    status = "ready" if runtime_type not in {"error", ""} else "failed"
+    runtime_status = "ready" if runtime_type not in {"error", ""} else "failed"
     if model == "wav2lip":
         cache_response = _wav2lip_cache_response(runtime_payload, runtime)
     return {
         "avatar_id": avatar_id,
         "model": model,
-        "status": status,
+        "status": "ready",
+        "runtime_status": runtime_status,
         "cache": cache_response,
         "runtime": runtime,
     }

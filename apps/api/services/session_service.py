@@ -28,6 +28,11 @@ async def _await_result(value: Awaitable[Any] | Any) -> Any:
 async def _push_task(r: redis.Redis, task: dict[str, Any]) -> None:
     await _await_result(r.rpush(TASK_QUEUE, json.dumps(task, ensure_ascii=False)))
 
+
+def _bool_hash(value: bool) -> str:
+    return "1" if value else "0"
+
+
 async def create_session(
     r: redis.Redis,
     *,
@@ -40,6 +45,11 @@ async def create_session(
     custom_ref_image_path: str | None = None,
     wav2lip_postprocess_mode: str | None = None,
     fasterliveportrait_config: Mapping[str, object] | None = None,
+    user_id: str | None = None,
+    agent_enabled: bool = False,
+    memory_enabled: bool = False,
+    knowledge_enabled: bool = False,
+    knowledge_base_id: str | None = "default",
 ) -> str:
     sid = f"sess_{uuid.uuid4().hex[:12]}"
     data: dict[RedisHashValue, RedisHashValue] = {
@@ -62,6 +72,13 @@ async def create_session(
         data["wav2lip_postprocess_mode"] = wav2lip_postprocess_mode
     if fasterliveportrait_config:
         data["fasterliveportrait_config"] = json.dumps(fasterliveportrait_config, ensure_ascii=False)
+    if user_id:
+        data["user_id"] = user_id
+    if agent_enabled or memory_enabled or knowledge_enabled:
+        data["agent_enabled"] = _bool_hash(agent_enabled)
+        data["memory_enabled"] = _bool_hash(memory_enabled)
+        data["knowledge_enabled"] = _bool_hash(knowledge_enabled)
+        data["knowledge_base_id"] = knowledge_base_id or "default"
     await _await_result(r.hset(session_key(sid), mapping=data))
     init_task: dict[str, Any] = {
         "cmd": "init",
@@ -83,6 +100,13 @@ async def create_session(
         init_task["wav2lip_postprocess_mode"] = wav2lip_postprocess_mode
     if fasterliveportrait_config:
         init_task["fasterliveportrait_config"] = dict(fasterliveportrait_config)
+    if user_id:
+        init_task["user_id"] = user_id
+    if agent_enabled or memory_enabled or knowledge_enabled:
+        init_task["agent_enabled"] = bool(agent_enabled)
+        init_task["memory_enabled"] = bool(memory_enabled)
+        init_task["knowledge_enabled"] = bool(knowledge_enabled)
+        init_task["knowledge_base_id"] = knowledge_base_id or "default"
     await _push_task(
         r,
         init_task,

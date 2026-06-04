@@ -128,6 +128,80 @@ def test_video_creation_audio_upload_returns_export_video(tmp_path: Path, monkey
     assert payload["export_video"]["download_url"].startswith("/exports/videos/")
 
 
+def test_video_creation_quicktalk_default_backend_is_omnirt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opentalking.core.model_config import clear_model_config_cache
+    from opentalking.providers.synthesis.backends import resolve_model_backend
+
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_BACKEND", raising=False)
+    clear_model_config_cache()
+    try:
+        backend = resolve_model_backend("quicktalk", SimpleNamespace())
+        assert backend.backend == "omnirt"
+    finally:
+        clear_model_config_cache()
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["flashtalk", "flashhead", "fasterliveportrait", "musetalk", "quicktalk", "wav2lip"],
+)
+def test_video_creation_accepts_audio_renderer_models(model: str) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    assert video_creation_module._normalize_model(model) == model
+
+
+def test_video_creation_uses_flashhead_client_for_flashhead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+    import opentalking.providers.synthesis.flashhead as flashhead_module
+
+    captured: dict[str, object] = {}
+
+    class FakeFlashHeadClient:
+        def __init__(self, ws_url: str, *, model: str, config: dict[str, object]) -> None:
+            captured["ws_url"] = ws_url
+            captured["model"] = model
+            captured["config"] = config
+
+    class FakeOmniRTClient:
+        def __init__(self, ws_client: object) -> None:
+            captured["ws_client"] = ws_client
+
+    monkeypatch.setattr(flashhead_module, "FlashHeadWSClient", FakeFlashHeadClient)
+    monkeypatch.setattr(video_creation_module, "OmniRTAudio2VideoClient", FakeOmniRTClient)
+
+    client = video_creation_module._audio2video_client(
+        SimpleNamespace(
+            flashhead_ws_url="ws://settings-flashhead/ws",
+            flashhead_model="soulx-flashhead-test",
+            flashhead_fps=25,
+            flashhead_sample_rate=16000,
+            flashhead_width=416,
+            flashhead_height=704,
+            flashhead_frame_num=25,
+            flashhead_chunk_samples=16000,
+        ),
+        "flashhead",
+        16000,
+        backend=SimpleNamespace(model="flashhead", backend="direct_ws", ws_url="ws://backend-flashhead/ws"),
+    )
+
+    assert isinstance(client, FakeOmniRTClient)
+    assert isinstance(captured["ws_client"], FakeFlashHeadClient)
+    assert captured["ws_url"] == "ws://backend-flashhead/ws"
+    assert captured["model"] == "soulx-flashhead-test"
+    assert captured["config"] == {
+        "fps": 25,
+        "sample_rate": 16000,
+        "width": 416,
+        "height": 704,
+        "frame_num": 25,
+        "chunk_samples": 16000,
+    }
+
+
 def test_video_creation_tts_text_passes_voice_model_without_audio_preview(tmp_path: Path, monkeypatch) -> None:
     client, creators = _client(tmp_path, monkeypatch)
     with client:
@@ -366,6 +440,262 @@ async def test_video_creation_service_renders_fasterliveportrait_via_omnirt(
     assert client.closed is True
     assert result["source"] == "upload"
     assert result["export_video"]["model"] == "fasterliveportrait"
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_renders_quicktalk_via_omnirt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    avatar = _write_avatar(avatars)
+    manifest = json.loads((avatar / "manifest.json").read_text(encoding="utf-8"))
+    manifest["model_type"] = "quicktalk"
+    manifest["width"] = 64
+    manifest["height"] = 48
+    manifest["fps"] = 25
+    (avatar / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    quicktalk_dir = avatar / "quicktalk"
+    quicktalk_dir.mkdir()
+    template = quicktalk_dir / "template_64x48.mp4"
+    cache = quicktalk_dir / "face_cache_v3_64x48.npz"
+    template.write_bytes(b"template")
+    cache.write_bytes(b"cache")
+    uploaded = tmp_path / "speech.wav"
+    uploaded.write_bytes(b"RIFFaudio")
+
+    class FakeWSClient:
+        def __init__(self, ws_url: str, *, extra_headers: dict[str, str] | None = None) -> None:
+            self.ws_url = ws_url
+            self.extra_headers = extra_headers or {}
+
+    class FakeOmniRTClient:
+        instances: list["FakeOmniRTClient"] = []
+
+        def __init__(self, ws_client: FakeWSClient) -> None:
+            self.ws_client = ws_client
+            self.init_kwargs: dict[str, object] | None = None
+            self.generated_chunks: list[np.ndarray] = []
+            self.closed = False
+            self.fps = 25
+            self.audio_chunk_samples = 4
+            FakeOmniRTClient.instances.append(self)
+
+        async def init_session(self, **kwargs: object) -> dict[str, object]:
+            self.init_kwargs = kwargs
+            return {"type": "init_ok"}
+
+        async def prewarm(self) -> dict[str, object]:
+            return {"type": "prewarm_skipped"}
+
+        async def generate(self, audio_pcm: np.ndarray) -> list[VideoFrameData]:
+            self.generated_chunks.append(np.asarray(audio_pcm, dtype=np.int16).copy())
+            return [
+                VideoFrameData(
+                    data=np.zeros((48, 64, 3), dtype=np.uint8),
+                    width=64,
+                    height=48,
+                    timestamp_ms=0.0,
+                )
+            ]
+
+        async def close(self, send_close_msg: bool = True) -> None:
+            self.closed = send_close_msg
+
+    async def fake_decode(_path: Path) -> np.ndarray:
+        return np.arange(6, dtype=np.int16)
+
+    async def fake_mux(_ffmpeg_bin: str, _video_in: Path, _audio_in: Path, out_mp4: Path) -> None:
+        out_mp4.write_bytes(b"mp4")
+
+    def fail_get_adapter(_model: str) -> object:
+        raise AssertionError("quicktalk omnirt video creation must not load local adapter")
+
+    def fake_create_video_export(root: Path, **kwargs: object) -> dict[str, object]:
+        return {
+            "id": "export-quicktalk",
+            "kind": "video_creation",
+            "title": kwargs["title"],
+            "duration_sec": kwargs["duration_sec"],
+            "size_bytes": len(kwargs["content"]),
+            "mime_type": "video/mp4",
+            "created_at": "2026-06-04T00:00:00Z",
+            "path": str(root / "export-quicktalk.mp4"),
+            "session_id": kwargs["session_id"],
+            "avatar_id": kwargs["avatar_id"],
+            "model": kwargs["model"],
+        }
+
+    monkeypatch.setattr(video_creation_module, "FlashTalkWSClient", FakeWSClient, raising=False)
+    monkeypatch.setattr(video_creation_module, "OmniRTAudio2VideoClient", FakeOmniRTClient, raising=False)
+    monkeypatch.setattr(video_creation_module, "decode_audio_file_to_pcm_i16", fake_decode)
+    monkeypatch.setattr(video_creation_module, "_write_video_only", lambda path, _frames, _fps: path.write_bytes(b"video"))
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", fake_mux)
+    monkeypatch.setattr(video_creation_module, "get_adapter", fail_get_adapter)
+    monkeypatch.setattr(
+        video_creation_module,
+        "resolve_model_backend",
+        lambda model, _settings: SimpleNamespace(model=model, backend="omnirt", ws_url=""),
+    )
+    monkeypatch.setattr(video_creation_module, "create_video_export", fake_create_video_export)
+
+    settings = SimpleNamespace(
+        avatars_dir=str(avatars),
+        exports_dir=str(exports),
+        export_max_bytes=1024 * 1024,
+        ffmpeg_bin="ffmpeg",
+        omnirt_endpoint="http://127.0.0.1:9000",
+        omnirt_audio2video_path_template="/v1/audio2video/{model}",
+        omnirt_api_key="",
+    )
+    service = VideoCreationService(settings)
+
+    result = await service.create_from_audio_file(
+        model="quicktalk",
+        avatar_id="anchor",
+        upload_path=uploaded,
+        title="QuickTalk take",
+    )
+
+    client = FakeOmniRTClient.instances[0]
+    assert client.ws_client.ws_url == "ws://127.0.0.1:9000/v1/audio2video/quicktalk"
+    assert client.init_kwargs is not None
+    assert client.init_kwargs["avatar_path"] == avatars / "anchor"
+    assert client.init_kwargs["ref_image"] == (avatars / "anchor" / "reference.png").resolve()
+    assert client.init_kwargs["template_mode"] == "video"
+    assert client.init_kwargs["template_video"] == template.resolve()
+    assert client.init_kwargs["quicktalk_face_cache"] == cache.resolve()
+    assert client.init_kwargs["video_config"] == {"width": 64, "height": 48, "fps": 25}
+    assert [chunk.size for chunk in client.generated_chunks] == [4, 4]
+    assert client.closed is True
+    assert result["source"] == "upload"
+    assert result["export_video"]["model"] == "quicktalk"
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_renders_musetalk_via_omnirt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    avatar = _write_avatar(avatars)
+    manifest = json.loads((avatar / "manifest.json").read_text(encoding="utf-8"))
+    manifest["model_type"] = "musetalk"
+    (avatar / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    uploaded = tmp_path / "speech.wav"
+    uploaded.write_bytes(b"RIFFaudio")
+
+    class FakeWSClient:
+        def __init__(self, ws_url: str, *, extra_headers: dict[str, str] | None = None) -> None:
+            self.ws_url = ws_url
+            self.extra_headers = extra_headers or {}
+
+    class FakeOmniRTClient:
+        instances: list["FakeOmniRTClient"] = []
+
+        def __init__(self, ws_client: FakeWSClient) -> None:
+            self.ws_client = ws_client
+            self.init_kwargs: dict[str, object] | None = None
+            self.generated_chunks: list[np.ndarray] = []
+            self.closed = False
+            self.fps = 25
+            self.audio_chunk_samples = 4
+            FakeOmniRTClient.instances.append(self)
+
+        async def init_session(self, **kwargs: object) -> dict[str, object]:
+            self.init_kwargs = kwargs
+            return {"type": "init_ok"}
+
+        async def prewarm(self) -> dict[str, object]:
+            return {"type": "prewarm_skipped"}
+
+        async def generate(self, audio_pcm: np.ndarray) -> list[VideoFrameData]:
+            self.generated_chunks.append(np.asarray(audio_pcm, dtype=np.int16).copy())
+            return [
+                VideoFrameData(
+                    data=np.zeros((48, 64, 3), dtype=np.uint8),
+                    width=64,
+                    height=48,
+                    timestamp_ms=0.0,
+                )
+            ]
+
+        async def close(self, send_close_msg: bool = True) -> None:
+            self.closed = send_close_msg
+
+    async def fake_decode(_path: Path) -> np.ndarray:
+        return np.arange(6, dtype=np.int16)
+
+    async def fake_mux(_ffmpeg_bin: str, _video_in: Path, _audio_in: Path, out_mp4: Path) -> None:
+        out_mp4.write_bytes(b"mp4")
+
+    def fail_get_adapter(_model: str) -> object:
+        raise AssertionError("musetalk omnirt video creation must not load local adapter")
+
+    def fake_create_video_export(root: Path, **kwargs: object) -> dict[str, object]:
+        return {
+            "id": "export-musetalk",
+            "kind": "video_creation",
+            "title": kwargs["title"],
+            "duration_sec": kwargs["duration_sec"],
+            "size_bytes": len(kwargs["content"]),
+            "mime_type": "video/mp4",
+            "created_at": "2026-06-04T00:00:00Z",
+            "path": str(root / "export-musetalk.mp4"),
+            "session_id": kwargs["session_id"],
+            "avatar_id": kwargs["avatar_id"],
+            "model": kwargs["model"],
+        }
+
+    monkeypatch.setattr(video_creation_module, "FlashTalkWSClient", FakeWSClient, raising=False)
+    monkeypatch.setattr(video_creation_module, "OmniRTAudio2VideoClient", FakeOmniRTClient, raising=False)
+    monkeypatch.setattr(video_creation_module, "decode_audio_file_to_pcm_i16", fake_decode)
+    monkeypatch.setattr(video_creation_module, "_write_video_only", lambda path, _frames, _fps: path.write_bytes(b"video"))
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", fake_mux)
+    monkeypatch.setattr(video_creation_module, "get_adapter", fail_get_adapter)
+    monkeypatch.setattr(
+        video_creation_module,
+        "resolve_model_backend",
+        lambda model, _settings: SimpleNamespace(model=model, backend="omnirt", ws_url=""),
+    )
+    monkeypatch.setattr(video_creation_module, "create_video_export", fake_create_video_export)
+
+    settings = SimpleNamespace(
+        avatars_dir=str(avatars),
+        exports_dir=str(exports),
+        export_max_bytes=1024 * 1024,
+        ffmpeg_bin="ffmpeg",
+        omnirt_endpoint="http://127.0.0.1:9000",
+        omnirt_audio2video_path_template="/v1/audio2video/{model}",
+        omnirt_api_key="",
+    )
+    service = VideoCreationService(settings)
+
+    result = await service.create_from_audio_file(
+        model="musetalk",
+        avatar_id="anchor",
+        upload_path=uploaded,
+        title="MuseTalk take",
+    )
+
+    client = FakeOmniRTClient.instances[0]
+    assert client.ws_client.ws_url == "ws://127.0.0.1:9000/v1/audio2video/musetalk"
+    assert client.init_kwargs is not None
+    assert client.init_kwargs["avatar_path"] == avatars / "anchor"
+    assert client.init_kwargs["ref_image"] == (avatars / "anchor" / "reference.png").resolve()
+    assert "template_mode" not in client.init_kwargs
+    assert "quicktalk_face_cache" not in client.init_kwargs
+    assert "video_config" not in client.init_kwargs
+    assert [chunk.size for chunk in client.generated_chunks] == [4, 4]
+    assert client.closed is True
+    assert result["source"] == "upload"
+    assert result["export_video"]["model"] == "musetalk"
 
 
 def test_video_creation_fasterliveportrait_preroll_samples() -> None:

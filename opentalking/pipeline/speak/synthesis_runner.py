@@ -25,6 +25,8 @@ from opentalking.avatar.wav2lip_config import (
 from opentalking.avatar.fasterliveportrait_config import (
     normalize_fasterliveportrait_runtime_config,
 )
+from opentalking.agent.context_builder import AgentSessionConfig, build_agent_context, default_memory_store
+from opentalking.agent.prompt import inject_agent_context
 from opentalking.core.config import get_settings
 from opentalking.core.session_store import (
     FLASHTALK_DISK_RECORDING_FIELD,
@@ -222,6 +224,11 @@ class FlashTalkRunner:
         model_type: str = "flashtalk",
         wav2lip_postprocess_mode: str | None = None,
         fasterliveportrait_config: dict[str, object] | None = None,
+        agent_user_id: str | None = None,
+        agent_enabled: bool = False,
+        memory_enabled: bool = False,
+        knowledge_enabled: bool = False,
+        knowledge_base_id: str | None = "default",
     ) -> None:
         self.session_id = session_id
         self.avatar_id = avatar_id
@@ -229,6 +236,13 @@ class FlashTalkRunner:
         self._wav2lip_postprocess_mode_override = optional_wav2lip_postprocess_mode(wav2lip_postprocess_mode)
         self._fasterliveportrait_config_override = normalize_fasterliveportrait_runtime_config(
             fasterliveportrait_config
+        )
+        self.agent_config = AgentSessionConfig(
+            user_id=agent_user_id,
+            agent_enabled=agent_enabled,
+            memory_enabled=memory_enabled,
+            knowledge_enabled=knowledge_enabled,
+            knowledge_base_id=knowledge_base_id or "default",
         )
         self.avatars_root = avatars_root
         self.redis = redis
@@ -298,6 +312,40 @@ class FlashTalkRunner:
         self._debug_frame_trace = os.environ.get("OPENTALKING_RTC_DEBUG_FRAMES", "").strip().lower() in {"1", "true", "yes", "on"}
         self._debug_queued_video_count = 0
         self._debug_prev_video_mean: float | None = None
+
+    async def _build_agent_context(self, query: str = "") -> str | None:
+        if not self.agent_config.agent_enabled:
+            return None
+        try:
+            return await build_agent_context(
+                config=self.agent_config,
+                avatar_id=self.avatar_id,
+                query=query,
+            )
+        except Exception:
+            log.warning("Failed to build agent context: session=%s", self.session_id, exc_info=True)
+            return None
+
+    async def _save_agent_turn(self, *, user_text: str, assistant_text: str) -> None:
+        if not self.agent_config.has_memory:
+            return
+        try:
+            store = default_memory_store()
+            turn = await store.save_turn(
+                user_id=str(self.agent_config.user_id),
+                avatar_id=self.avatar_id,
+                session_id=self.session_id,
+                user_text=user_text,
+                assistant_text=assistant_text,
+            )
+            await store.save_explicit_memory_from_turn(
+                user_id=str(self.agent_config.user_id),
+                avatar_id=self.avatar_id,
+                source_turn_id=turn.id,
+                user_text=user_text,
+            )
+        except Exception:
+            log.warning("Failed to save agent turn: session=%s", self.session_id, exc_info=True)
 
     def _wav2lip_mouth_metadata(self) -> dict[str, Any] | None:
         if self.model_type != "wav2lip":
@@ -1755,6 +1803,7 @@ class FlashTalkRunner:
             self._speech_started = True
 
             self.conversation.add_user(text)
+            agent_context = await self._build_agent_context(text)
 
             full_response = ""
             spoken_prefix = ""
@@ -2029,7 +2078,10 @@ class FlashTalkRunner:
                     anti-repetition hint, then append the opener as a synthetic assistant
                     turn so the model continues instead of echoing the same greeting.
                     """
-                    base = list(self.conversation.get_messages())
+                    base = inject_agent_context(
+                        list(self.conversation.get_messages()),
+                        agent_context,
+                    )
                     prefix = spoken_prefix.strip()
                     if not prefix:
                         return base
@@ -2409,6 +2461,7 @@ class FlashTalkRunner:
             stored_response = _merge_spoken_reply(spoken_prefix, full_response)
             if stored_response:
                 self.conversation.add_assistant(stored_response)
+                await self._save_agent_turn(user_text=text, assistant_text=stored_response)
 
             await self._publish_speech_ended(stored_response)
             if not self._closed:

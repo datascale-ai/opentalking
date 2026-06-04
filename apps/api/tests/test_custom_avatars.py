@@ -296,6 +296,79 @@ def test_quicktalk_avatar_prewarm_cache_hit_skips_rebuild(
     assert calls
 
 
+def test_quicktalk_avatar_prewarm_keeps_asset_ready_when_runtime_preload_fails(
+    tmp_path,
+    monkeypatch,
+):
+    import asyncio
+    import httpx
+    import numpy as np
+
+    avatar = tmp_path / "singer"
+    avatar.mkdir()
+    (avatar / "reference.png").write_bytes(_png_bytes((16, 24)))
+    quicktalk_dir = avatar / "quicktalk"
+    quicktalk_dir.mkdir()
+    (quicktalk_dir / "template_16x24.mp4").write_bytes(b"fake-template")
+    np.savez(
+        quicktalk_dir / "face_cache_v3_16x24.npz",
+        faces=np.zeros((2, 256, 256, 3), dtype=np.uint8),
+        boxes=np.zeros((2, 4), dtype=np.float32),
+        affines=np.zeros((2, 2, 3), dtype=np.float32),
+    )
+    (avatar / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "singer",
+                "name": "Singer",
+                "model_type": "quicktalk",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 16,
+                "height": 24,
+                "version": "1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_rebuild(settings):
+        del settings
+        raise AssertionError("cache hit must not instantiate quicktalk rebuild")
+
+    async def fake_post_omnirt(settings, path, payload):
+        del settings, path, payload
+        return {"type": "error", "code": "runtime_error", "message": "CUDA warmup failed"}
+
+    monkeypatch.setattr(avatars, "_quicktalk_rebuild", fail_rebuild)
+    monkeypatch.setattr(avatars, "_post_omnirt_json", fake_post_omnirt)
+    monkeypatch.setattr(avatars, "resolve_model_backend", lambda model, settings: SimpleNamespace(backend="omnirt"))
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(
+        avatars_dir=str(tmp_path),
+        omnirt_endpoint="http://127.0.0.1:9000",
+        omnirt_audio2video_path_template="/v1/audio2video/{model}",
+        omnirt_api_key="",
+        quicktalk_max_long_edge=900,
+    )
+    app.include_router(avatars.router)
+
+    async def post_prewarm() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            return await client.post("/avatars/singer/prewarm", json={"model": "quicktalk"})
+
+    response = asyncio.run(post_prewarm())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["runtime_status"] == "failed"
+    assert payload["cache"]["status"] == "hit"
+    assert payload["runtime"]["message"] == "CUDA warmup failed"
+
+
 def test_wav2lip_avatar_prewarm_uses_avatar_cache_dir_and_omnirt(
     tmp_path,
     monkeypatch,

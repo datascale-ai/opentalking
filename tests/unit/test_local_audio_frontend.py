@@ -401,6 +401,12 @@ def test_video_creation_workspace_wires_offline_generation_flow():
     assert "export type VideoCreationJobResponse" in api
     assert "createVideoCreationJob" in api
     assert 'apiPostForm<VideoCreationJobResponse>("/video-creation/jobs", form)' in api
+    assert '"flashtalk"' in workspace
+    assert '"flashhead"' in workspace
+    assert "FlashTalk" in workspace
+    assert "FlashHead" in workspace
+    assert '"musetalk"' in workspace
+    assert "MuseTalk" in workspace
     assert "音频来源" in workspace
     assert "上传音频" in workspace
     assert "文本合成" in workspace
@@ -413,6 +419,44 @@ def test_video_creation_workspace_wires_offline_generation_flow():
     assert "onVoiceCloned" in workspace
     assert "已保存到资产库" in workspace
     assert "去资产库查看" in workspace
+
+
+def test_frontend_export_controls_include_audio_renderer_models():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+    renderers_block = app[app.index("const SERVER_AUDIO_RENDERERS"):app.index("function isFlashRenderer")]
+
+    for model in ("fasterliveportrait", "quicktalk", "musetalk", "wav2lip"):
+        assert f'"{model}"' in renderers_block
+    assert "音频驱动数字人会话连接后" in app
+
+
+def test_frontend_wires_default_knowledge_base_upload_flow():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+    settings = (WEB / "components" / "SettingsPanel.tsx").read_text(encoding="utf-8")
+    avatar_stage = (WEB / "components" / "AvatarSelectionStage.tsx").read_text(encoding="utf-8")
+    api = (WEB / "lib" / "api.ts").read_text(encoding="utf-8")
+
+    assert "KnowledgeDocument" in api
+    assert "KnowledgeDocumentsResponse" in api
+    assert '"/agent/knowledge-bases/default/documents"' in app
+    assert "apiPostForm<KnowledgeDocument>" in app
+    assert "/reindex" in app
+    assert "apiDelete(`/agent/knowledge-bases/default/documents/${encodeURIComponent(documentId)}`)" in app
+    assert "knowledgeDocuments={knowledgeDocuments}" in app
+    assert "onKnowledgeUpload" in settings
+    assert "onKnowledgeReindex" in settings
+    assert "上传文档" in settings
+    assert "支持格式：TXT、Markdown（.md/.markdown）、PDF" in settings
+    assert "accept=\".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf\"" in settings
+    assert "knowledgeUploading={knowledgeUploading}" in app
+    assert "knowledgeUploading?: boolean" in avatar_stage
+    assert "const knowledgeStartBlocked = agentConfig.knowledgeEnabled && knowledgeUploading" in avatar_stage
+    assert "const startDisabled = baseDisabled || knowledgeStartBlocked" in avatar_stage
+    assert "disabled={baseDisabled}" in avatar_stage
+    assert "disabled={startDisabled}" in avatar_stage
+    assert "knowledgeEnabled: true" in app
+    assert "memoryEnabled: false" in app
+    assert "长期记忆" not in avatar_stage
 
 
 def test_video_creation_source_cards_hide_model_type():
@@ -446,3 +490,21 @@ def test_asset_library_labels_video_creation_exports():
 
     assert "video_creation" in asset
     assert "视频创作" in asset
+
+
+def test_frontend_treats_ready_cache_as_prepared_when_runtime_prewarm_fails():
+    app = (WEB / "App.tsx").read_text(encoding="utf-8")
+
+    assert "runtime_status" in app
+    assert "isPrewarmAssetReady" in app
+    assert '"skipped", "unknown"' in app
+    assert 'response.runtime_status === "failed"' in app
+    assert "资产已准备，运行时预热失败" in app
+
+
+def test_avatar_grid_does_not_render_global_prewarm_failure_on_every_card():
+    stage = (WEB / "components" / "AvatarSelectionStage.tsx").read_text(encoding="utf-8")
+
+    grid_block = stage[stage.index("{avatars.map((avatar) =>"):stage.index("</section>")]
+    assert "资产准备失败" not in grid_block
+    assert 'prewarmState === "failed"' in stage
