@@ -23,7 +23,9 @@ export type CaseStudy = {
   route: string;
   features: string[];
   image: string;
+  imagePosition?: string;
   accent: "cyan" | "mint" | "amber" | "violet" | "rose" | "slate";
+  comingSoon?: boolean;
   videoUrl?: string;
   sections: Array<{
     title: string;
@@ -45,6 +47,7 @@ export type Testimonial = {
   quote: string;
   name: string;
   role: string;
+  avatar: string;
 };
 
 export type DocsGroup = {
@@ -138,12 +141,12 @@ export const caseStudies: CaseStudy[] = [
         body: "直播带货需要连续讲解、即时答疑和稳定播报节奏，单一数字人模型无法覆盖完整互动链路。",
       },
       {
-        title: "OpenTalking 方案",
-        body: "先用 Mock 模式验证会话、字幕和 WebRTC，再切到本地 GPU 或 OmniRT 后端，保留统一的前端和 API 编排。",
+        title: "适合扩展",
+        body: "可以接入商品知识库、评论流、促销脚本和多角色主播配置，把单次演示沉淀成可复用的直播间模板。",
       },
       {
-        title: "适合扩展",
-        body: "后续可以加入商品知识库、评论接入、促销脚本和多角色主播配置，形成可复用直播模板。",
+        title: "推荐模型",
+        body: "推荐 OmniRT / FlashTalk：口型和画面质量更稳定，适合长时段直播、品牌带货和面向客户展示的高质量效果。",
       },
     ],
     outcomes: ["商品讲解自动化", "评论问答实时响应", "字幕与视频同步展示"],
@@ -169,46 +172,15 @@ export const caseStudies: CaseStudy[] = [
         body: "播报类内容需要稳定形象、清晰声音和长文本输出能力，还要便于切换语言、栏目和人物设定。",
       },
       {
-        title: "OpenTalking 方案",
-        body: "通过角色配置、TTS 提供商和合成后端组合，统一管理主播形象、音色、字幕事件与浏览器播放。",
+        title: "适合扩展",
+        body: "可以接入新闻 CMS、脚本审核、多语言播报和栏目模板，把文本生成、播报和录制拆成更稳定的生产流程。",
       },
       {
-        title: "内容生产",
-        body: "可以把文本生成、审核、播报和录制流程拆开，逐步接入已有 CMS 或脚本生产系统。",
+        title: "推荐模型",
+        body: "推荐 QuickTalk / FlashTalk：前者适合本地快速验证，后者更适合长文本播报、稳定口型和栏目化内容输出。",
       },
     ],
     outcomes: ["长文本播报更稳定", "主播形象可切换", "适合栏目化内容生产"],
-  },
-  {
-    slug: "anime-talk-show",
-    title: "动漫脱口秀",
-    eyebrow: "角色内容",
-    category: "character",
-    categoryLabel: "角色内容",
-    description:
-      "把二次元角色、文本创作和实时语音连接起来，快速验证内容 IP 的互动表达。",
-    detailIntro:
-      "用角色设定驱动内容表达，把文本创作、语音风格和数字人画面组合成可互动的角色栏目。",
-    route: "Mock 验证后切 Local",
-    features: ["角色设定", "创意台词", "低门槛验证"],
-    image: "/images/webui.png",
-    accent: "violet",
-    videoUrl: "https://github.com/user-attachments/assets/b3743604-7f50-40d1-9248-f2df80ea7308",
-    sections: [
-      {
-        title: "场景挑战",
-        body: "角色内容经常需要快速试错，重点不只是画质，还包括人设、台词节奏和实时互动反馈。",
-      },
-      {
-        title: "OpenTalking 方案",
-        body: "通过 Mock 首跑快速验证角色设定和对话节奏，再按效果需求切换本地模型或远端高质量后端。",
-      },
-      {
-        title: "内容扩展",
-        body: "后续可以加入多角色切换、节目脚本、弹幕互动和内容素材库，形成角色 IP 生产流程。",
-      },
-    ],
-    outcomes: ["快速验证角色人设", "降低内容试错成本", "后续可扩展多角色互动"],
   },
   {
     slug: "companion-character",
@@ -231,20 +203,51 @@ export const caseStudies: CaseStudy[] = [
         body: "陪伴类产品对回复节奏、打断体验和字幕反馈要求更高，需要保证会话状态与音视频输出一致。",
       },
       {
-        title: "OpenTalking 方案",
-        body: "通过会话状态、语音输入、TTS 和 WebRTC 编排，先验证自然对话体验，再接入本地模型或专用知识库。",
+        title: "适合扩展",
+        body: "可以接入长期记忆、私有知识库、角色安全边界和多轮对话策略，让陪伴体验更连续、更可控。",
       },
       {
-        title: "体验边界",
-        body: "适合做产品陪伴和轻量互动，不应替代专业医疗、法律或高风险咨询服务。",
+        title: "推荐模型",
+        body: "推荐 QuickTalk + 本地音频链路：响应快、部署轻，适合先验证多轮对话、打断控制和角色陪伴体验。",
       },
     ],
     outcomes: ["多轮会话更自然", "打断和字幕可观察", "便于私有化验证"],
   },
   {
+    slug: "anime-talk-show",
+    title: "动漫脱口秀",
+    eyebrow: "角色内容",
+    category: "character",
+    categoryLabel: "角色内容",
+    description:
+      "把二次元角色、文本创作和实时语音连接起来，快速验证内容 IP 的互动表达。",
+    detailIntro:
+      "用角色设定驱动内容表达，把文本创作、语音风格和数字人画面组合成可互动的角色栏目。",
+    route: "Mock 验证后切 Local",
+    features: ["角色设定", "创意台词", "低门槛验证"],
+    image: "/images/cases/anime-talk-show-preview.png",
+    accent: "violet",
+    videoUrl: "https://github.com/user-attachments/assets/b3743604-7f50-40d1-9248-f2df80ea7308",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "角色内容经常需要快速试错，重点不只是画质，还包括人设、台词节奏和实时互动反馈。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以加入多角色切换、节目脚本、弹幕互动和内容素材库，让角色 IP 从 Demo 走向持续内容生产。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 Mock 首跑 + QuickTalk：先低成本验证人设和互动节奏，再按画质需求切换本地或高质量后端。",
+      },
+    ],
+    outcomes: ["快速验证角色人设", "降低内容试错成本", "后续可扩展多角色互动"],
+  },
+  {
     slug: "creative-performance",
     title: "创意演唱 / 模仿秀",
-    eyebrow: "内容实验",
+    eyebrow: "创意实验",
     category: "experiment",
     categoryLabel: "创意实验",
     description:
@@ -253,7 +256,7 @@ export const caseStudies: CaseStudy[] = [
       "用于声音、形象和表演内容的实验场，让团队快速比较不同模型、音色和脚本组合的表现。",
     route: "Local 或 OmniRT",
     features: ["声音风格", "角色演绎", "后端切换"],
-    image: "/images/webui.png",
+    image: "/images/cases/creative-performance-preview.png",
     accent: "rose",
     videoUrl: "https://github.com/user-attachments/assets/98e813c2-f170-4cc8-b934-a77a72061d2e",
     sections: [
@@ -262,46 +265,44 @@ export const caseStudies: CaseStudy[] = [
         body: "创意内容变化快，常常需要比较不同声音、画面和脚本，不适合每次都重搭一套演示系统。",
       },
       {
-        title: "OpenTalking 方案",
-        body: "保留统一 WebUI 和 API 编排，通过配置切换模型、声音和角色，让创意验证成本更低。",
+        title: "适合扩展",
+        body: "可以加入素材管理、内容模板和录制导出，把实验结果沉淀成短视频、直播切片或角色表演素材。",
       },
       {
-        title: "扩展方式",
-        body: "可以加入素材管理、内容模板和录制导出，把实验结果沉淀成可复用资产。",
+        title: "推荐模型",
+        body: "推荐 Local / OmniRT：本地路线适合快速试错，OmniRT 更适合对画质、表演稳定性和最终交付效果要求更高的内容。",
       },
     ],
     outcomes: ["快速比较模型效果", "适合内容团队试错", "可沉淀演示模板"],
   },
   {
     slug: "mobile-recording",
-    title: "实时手机录制",
-    eyebrow: "端到端演示",
+    title: "更多有趣视频制作中...",
+    eyebrow: "Coming soon",
     category: "experiment",
     categoryLabel: "端到端演示",
-    description:
-      "展示从输入到 API、模型服务、字幕事件和 WebRTC 画面播放的完整体验。",
-    detailIntro:
-      "用一个最小闭环证明 OpenTalking 的实时链路可以跑通，适合作为团队评估和部署前检查入口。",
-    route: "Mock 首跑 + GPU 升级",
-    features: ["端到端链路", "快速演示", "部署校验"],
-    image: "/images/webui.png",
+    description: "Coming soon",
+    detailIntro: "案例内容正在整理中",
+    route: "Coming soon",
+    features: ["Coming soon"],
+    image: "/images/cases/coming-soon.svg",
     accent: "slate",
-    videoUrl: "https://github.com/user-attachments/assets/a3abce76-12c0-4b8b-844f-bbc5c3227dc7",
+    comingSoon: true,
     sections: [
       {
-        title: "场景挑战",
-        body: "团队第一次评估数字人链路时，最容易被模型权重、推理服务和浏览器播放问题同时阻塞。",
+        title: "Coming soon",
+        body: "该场景资源正在整理中。",
       },
       {
-        title: "OpenTalking 方案",
-        body: "Mock 模式保留 API、TTS、字幕和 WebRTC 关键路径，让团队先确认产品链路，再升级真实视频推理。",
+        title: "Coming soon",
+        body: "后续会补充可用模型、演示素材和配置建议。",
       },
       {
-        title: "验证价值",
-        body: "适合作为安装、配置、网络和播放能力的健康检查，也能作为对外演示的最小版本。",
+        title: "推荐模型",
+        body: "Coming soon。",
       },
     ],
-    outcomes: ["快速确认环境", "定位链路瓶颈", "为真实模型部署打基础"],
+    outcomes: ["案例内容即将补充", "演示视频整理中", "暂不开放详情页"],
   },
 ];
 
@@ -313,7 +314,7 @@ export const deploymentRoutes: DeploymentRoute[] = [
       "不准备模型权重和推理服务，也能先跑通对话、语音、字幕和浏览器播放，适合快速确认产品方向。",
     models: "静态数字人画面 + 真实 LLM/TTS/WebRTC 链路",
     bestFor: "产品经理、售前演示、第一次评估 OpenTalking 的团队",
-    outcome: "10 分钟内看到可演示的最小圆形",
+    outcome: "10 分钟内看到可演示的原型",
   },
   {
     name: "本地离线与私有化验证",
@@ -322,7 +323,7 @@ export const deploymentRoutes: DeploymentRoute[] = [
       "在自己的GPU机器或工作站上运行实时数字人渲染模型，支持素材、音频和会话等各样功能。",
     models: "QuickTalk / Wav2Lip / MuseTalk 本地后端",
     bestFor: "内容团队、私有化验证、需要离线运行和自定义形象的项目",
-    outcome: "在成本可控的单机环境里生成真实数字人效果",
+    outcome: "单机环境里生成真实数字人渲染",
   },
   {
     name: "高质量生产与交付",
@@ -331,7 +332,7 @@ export const deploymentRoutes: DeploymentRoute[] = [
       "部署分离数字服务和模型推理服务，获取更高质量的数字人渲染效果，适合企业交付、多卡推理和长期服务。",
     models: "FlashTalk / FlashHead",
     bestFor: "画质要求高、并发更高、需要稳定服务边界的团队",
-    outcome: "从演示升级到可维护的生产级数字人链路",
+    outcome: "高质量、生产级数字人效果",
   },
 ];
 
@@ -395,21 +396,24 @@ export const trustBadges = ["Python 3.10+", "React 18", "FastAPI", "WebRTC"];
 export const testimonials: Testimonial[] = [
   {
     quote:
-      "这个软件简直帮助我生成了很多数字人的素材，很方便的进行二次创作，并且可以全部离线本地使用。",
-    name: "李明",
-    role: "视觉设计师",
+      "我们先用 Mock 模式确认交互和脚本，再切到本地模型验证画面效果，整条链路很适合做数字人产品原型。",
+    name: "内容创作团队",
+    role: "短视频与直播场景",
+    avatar: "/images/avatars/content-team.svg",
   },
   {
     quote:
-      "这个项目很棒，让我很方便的帮助客户生成很多短视频数字人项目，免费降低了成本，非常好用。",
-    name: "张晓Y",
-    role: "虚拟人项目经理",
+      "OpenTalking 把 LLM、语音、字幕和 WebRTC 播放整理得比较清楚，做私有化演示和客户交付时沟通成本低了很多。",
+    name: "企业交付团队",
+    role: "本地部署与方案验证",
+    avatar: "/images/avatars/delivery-team.svg",
   },
   {
     quote:
-      "开源的设计让我感到很惊喜，我们根据团队需求轻松进行了二次开发。非常贴合行业的痛点，给我们带来了很多便利。",
-    name: "王强",
-    role: "AI开发工程师",
+      "后端模型可以替换，前端事件也足够透明，我们能在现有工程里快速接入自己的数字人模型和业务流程。",
+    name: "社区开发者",
+    role: "模型适配与二次开发",
+    avatar: "/images/avatars/developer.svg",
   },
 ];
 
@@ -424,8 +428,8 @@ export const contactChannels = [
   {
     title: "交流合作",
     description: "私有化部署、场景共创、模型接入和企业合作咨询。",
-    value: "contact@datascale-ai.com",
-    href: "mailto:contact@datascale-ai.com",
+    value: "opentalking-ai@outlook.com",
+    href: "mailto:opentalking-ai@outlook.com",
     kind: "email",
   },
   {

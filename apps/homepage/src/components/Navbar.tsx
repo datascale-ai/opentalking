@@ -1,15 +1,26 @@
-import { Menu, PlayCircle, X } from "lucide-react";
+import { Languages, Menu, PlayCircle, X } from "lucide-react";
 import { useState } from "react";
 import type { NavItem, PageKey } from "../content";
+import type { Language, SiteContent } from "../locales";
 import { GitHubStats } from "./GitHubStats";
 
 type NavbarProps = {
+  copy: SiteContent["navbar"];
   currentPage: PageKey;
+  language: Language;
   navItems: NavItem[];
+  onLanguageChange: (language: Language) => void;
   onNavigate: (page: PageKey) => void;
 };
 
-export function Navbar({ currentPage, navItems, onNavigate }: NavbarProps) {
+export function Navbar({
+  copy,
+  currentPage,
+  language,
+  navItems,
+  onLanguageChange,
+  onNavigate,
+}: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleNavigate = (page: PageKey) => {
@@ -35,7 +46,7 @@ export function Navbar({ currentPage, navItems, onNavigate }: NavbarProps) {
               OpenTalking
             </span>
             <span className="hidden text-xs text-slate-500 sm:block">
-              Real-time avatar platform
+              {copy.tagline}
             </span>
           </span>
         </button>
@@ -58,13 +69,23 @@ export function Navbar({ currentPage, navItems, onNavigate }: NavbarProps) {
         </nav>
 
         <div className="hidden items-center gap-2 lg:flex">
+          <button
+            type="button"
+            className="language-toggle"
+            aria-label={copy.languageLabel}
+            onClick={() => onLanguageChange(language === "zh" ? "en" : "zh")}
+          >
+            <Languages className="h-4 w-4 text-cyanline" />
+            <span className={language === "zh" ? "language-toggle-active" : ""}>中</span>
+            <span className={language === "en" ? "language-toggle-active" : ""}>EN</span>
+          </button>
           <GitHubStats />
         </div>
 
         <button
           type="button"
           className="focus-ring inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-white text-ink md:hidden"
-          aria-label={isOpen ? "关闭导航" : "打开导航"}
+          aria-label={isOpen ? copy.menuClose : copy.menuOpen}
           onClick={() => setIsOpen((value) => !value)}
         >
           {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -74,6 +95,16 @@ export function Navbar({ currentPage, navItems, onNavigate }: NavbarProps) {
       {isOpen ? (
         <div className="border-t border-slate-200 bg-white px-5 py-4 md:hidden">
           <div className="grid gap-2">
+            <button
+              type="button"
+              className="language-toggle mb-2 w-fit"
+              aria-label={copy.languageLabel}
+              onClick={() => onLanguageChange(language === "zh" ? "en" : "zh")}
+            >
+              <Languages className="h-4 w-4 text-cyanline" />
+              <span className={language === "zh" ? "language-toggle-active" : ""}>中</span>
+              <span className={language === "en" ? "language-toggle-active" : ""}>EN</span>
+            </button>
             {navItems.map((item) => (
               <button
                 key={item.key}

@@ -1,13 +1,15 @@
 import { ArrowLeft, ArrowRight, PlayCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CaseStudy } from "../content";
+import type { SiteContent } from "../locales";
 
 type ShowcaseCarouselProps = {
+  copy: SiteContent["showcase"];
   items: CaseStudy[];
   onOpenCase: (slug: string) => void;
 };
 
-export function ShowcaseCarousel({ items, onOpenCase }: ShowcaseCarouselProps) {
+export function ShowcaseCarousel({ copy, items, onOpenCase }: ShowcaseCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const activeItem = items[activeIndex];
 
@@ -47,7 +49,7 @@ export function ShowcaseCarousel({ items, onOpenCase }: ShowcaseCarouselProps) {
           </div>
           <div className="max-w-xl">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-indigo-200">
-              Featured scenario
+              {copy.featuredLabel}
             </p>
             <h3 className="mt-4 text-3xl font-semibold tracking-normal md:text-5xl">
               {activeItem.title}
@@ -56,13 +58,13 @@ export function ShowcaseCarousel({ items, onOpenCase }: ShowcaseCarouselProps) {
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button type="button" className="btn-light" onClick={() => onOpenCase(activeItem.slug)}>
                 <PlayCircle className="h-4 w-4" />
-                查看资源页
+                {copy.openResourceCta}
               </button>
               <div className="flex gap-2">
                 <button
                   type="button"
                   className="carousel-icon-button"
-                  aria-label="上一个案例"
+                  aria-label={copy.previousLabel}
                   onClick={() => goTo(activeIndex - 1)}
                 >
                   <ArrowLeft className="h-4 w-4" />
@@ -70,7 +72,7 @@ export function ShowcaseCarousel({ items, onOpenCase }: ShowcaseCarouselProps) {
                 <button
                   type="button"
                   className="carousel-icon-button"
-                  aria-label="下一个案例"
+                  aria-label={copy.nextLabel}
                   onClick={() => goTo(activeIndex + 1)}
                 >
                   <ArrowRight className="h-4 w-4" />

@@ -1,29 +1,33 @@
 import { Filter, Layers3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CaseCard } from "../components/CaseCard";
-import { caseCategories, caseStudies } from "../content";
+import type { CaseStudy } from "../content";
+import type { SiteContent } from "../locales";
 
 type CasesPageProps = {
+  caseCategories: SiteContent["caseCategories"];
+  caseStudies: CaseStudy[];
+  copy: SiteContent["casesPage"];
   onOpenCase: (slug: string) => void;
 };
 
-type CategoryKey = (typeof caseCategories)[number]["key"];
+type CategoryKey = SiteContent["caseCategories"][number]["key"];
 
-export function CasesPage({ onOpenCase }: CasesPageProps) {
+export function CasesPage({ caseCategories, caseStudies, copy, onOpenCase }: CasesPageProps) {
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("all");
 
   const visibleCases = useMemo(() => {
     if (activeCategory === "all") return caseStudies;
     return caseStudies.filter((item) => item.category === activeCategory);
-  }, [activeCategory]);
+  }, [activeCategory, caseStudies]);
 
   return (
     <>
       <section className="mx-auto max-w-7xl px-5 pb-6 pt-16 md:pb-8 md:pt-20">
-        <p className="eyebrow">Customer stories</p>
-        <h1 className="page-title">行业场景与案例</h1>
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h1 className="page-title">{copy.title}</h1>
         <p className="page-copy">
-          OpenTalking 在直播、播报、陪伴互动和内容生产中的应用落地。<br />欢迎发现有趣的应用落地贡献给我们！
+          {copy.description}<br />{copy.contributionLine}
         </p>
       </section>
 
@@ -32,7 +36,7 @@ export function CasesPage({ onOpenCase }: CasesPageProps) {
           <aside className="case-sidebar">
             <div className="flex items-center gap-2 text-sm font-semibold text-ink">
               <Filter className="h-4 w-4 text-cyanline" />
-              场景分类
+              {copy.filterTitle}
             </div>
             <div className="mt-5 grid gap-2">
               {caseCategories.map((category) => {
@@ -57,7 +61,7 @@ export function CasesPage({ onOpenCase }: CasesPageProps) {
             <div className="mt-6 rounded-lg border border-indigo-100 bg-indigo-50/70 p-4 text-ink">
               <Layers3 className="h-5 w-5 text-cyanline" />
               <p className="mt-2 text-xs leading-6 text-indigo-950/68">
-                每个案例沉淀业务背景、演示视频、实施方案与预期收益，便于快速判断是否适合你的场景。
+                {copy.resourceNote}
               </p>
             </div>
           </aside>
@@ -65,7 +69,12 @@ export function CasesPage({ onOpenCase }: CasesPageProps) {
           <div>
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {visibleCases.map((item) => (
-                <CaseCard key={item.slug} item={item} onOpenCase={onOpenCase} />
+                <CaseCard
+                  key={item.slug}
+                  comingSoonLabel={copy.comingSoonLabel}
+                  item={item}
+                  onOpenCase={onOpenCase}
+                />
               ))}
             </div>
           </div>

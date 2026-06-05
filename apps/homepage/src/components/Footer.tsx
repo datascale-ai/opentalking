@@ -1,13 +1,15 @@
 import { ArrowUpRight, Github, MessageCircle } from "lucide-react";
 import type { NavItem, PageKey } from "../content";
 import { productLinks } from "../content";
+import type { SiteContent } from "../locales";
 
 type FooterProps = {
+  copy: SiteContent["footer"];
   navItems: NavItem[];
   onNavigate: (page: PageKey) => void;
 };
 
-export function Footer({ navItems, onNavigate }: FooterProps) {
+export function Footer({ copy, navItems, onNavigate }: FooterProps) {
   return (
     <footer className="border-t border-indigo-100 bg-white/75 backdrop-blur-xl">
       <div className="mx-auto grid max-w-7xl gap-8 px-5 py-12 lg:grid-cols-[1.12fr_0.72fr_0.72fr_0.9fr]">
@@ -20,15 +22,15 @@ export function Footer({ navItems, onNavigate }: FooterProps) {
             />
             <div>
               <p className="font-semibold text-ink">OpenTalking</p>
-              <p className="text-sm text-slate-500">开源实时数字人生成与对话框架</p>
+              <p className="text-sm text-slate-500">{copy.tagline}</p>
             </div>
           </div>
           <p className="mt-5 max-w-md text-sm leading-7 text-slate-600">
-            从 Demo、素材生产到私有化部署，帮助团队更快构建可落地的数字人应用。
+            {copy.description}
           </p>
         </div>
         <div>
-          <p className="text-sm font-semibold text-ink">站点</p>
+          <p className="text-sm font-semibold text-ink">{copy.siteTitle}</p>
           <div className="mt-4 grid gap-2">
             {navItems.map((item) => (
               <button
@@ -43,13 +45,13 @@ export function Footer({ navItems, onNavigate }: FooterProps) {
           </div>
         </div>
         <div>
-          <p className="text-sm font-semibold text-ink">资源</p>
+          <p className="text-sm font-semibold text-ink">{copy.resourcesTitle}</p>
           <div className="mt-4 grid gap-2">
             <a className="footer-link" href={productLinks.docsZh} target="_blank" rel="noreferrer">
-              中文文档 <ArrowUpRight className="h-3.5 w-3.5" />
+              {copy.docsPrimary} <ArrowUpRight className="h-3.5 w-3.5" />
             </a>
             <a className="footer-link" href={productLinks.docsEn} target="_blank" rel="noreferrer">
-              English Docs <ArrowUpRight className="h-3.5 w-3.5" />
+              {copy.docsSecondary} <ArrowUpRight className="h-3.5 w-3.5" />
             </a>
             <a className="footer-link" href={productLinks.github} target="_blank" rel="noreferrer">
               GitHub <Github className="h-3.5 w-3.5" />
@@ -59,7 +61,7 @@ export function Footer({ navItems, onNavigate }: FooterProps) {
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold text-ink">
             <MessageCircle className="h-4 w-4 text-cyanline" />
-            加入交流群
+            {copy.communityTitle}
           </div>
           <div className="mt-4 grid grid-cols-[96px_1fr] items-center gap-4">
             <img
@@ -68,9 +70,9 @@ export function Footer({ navItems, onNavigate }: FooterProps) {
               className="h-24 w-24 rounded-lg object-contain"
             />
             <div>
-              <p className="text-sm font-semibold text-ink">AI 数字人交流群</p>
+              <p className="text-sm font-semibold text-ink">{copy.communityName}</p>
               <p className="code-font mt-1 text-sm text-indigo-700">1103327938</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">讨论部署、模型接入、内容场景和二次开发。</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{copy.communityDescription}</p>
             </div>
           </div>
         </div>
