@@ -43,6 +43,7 @@ flowchart LR
 | End-to-end self-test with no weights | [Mock](mock.md) |
 | First real lip-sync model | [Wav2Lip Local](wav2lip/local.md) |
 | Local STT/TTS + QuickTalk | [Local STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md) |
+| V100 single-host FasterLivePortrait + FlashHead | [V100 + FasterLivePortrait + FlashHead](recipes/v100-fasterliveportrait-flashhead.md) |
 | Existing MuseTalk runtime | [MuseTalk with OmniRT](musetalk/omnirt.md) |
 | Local realtime adapter | [QuickTalk Local](quicktalk/local.md) |
 | Single-GPU realtime portrait with pasteback | [FasterLivePortrait](fasterliveportrait.md) |

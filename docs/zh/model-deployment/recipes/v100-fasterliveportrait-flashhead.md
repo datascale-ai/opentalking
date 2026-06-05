@@ -1,8 +1,12 @@
-# V100 实时数字人部署完整指南
+# V100 + FasterLivePortrait + FlashHead 部署配方
 
 > 从零开始，在 NVIDIA V100 (32GB) 上部署实时对话数字人系统
 > 包含两套推理方案：FasterLivePortrait（真人驱动）+ FlashHead（AI生成）
 > 适用环境：Ubuntu 22.04 + NVIDIA Driver 580 + CUDA 12.x
+
+本页是一份面向 V100 单机的实战部署配方。通用模型说明请先阅读
+[FasterLivePortrait](../fasterliveportrait.md)、[FlashHead](../flashhead.md) 和
+[OmniRT 部署](../backends/omnirt.md)。
 
 ---
 
@@ -240,7 +244,7 @@ cp libgrid_sample_3d_plugin.so \
 
 ```bash
 cd /opt/digital-human
-git clone https://github.com/anthropics/omnirt.git  # 或从内部获取
+git clone https://github.com/datascale-ai/omnirt.git
 cd omnirt
 
 source /opt/digital-human/omnirt/.venv310/bin/activate
@@ -510,7 +514,7 @@ python /opt/digital-human/flashhead_server.py
 
 ```bash
 cd /opt/digital-human
-git clone https://github.com/anthropics/opentalking.git
+git clone https://github.com/datascale-ai/opentalking.git
 cd opentalking
 ```
 

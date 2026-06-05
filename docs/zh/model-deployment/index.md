@@ -43,6 +43,7 @@ flowchart LR
 | 无权重端到端自测 | [Mock](mock.md) |
 | 第一个真实唇形模型 | [Wav2Lip Local](wav2lip/local.md) |
 | 本地 STT/TTS + QuickTalk | [本地 STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md) |
+| V100 单机部署 FasterLivePortrait + FlashHead | [V100 + FasterLivePortrait + FlashHead](recipes/v100-fasterliveportrait-flashhead.md) |
 | 已有 MuseTalk runtime | [MuseTalk with OmniRT](musetalk/omnirt.md) |
 | 本地实时 adapter | [QuickTalk Local](quicktalk/local.md) |
 | 单卡实时头像贴回链路 | [FasterLivePortrait](fasterliveportrait.md) |

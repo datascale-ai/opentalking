@@ -132,6 +132,7 @@ plugins:
             Recipes: 部署配方
             Wav2Lip Local: Wav2Lip Local
             Local Audio + QuickTalk: 本地语音 + QuickTalk
+            V100 + FasterLivePortrait + FlashHead: V100 + FasterLivePortrait + FlashHead
             Avatar Assets: Avatar 资产
             Talking-Head Models: Talking-head 模型
             Talking-Head Model Deployment: 数字人模型部署
@@ -266,6 +267,7 @@ nav:
               - FasterLivePortrait: model-deployment/fasterliveportrait.md
           - Recipes:
               - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
+              - V100 + FasterLivePortrait + FlashHead: model-deployment/recipes/v100-fasterliveportrait-flashhead.md
           - LLM and STT: model-deployment/llm-stt.md
           - TTS: model-deployment/tts.md
           - Support Matrix: model-deployment/support-matrix.md
@@ -342,6 +344,7 @@ nav:
           - FasterLivePortrait: model-deployment/fasterliveportrait.md
       - Recipes:
           - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
+          - V100 + FasterLivePortrait + FlashHead: model-deployment/recipes/v100-fasterliveportrait-flashhead.md
       - LLM and STT: model-deployment/llm-stt.md
       - TTS: model-deployment/tts.md
       - Support Matrix: model-deployment/support-matrix.md
