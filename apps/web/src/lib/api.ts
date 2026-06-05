@@ -76,6 +76,16 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+export async function apiPut<T, B = unknown>(path: string, body?: B): Promise<T> {
+  const r = await fetch(buildApiUrl(path), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  await throwIfNotOk(r);
+  return r.json() as Promise<T>;
+}
+
 export async function apiPostBlob(path: string, body?: unknown): Promise<Blob> {
   const r = await fetch(buildApiUrl(path), {
     method: "POST",
@@ -203,6 +213,48 @@ export type KnowledgeDocument = {
 
 export type KnowledgeDocumentsResponse = {
   documents: KnowledgeDocument[];
+};
+
+export type KnowledgeBaseSummary = {
+  id: string;
+  name: string;
+  document_count: number;
+  ready_document_count: number;
+  error_document_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KnowledgeBasesResponse = {
+  knowledge_bases?: (string | KnowledgeBaseSummary)[];
+  knowledge_base_summaries?: KnowledgeBaseSummary[];
+};
+
+export type AvatarKnowledgeBasesResponse = {
+  avatar_id?: string;
+  knowledge_base_ids?: string[];
+  knowledge_base_summaries?: KnowledgeBaseSummary[];
+};
+
+export type AvatarKnowledgeBasesRequest = {
+  knowledge_base_ids: string[];
+};
+
+export type CreateSessionRequest = {
+  avatar_id: string;
+  model: string;
+  llm_system_prompt?: string;
+  tts_provider: string;
+  stt_provider: string;
+  tts_voice?: string;
+  wav2lip_postprocess_mode?: string;
+  fasterliveportrait_config?: Record<string, unknown>;
+  user_id: string;
+  agent_enabled: boolean;
+  memory_enabled: boolean;
+  knowledge_enabled: boolean;
+  knowledge_base_id: string;
+  knowledge_base_ids: string[];
 };
 
 export type AvatarSummary = {

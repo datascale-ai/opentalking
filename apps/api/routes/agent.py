@@ -3,11 +3,11 @@ from __future__ import annotations
 import tempfile
 from dataclasses import asdict
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from opentalking.agent.context_builder import default_knowledge_store, default_memory_store
-from opentalking.agent.knowledge_store import MAX_DOCUMENT_BYTES
+from opentalking.agent.knowledge_store import MAX_DOCUMENT_BYTES, KnowledgeStore
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 class AgentOptionsResponse(BaseModel):
     memory_enabled: bool = False
     knowledge_enabled: bool = True
-    default_knowledge_base_id: str = "default"
+    default_knowledge_base_id: str | None = None
 
 
 class AgentMemoryResponse(BaseModel):
@@ -57,7 +57,42 @@ class KnowledgeDocumentsResponse(BaseModel):
     documents: list[KnowledgeDocumentResponse]
 
 
+class KnowledgeBaseResponse(BaseModel):
+    id: str
+    name: str
+    document_count: int
+    ready_document_count: int
+    error_document_count: int
+    created_at: str
+    updated_at: str
+
+
+class KnowledgeBasesResponse(BaseModel):
+    knowledge_bases: list[str]
+    knowledge_base_summaries: list[KnowledgeBaseResponse]
+
+
+class RenameKnowledgeBaseRequest(BaseModel):
+    name: str
+
+
+class AvatarKnowledgeBasesRequest(BaseModel):
+    knowledge_base_ids: list[str]
+
+
+class AvatarKnowledgeBasesResponse(BaseModel):
+    knowledge_base_ids: list[str]
+
+
+class ImportKnowledgeDocumentsRequest(BaseModel):
+    document_ids: list[str]
+
+
 class DeleteKnowledgeDocumentResponse(BaseModel):
+    deleted: bool
+
+
+class DeleteKnowledgeBaseResponse(BaseModel):
     deleted: bool
 
 
@@ -96,9 +131,229 @@ async def clear_agent_memories(
     return DeleteAgentMemoriesResponse(deleted=deleted)
 
 
-@router.get("/knowledge-bases", response_model=dict[str, list[str]])
-async def list_knowledge_bases() -> dict[str, list[str]]:
-    return {"knowledge_bases": ["default"]}
+async def _add_uploaded_document(
+    store: KnowledgeStore,
+    *,
+    kb_id: str,
+    file: UploadFile,
+) -> KnowledgeDocumentResponse:
+    filename = file.filename or "document.txt"
+    mime_type = file.content_type or "application/octet-stream"
+    total = 0
+    with tempfile.NamedTemporaryFile(prefix="opentalking-kb-", delete=True) as tmp:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_DOCUMENT_BYTES:
+                raise HTTPException(status_code=413, detail="document is larger than 20MB")
+            tmp.write(chunk)
+        tmp.flush()
+        try:
+            doc = await store.add_document(
+                kb_id=kb_id,
+                filename=filename,
+                mime_type=mime_type,
+                source_path=tmp.name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return KnowledgeDocumentResponse(**asdict(doc))
+
+
+async def _add_uploaded_file(
+    store: KnowledgeStore,
+    *,
+    file: UploadFile,
+) -> KnowledgeDocumentResponse:
+    filename = file.filename or "document.txt"
+    mime_type = file.content_type or "application/octet-stream"
+    total = 0
+    with tempfile.NamedTemporaryFile(prefix="opentalking-kb-file-", delete=True) as tmp:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_DOCUMENT_BYTES:
+                raise HTTPException(status_code=413, detail="document is larger than 20MB")
+            tmp.write(chunk)
+        tmp.flush()
+        try:
+            doc = await store.add_file(
+                filename=filename,
+                mime_type=mime_type,
+                source_path=tmp.name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return KnowledgeDocumentResponse(**asdict(doc))
+
+
+async def _knowledge_base_response(store: KnowledgeStore, kb_id: str) -> KnowledgeBaseResponse:
+    for knowledge_base in await store.list_knowledge_bases():
+        if knowledge_base.id == kb_id:
+            return KnowledgeBaseResponse(**asdict(knowledge_base))
+    raise HTTPException(status_code=404, detail="knowledge base not found")
+
+
+@router.get("/knowledge-bases", response_model=KnowledgeBasesResponse)
+async def list_knowledge_bases() -> KnowledgeBasesResponse:
+    try:
+        knowledge_bases = await default_knowledge_store().list_knowledge_bases()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    summaries = [
+        KnowledgeBaseResponse(**asdict(knowledge_base))
+        for knowledge_base in knowledge_bases
+    ]
+    return KnowledgeBasesResponse(
+        knowledge_bases=[knowledge_base.id for knowledge_base in knowledge_bases],
+        knowledge_base_summaries=summaries,
+    )
+
+
+@router.post("/knowledge-bases", response_model=KnowledgeBaseResponse)
+async def create_knowledge_base(
+    name: str = Form(...),
+    document_ids: list[str] | None = Form(default=None),
+    files: list[UploadFile] | None = File(default=None),
+) -> KnowledgeBaseResponse:
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="knowledge base name is required")
+    selected_document_ids = [doc_id.strip() for doc_id in document_ids or [] if doc_id.strip()]
+    if not files and not selected_document_ids:
+        raise HTTPException(status_code=400, detail="at least one file or document is required")
+    store = default_knowledge_store()
+    try:
+        knowledge_base = await store.create_knowledge_base(clean_name)
+        for doc_id in selected_document_ids:
+            await store.add_existing_document(
+                kb_id=knowledge_base.id,
+                source_doc_id=doc_id,
+            )
+        for file in files or []:
+            await _add_uploaded_document(store, kb_id=knowledge_base.id, file=file)
+    except HTTPException:
+        if "knowledge_base" in locals():
+            try:
+                await store.delete_knowledge_base(knowledge_base.id)
+            except Exception:
+                pass
+        raise
+    except KeyError as exc:
+        if "knowledge_base" in locals():
+            try:
+                await store.delete_knowledge_base(knowledge_base.id)
+            except Exception:
+                pass
+        raise HTTPException(status_code=404, detail="knowledge file not found") from exc
+    except ValueError as exc:
+        if "knowledge_base" in locals():
+            try:
+                await store.delete_knowledge_base(knowledge_base.id)
+            except Exception:
+                pass
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return await _knowledge_base_response(store, knowledge_base.id)
+
+
+@router.patch("/knowledge-bases/{kb_id}", response_model=KnowledgeBaseResponse)
+async def rename_knowledge_base(
+    kb_id: str,
+    request: RenameKnowledgeBaseRequest,
+) -> KnowledgeBaseResponse:
+    try:
+        knowledge_base = await default_knowledge_store().rename_knowledge_base(
+            kb_id,
+            request.name,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge base not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return KnowledgeBaseResponse(**asdict(knowledge_base))
+
+
+@router.delete("/knowledge-bases/{kb_id}", response_model=DeleteKnowledgeBaseResponse)
+async def delete_knowledge_base(kb_id: str) -> DeleteKnowledgeBaseResponse:
+    try:
+        deleted = await default_knowledge_store().delete_knowledge_base(kb_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="knowledge base not found")
+    return DeleteKnowledgeBaseResponse(deleted=True)
+
+
+@router.get(
+    "/avatars/{avatar_id}/knowledge-bases",
+    response_model=AvatarKnowledgeBasesResponse,
+)
+async def get_avatar_knowledge_bases(avatar_id: str) -> AvatarKnowledgeBasesResponse:
+    try:
+        knowledge_base_ids = await default_knowledge_store().get_avatar_knowledge_bases(avatar_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AvatarKnowledgeBasesResponse(knowledge_base_ids=knowledge_base_ids)
+
+
+@router.put(
+    "/avatars/{avatar_id}/knowledge-bases",
+    response_model=AvatarKnowledgeBasesResponse,
+)
+async def set_avatar_knowledge_bases(
+    avatar_id: str,
+    request: AvatarKnowledgeBasesRequest,
+) -> AvatarKnowledgeBasesResponse:
+    try:
+        knowledge_base_ids = await default_knowledge_store().set_avatar_knowledge_bases(
+            avatar_id,
+            request.knowledge_base_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AvatarKnowledgeBasesResponse(knowledge_base_ids=knowledge_base_ids)
+
+
+@router.get(
+    "/knowledge-documents",
+    response_model=KnowledgeDocumentsResponse,
+)
+async def list_all_knowledge_documents() -> KnowledgeDocumentsResponse:
+    try:
+        docs = await default_knowledge_store().list_all_documents()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return KnowledgeDocumentsResponse(
+        documents=[KnowledgeDocumentResponse(**asdict(doc)) for doc in docs]
+    )
+
+
+@router.post(
+    "/knowledge-documents",
+    response_model=KnowledgeDocumentResponse,
+)
+async def upload_knowledge_file(
+    file: UploadFile = File(...),
+) -> KnowledgeDocumentResponse:
+    return await _add_uploaded_file(default_knowledge_store(), file=file)
+
+
+@router.delete(
+    "/knowledge-documents/{file_id}",
+    response_model=DeleteKnowledgeDocumentResponse,
+)
+async def delete_knowledge_file(file_id: str) -> DeleteKnowledgeDocumentResponse:
+    try:
+        deleted = await default_knowledge_store().delete_file(file_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="knowledge file not found")
+    return DeleteKnowledgeDocumentResponse(deleted=True)
 
 
 @router.get(
@@ -123,29 +378,34 @@ async def upload_knowledge_document(
     kb_id: str,
     file: UploadFile = File(...),
 ) -> KnowledgeDocumentResponse:
-    filename = file.filename or "document.txt"
-    mime_type = file.content_type or "application/octet-stream"
-    total = 0
-    with tempfile.NamedTemporaryFile(prefix="opentalking-kb-", delete=True) as tmp:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_DOCUMENT_BYTES:
-                raise HTTPException(status_code=413, detail="document is larger than 20MB")
-            tmp.write(chunk)
-        tmp.flush()
-        try:
-            doc = await default_knowledge_store().add_document(
-                kb_id=kb_id,
-                filename=filename,
-                mime_type=mime_type,
-                source_path=tmp.name,
+    return await _add_uploaded_document(default_knowledge_store(), kb_id=kb_id, file=file)
+
+
+@router.post(
+    "/knowledge-bases/{kb_id}/documents/import",
+    response_model=KnowledgeDocumentsResponse,
+)
+async def import_knowledge_documents(
+    kb_id: str,
+    request: ImportKnowledgeDocumentsRequest,
+) -> KnowledgeDocumentsResponse:
+    document_ids = [doc_id.strip() for doc_id in request.document_ids if doc_id.strip()]
+    if not document_ids:
+        raise HTTPException(status_code=400, detail="at least one document is required")
+    store = default_knowledge_store()
+    imported = []
+    try:
+        for doc_id in document_ids:
+            imported.append(
+                await store.add_existing_document(kb_id=kb_id, source_doc_id=doc_id)
             )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return KnowledgeDocumentResponse(**asdict(doc))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge file not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return KnowledgeDocumentsResponse(
+        documents=[KnowledgeDocumentResponse(**asdict(doc)) for doc in imported]
+    )
 
 
 @router.delete(

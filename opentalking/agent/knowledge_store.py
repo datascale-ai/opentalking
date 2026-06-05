@@ -40,6 +40,17 @@ class KnowledgeDocument:
 
 
 @dataclass(frozen=True)
+class KnowledgeBaseSummary:
+    id: str
+    name: str
+    document_count: int
+    ready_document_count: int
+    error_document_count: int
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
 class KnowledgeChunk:
     id: str
     doc_id: str
@@ -58,7 +69,9 @@ def _new_id(prefix: str) -> str:
 
 
 def _safe_kb_id(value: str | None) -> str:
-    kb_id = (value or "default").strip() or "default"
+    kb_id = (value or "").strip()
+    if not kb_id:
+        raise ValueError("knowledge base id is required")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", kb_id):
         raise ValueError("knowledge base id must contain only letters, digits, _ or -")
     return kb_id
@@ -389,14 +402,59 @@ class KnowledgeStore:
     async def list_documents(self, *, kb_id: str) -> list[KnowledgeDocument]:
         return self._list_documents_sync(kb_id)
 
+    async def add_file(
+        self,
+        *,
+        filename: str,
+        mime_type: str,
+        source_path: str | Path,
+    ) -> KnowledgeDocument:
+        return self._add_file_sync(filename, mime_type, Path(source_path))
+
+    async def delete_file(self, file_id: str) -> bool:
+        return self._delete_file_sync(file_id)
+
+    async def list_all_documents(self) -> list[KnowledgeDocument]:
+        return self._list_files_sync()
+
+    async def add_existing_document(self, *, kb_id: str, source_doc_id: str) -> KnowledgeDocument:
+        return self._add_existing_document_sync(kb_id=kb_id, source_doc_id=source_doc_id)
+
     async def delete_document(self, *, kb_id: str, doc_id: str) -> bool:
         return self._delete_document_sync(kb_id, doc_id)
 
     async def query(self, *, kb_id: str, query: str, limit: int = 3) -> list[KnowledgeChunk]:
         return self._query_sync(kb_id, query, limit)
 
+    async def query_many(
+        self,
+        *,
+        kb_ids: list[str],
+        query: str,
+        limit: int = 3,
+    ) -> list[KnowledgeChunk]:
+        return self._query_many_sync(kb_ids, query, limit)
+
     async def reindex_document(self, *, kb_id: str, doc_id: str) -> KnowledgeDocument:
         return self._reindex_document_sync(kb_id, doc_id)
+
+    async def create_knowledge_base(self, name: str) -> KnowledgeBaseSummary:
+        return self._create_knowledge_base_sync(name)
+
+    async def rename_knowledge_base(self, kb_id: str, name: str) -> KnowledgeBaseSummary:
+        return self._rename_knowledge_base_sync(kb_id, name)
+
+    async def delete_knowledge_base(self, kb_id: str) -> bool:
+        return self._delete_knowledge_base_sync(kb_id)
+
+    async def list_knowledge_bases(self) -> list[KnowledgeBaseSummary]:
+        return self._list_knowledge_bases_sync()
+
+    async def get_avatar_knowledge_bases(self, avatar_id: str) -> list[str]:
+        return self._get_avatar_knowledge_bases_sync(avatar_id)
+
+    async def set_avatar_knowledge_bases(self, avatar_id: str, kb_ids: list[str]) -> list[str]:
+        return self._set_avatar_knowledge_bases_sync(avatar_id, kb_ids)
 
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -407,12 +465,52 @@ class KnowledgeStore:
     def _initialize_sync(self) -> None:
         self.knowledge_root.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
             conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS knowledge_bases (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS avatar_knowledge_bases (
+                  avatar_id TEXT NOT NULL,
+                  kb_id TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  position INTEGER NOT NULL DEFAULT 0,
+                  PRIMARY KEY(avatar_id, kb_id),
+                  FOREIGN KEY(kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE
+                )
+                """
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS knowledge_documents (
                   id TEXT PRIMARY KEY,
                   kb_id TEXT NOT NULL,
+                  filename TEXT NOT NULL,
+                  mime_type TEXT NOT NULL,
+                  bytes INTEGER NOT NULL,
+                  sha256 TEXT NOT NULL,
+                  status TEXT NOT NULL,
+                  error TEXT,
+                  chunk_count INTEGER NOT NULL DEFAULT 0,
+                  stored_path TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS knowledge_files (
+                  id TEXT PRIMARY KEY,
                   filename TEXT NOT NULL,
                   mime_type TEXT NOT NULL,
                   bytes INTEGER NOT NULL,
@@ -441,8 +539,26 @@ class KnowledgeStore:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS knowledge_file_chunks (
+                  id TEXT PRIMARY KEY,
+                  file_id TEXT NOT NULL,
+                  chunk_index INTEGER NOT NULL,
+                  text TEXT NOT NULL,
+                  tokens TEXT NOT NULL,
+                  FOREIGN KEY(file_id) REFERENCES knowledge_files(id) ON DELETE CASCADE
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_knowledge_documents_kb
                 ON knowledge_documents(kb_id, updated_at DESC)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_knowledge_files_unique_content
+                ON knowledge_files(filename, sha256)
                 """
             )
             conn.execute(
@@ -451,6 +567,228 @@ class KnowledgeStore:
                 ON knowledge_chunks(kb_id, doc_id, chunk_index)
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_knowledge_file_chunks_file
+                ON knowledge_file_chunks(file_id, chunk_index)
+                """
+            )
+            now = _utc_now()
+            columns = {
+                str(row["name"])
+                for row in conn.execute("PRAGMA table_info(avatar_knowledge_bases)").fetchall()
+            }
+            if "position" not in columns:
+                conn.execute(
+                    """
+                    ALTER TABLE avatar_knowledge_bases
+                    ADD COLUMN position INTEGER NOT NULL DEFAULT 0
+                    """
+                )
+                rows = conn.execute(
+                    """
+                    SELECT rowid AS row_id, avatar_id
+                    FROM avatar_knowledge_bases
+                    ORDER BY avatar_id ASC, rowid ASC
+                    """
+                ).fetchall()
+                positions_by_avatar: dict[str, int] = {}
+                for row in rows:
+                    avatar_id = str(row["avatar_id"])
+                    position = positions_by_avatar.get(avatar_id, 0)
+                    conn.execute(
+                        """
+                        UPDATE avatar_knowledge_bases
+                        SET position = ?
+                        WHERE rowid = ?
+                        """,
+                        (position, int(row["row_id"])),
+                    )
+                    positions_by_avatar[avatar_id] = position + 1
+            conn.execute(
+                """
+                INSERT INTO knowledge_bases(id, name, created_at, updated_at)
+                SELECT
+                  d.kb_id,
+                  d.kb_id,
+                  COALESCE(MIN(d.created_at), ?),
+                  COALESCE(MAX(d.updated_at), ?)
+                FROM knowledge_documents d
+                WHERE TRIM(d.kb_id) != ''
+                GROUP BY d.kb_id
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (now, now),
+            )
+
+    def _create_knowledge_base_sync(self, name: str) -> KnowledgeBaseSummary:
+        self._initialize_sync()
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("knowledge base name is required")
+        kb_id = _safe_kb_id(_new_id("kb"))
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO knowledge_bases(id, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (kb_id, clean_name, now, now),
+            )
+        return self._get_knowledge_base_summary_sync(kb_id)
+
+    def _rename_knowledge_base_sync(self, kb_id: str, name: str) -> KnowledgeBaseSummary:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        clean_name = name.strip()
+        if not clean_name:
+            raise ValueError("knowledge base name is required")
+        now = _utc_now()
+        with self._connect() as conn:
+            result = conn.execute(
+                """
+                UPDATE knowledge_bases
+                SET name = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (clean_name, now, kb_id),
+            )
+        if result.rowcount == 0:
+            raise KeyError("knowledge base not found")
+        return self._get_knowledge_base_summary_sync(kb_id)
+
+    def _delete_knowledge_base_sync(self, kb_id: str) -> bool:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            row = conn.execute(
+                "SELECT id FROM knowledge_bases WHERE id = ?",
+                (kb_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            document_rows = conn.execute(
+                "SELECT stored_path FROM knowledge_documents WHERE kb_id = ?",
+                (kb_id,),
+            ).fetchall()
+        try:
+            for document_row in document_rows:
+                Path(str(document_row["stored_path"])).unlink(missing_ok=True)
+            kb_dir = self.knowledge_root / kb_id
+            if kb_dir.exists():
+                shutil.rmtree(kb_dir)
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            raise ValueError("failed to delete knowledge base files") from exc
+
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("DELETE FROM avatar_knowledge_bases WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM knowledge_chunks WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM knowledge_documents WHERE kb_id = ?", (kb_id,))
+            conn.execute("DELETE FROM knowledge_bases WHERE id = ?", (kb_id,))
+        return True
+
+    def _list_knowledge_bases_sync(self) -> list[KnowledgeBaseSummary]:
+        self._initialize_sync()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                  kb.id,
+                  kb.name,
+                  COUNT(d.id) AS document_count,
+                  COALESCE(SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END), 0) AS ready_document_count,
+                  COALESCE(SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END), 0) AS error_document_count,
+                  kb.created_at,
+                  kb.updated_at
+                FROM knowledge_bases kb
+                LEFT JOIN knowledge_documents d ON d.kb_id = kb.id
+                GROUP BY kb.id, kb.name, kb.created_at, kb.updated_at
+                ORDER BY kb.created_at ASC, kb.id ASC
+                """
+            ).fetchall()
+        return [_knowledge_base_summary_from_row(row) for row in rows]
+
+    def _get_knowledge_base_summary_sync(self, kb_id: str) -> KnowledgeBaseSummary:
+        kb_id = _safe_kb_id(kb_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                  kb.id,
+                  kb.name,
+                  COUNT(d.id) AS document_count,
+                  COALESCE(SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END), 0) AS ready_document_count,
+                  COALESCE(SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END), 0) AS error_document_count,
+                  kb.created_at,
+                  kb.updated_at
+                FROM knowledge_bases kb
+                LEFT JOIN knowledge_documents d ON d.kb_id = kb.id
+                WHERE kb.id = ?
+                GROUP BY kb.id, kb.name, kb.created_at, kb.updated_at
+                """,
+                (kb_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("failed to load knowledge base")
+        return _knowledge_base_summary_from_row(row)
+
+    def _get_avatar_knowledge_bases_sync(self, avatar_id: str) -> list[str]:
+        self._initialize_sync()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT kb_id
+                FROM avatar_knowledge_bases
+                WHERE avatar_id = ?
+                ORDER BY position ASC, created_at ASC, kb_id ASC
+                """,
+                (avatar_id,),
+            ).fetchall()
+        return [str(row["kb_id"]) for row in rows]
+
+    def _set_avatar_knowledge_bases_sync(self, avatar_id: str, kb_ids: list[str]) -> list[str]:
+        self._initialize_sync()
+        selected: list[str] = []
+        seen: set[str] = set()
+        for kb_id in kb_ids:
+            safe_id = _safe_kb_id(kb_id)
+            if safe_id in seen:
+                continue
+            selected.append(safe_id)
+            seen.add(safe_id)
+
+        if selected:
+            placeholders = ", ".join("?" for _ in selected)
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"SELECT id FROM knowledge_bases WHERE id IN ({placeholders})",
+                    selected,
+                ).fetchall()
+            found = {str(row["id"]) for row in rows}
+            if any(kb_id not in found for kb_id in selected):
+                raise ValueError("knowledge base not found")
+
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute(
+                "DELETE FROM avatar_knowledge_bases WHERE avatar_id = ?",
+                (avatar_id,),
+            )
+            for position, kb_id in enumerate(selected):
+                conn.execute(
+                    """
+                    INSERT INTO avatar_knowledge_bases(avatar_id, kb_id, created_at, position)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (avatar_id, kb_id, now, position),
+                )
+        return selected
 
     def _add_document_sync(
         self,
@@ -491,6 +829,14 @@ class KnowledgeStore:
             conn.execute("PRAGMA foreign_keys=ON")
             conn.execute(
                 """
+                INSERT INTO knowledge_bases(id, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (kb_id, kb_id, now, now),
+            )
+            conn.execute(
+                """
                 INSERT INTO knowledge_documents(
                   id, kb_id, filename, mime_type, bytes, sha256, status, error,
                   chunk_count, stored_path, created_at, updated_at
@@ -529,6 +875,92 @@ class KnowledgeStore:
                 )
         return self._get_document_sync(kb_id, doc_id)
 
+    def _add_file_sync(
+        self,
+        filename: str,
+        mime_type: str,
+        source_path: Path,
+    ) -> KnowledgeDocument:
+        self._initialize_sync()
+        filename = _safe_filename(filename)
+        if not source_path.is_file():
+            raise ValueError("uploaded file is missing")
+        size = source_path.stat().st_size
+        if size <= 0:
+            raise ValueError("uploaded file is empty")
+        if size > MAX_DOCUMENT_BYTES:
+            raise ValueError("document is larger than 20MB")
+        suffix = Path(filename).suffix.lower() or source_path.suffix.lower()
+        if suffix not in SUPPORTED_EXTENSIONS:
+            raise ValueError("only .txt, .md and .pdf documents are supported")
+
+        sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        with self._connect() as conn:
+            existing_row = conn.execute(
+                """
+                SELECT id
+                FROM knowledge_files
+                WHERE filename = ? AND sha256 = ?
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                (filename, sha256),
+            ).fetchone()
+        if existing_row is not None:
+            return self._get_file_sync(str(existing_row["id"]))
+
+        file_id = _new_id("file")
+        pool_dir = self.knowledge_root / "_file_pool"
+        pool_dir.mkdir(parents=True, exist_ok=True)
+        stored_path = pool_dir / f"{file_id}{suffix}"
+        shutil.copyfile(source_path, stored_path)
+        text, error = _extract_text(stored_path)
+        chunks = _split_chunks(text)
+        status = "ready" if chunks else "error"
+        if not chunks and not error:
+            error = "document has no extractable text"
+        now = _utc_now()
+
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute(
+                """
+                INSERT INTO knowledge_files(
+                  id, filename, mime_type, bytes, sha256, status, error,
+                  chunk_count, stored_path, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    file_id,
+                    filename,
+                    mime_type or "application/octet-stream",
+                    size,
+                    sha256,
+                    status,
+                    error,
+                    len(chunks),
+                    str(stored_path),
+                    now,
+                    now,
+                ),
+            )
+            for index, chunk in enumerate(chunks):
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_file_chunks(id, file_id, chunk_index, text, tokens)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        _new_id("chunk"),
+                        file_id,
+                        index,
+                        chunk,
+                        " ".join(sorted(_tokenize(chunk))),
+                    ),
+                )
+        return self._get_file_sync(file_id)
+
     def _list_documents_sync(self, kb_id: str) -> list[KnowledgeDocument]:
         self._initialize_sync()
         kb_id = _safe_kb_id(kb_id)
@@ -544,6 +976,68 @@ class KnowledgeStore:
                 (kb_id,),
             ).fetchall()
         return [_document_from_row(row) for row in rows]
+
+    def _list_files_sync(self) -> list[KnowledgeDocument]:
+        self._initialize_sync()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, 'file_pool' AS kb_id, filename, mime_type, bytes, sha256, status, error,
+                       chunk_count, created_at, updated_at
+                FROM knowledge_files
+                ORDER BY updated_at DESC, created_at DESC
+                """
+            ).fetchall()
+        return [_document_from_row(row) for row in rows]
+
+    def _get_file_sync(self, file_id: str) -> KnowledgeDocument:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, 'file_pool' AS kb_id, filename, mime_type, bytes, sha256, status, error,
+                       chunk_count, created_at, updated_at
+                FROM knowledge_files
+                WHERE id = ?
+                """,
+                (file_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError("failed to load knowledge file")
+        return _document_from_row(row)
+
+    def _delete_file_sync(self, file_id: str) -> bool:
+        self._initialize_sync()
+        clean_file_id = file_id.strip()
+        if not clean_file_id:
+            raise ValueError("knowledge file id is required")
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            row = conn.execute(
+                "SELECT filename, sha256, stored_path FROM knowledge_files WHERE id = ?",
+                (clean_file_id,),
+            ).fetchone()
+            if row is None:
+                return False
+            reference_rows = conn.execute(
+                """
+                SELECT DISTINCT kb.id, kb.name
+                FROM knowledge_documents d
+                JOIN knowledge_bases kb ON kb.id = d.kb_id
+                WHERE d.filename = ? AND d.sha256 = ?
+                ORDER BY kb.created_at ASC, kb.id ASC
+                """,
+                (str(row["filename"]), str(row["sha256"])),
+            ).fetchall()
+            if reference_rows:
+                names = "、".join(f"「{str(reference_row['name'])}」" for reference_row in reference_rows)
+                raise ValueError(f"请先删除知识库{names}后再删除文件")
+            conn.execute("DELETE FROM knowledge_file_chunks WHERE file_id = ?", (clean_file_id,))
+            conn.execute("DELETE FROM knowledge_files WHERE id = ?", (clean_file_id,))
+        try:
+            Path(str(row["stored_path"])).unlink(missing_ok=True)
+        except Exception:
+            pass
+        return True
 
     def _get_document_sync(self, kb_id: str, doc_id: str) -> KnowledgeDocument:
         with self._connect() as conn:
@@ -570,6 +1064,104 @@ class KnowledgeStore:
         if row is None:
             return None
         return Path(str(row["stored_path"]))
+
+    def _add_existing_document_sync(self, *, kb_id: str, source_doc_id: str) -> KnowledgeDocument:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        file_id = source_doc_id.strip()
+        if not file_id:
+            raise ValueError("knowledge file id is required")
+        with self._connect() as conn:
+            source_row = conn.execute(
+                """
+                SELECT filename, mime_type, bytes, sha256, status, error, chunk_count, stored_path
+                FROM knowledge_files
+                WHERE id = ?
+                """,
+                (file_id,),
+            ).fetchone()
+            if source_row is None:
+                raise KeyError("knowledge file not found")
+            existing_row = conn.execute(
+                """
+                SELECT id
+                FROM knowledge_documents
+                WHERE kb_id = ? AND filename = ? AND sha256 = ?
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                (kb_id, str(source_row["filename"]), str(source_row["sha256"])),
+            ).fetchone()
+        if existing_row is not None:
+            return self._get_document_sync(kb_id, str(existing_row["id"]))
+        source_path = Path(str(source_row["stored_path"]))
+        if not source_path.is_file():
+            raise ValueError("stored knowledge document file is missing")
+        suffix = Path(str(source_row["filename"])).suffix.lower() or source_path.suffix.lower()
+        doc_id = _new_id("doc")
+        kb_dir = self.knowledge_root / kb_id / "documents"
+        kb_dir.mkdir(parents=True, exist_ok=True)
+        stored_path = kb_dir / f"{doc_id}{suffix}"
+        shutil.copyfile(source_path, stored_path)
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute(
+                """
+                INSERT INTO knowledge_bases(id, name, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO NOTHING
+                """,
+                (kb_id, kb_id, now, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO knowledge_documents(
+                  id, kb_id, filename, mime_type, bytes, sha256, status, error,
+                  chunk_count, stored_path, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    doc_id,
+                    kb_id,
+                    str(source_row["filename"]),
+                    str(source_row["mime_type"]),
+                    int(source_row["bytes"]),
+                    str(source_row["sha256"]),
+                    str(source_row["status"]),
+                    str(source_row["error"]) if source_row["error"] is not None else None,
+                    int(source_row["chunk_count"]),
+                    str(stored_path),
+                    now,
+                    now,
+                ),
+            )
+            chunk_rows = conn.execute(
+                """
+                SELECT chunk_index, text, tokens
+                FROM knowledge_file_chunks
+                WHERE file_id = ?
+                ORDER BY chunk_index ASC
+                """,
+                (file_id,),
+            ).fetchall()
+            for chunk_row in chunk_rows:
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        _new_id("chunk"),
+                        doc_id,
+                        kb_id,
+                        int(chunk_row["chunk_index"]),
+                        str(chunk_row["text"]),
+                        str(chunk_row["tokens"]),
+                    ),
+                )
+        return self._get_document_sync(kb_id, doc_id)
 
     def _reindex_document_sync(self, kb_id: str, doc_id: str) -> KnowledgeDocument:
         self._initialize_sync()
@@ -670,6 +1262,25 @@ class KnowledgeStore:
             for score, row in scored[:safe_limit]
         ]
 
+    def _query_many_sync(self, kb_ids: list[str], query: str, limit: int) -> list[KnowledgeChunk]:
+        selected: list[str] = []
+        seen: set[str] = set()
+        for kb_id in kb_ids:
+            safe_id = _safe_kb_id(kb_id)
+            if safe_id in seen:
+                continue
+            selected.append(safe_id)
+            seen.add(safe_id)
+        if not selected:
+            return []
+
+        safe_limit = min(8, max(1, int(limit)))
+        chunks: list[KnowledgeChunk] = []
+        for kb_id in selected:
+            chunks.extend(self._query_sync(kb_id, query, safe_limit))
+        chunks.sort(key=lambda chunk: chunk.score, reverse=True)
+        return chunks[:safe_limit]
+
 
 def _document_from_row(row: sqlite3.Row) -> KnowledgeDocument:
     return KnowledgeDocument(
@@ -682,6 +1293,18 @@ def _document_from_row(row: sqlite3.Row) -> KnowledgeDocument:
         status=str(row["status"]),
         error=str(row["error"]) if row["error"] is not None else None,
         chunk_count=int(row["chunk_count"]),
+        created_at=str(row["created_at"]),
+        updated_at=str(row["updated_at"]),
+    )
+
+
+def _knowledge_base_summary_from_row(row: sqlite3.Row) -> KnowledgeBaseSummary:
+    return KnowledgeBaseSummary(
+        id=str(row["id"]),
+        name=str(row["name"]),
+        document_count=int(row["document_count"]),
+        ready_document_count=int(row["ready_document_count"]),
+        error_document_count=int(row["error_document_count"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )

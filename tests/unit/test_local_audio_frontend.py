@@ -433,29 +433,32 @@ def test_frontend_export_controls_include_audio_renderer_models():
     assert "音频驱动数字人会话连接后" in app
 
 
-def test_frontend_wires_default_knowledge_base_upload_flow():
+def test_frontend_wires_asset_library_knowledge_base_flow():
     app = (WEB / "App.tsx").read_text(encoding="utf-8")
     settings = (WEB / "components" / "SettingsPanel.tsx").read_text(encoding="utf-8")
     avatar_stage = (WEB / "components" / "AvatarSelectionStage.tsx").read_text(encoding="utf-8")
+    asset_library = (WEB / "components" / "AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
     api = (WEB / "lib" / "api.ts").read_text(encoding="utf-8")
 
     assert "KnowledgeDocument" in api
     assert "KnowledgeDocumentsResponse" in api
-    assert '"/agent/knowledge-bases/default/documents"' in app
-    assert "apiPostForm<KnowledgeDocument>" in app
-    assert "/reindex" in app
-    assert "apiDelete(`/agent/knowledge-bases/default/documents/${encodeURIComponent(documentId)}`)" in app
-    assert "knowledgeDocuments={knowledgeDocuments}" in app
-    assert "onKnowledgeUpload" in settings
-    assert "onKnowledgeReindex" in settings
-    assert "上传文档" in settings
-    assert "支持格式：TXT、Markdown（.md/.markdown）、PDF" in settings
-    assert "accept=\".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf\"" in settings
-    assert "knowledgeUploading={knowledgeUploading}" in app
-    assert "knowledgeUploading?: boolean" in avatar_stage
-    assert "const knowledgeStartBlocked = agentConfig.knowledgeEnabled && knowledgeUploading" in avatar_stage
-    assert "const startDisabled = baseDisabled || knowledgeStartBlocked" in avatar_stage
-    assert "disabled={baseDisabled}" in avatar_stage
+    assert '"/agent/knowledge-bases/default/documents"' not in app
+    assert "apiPostForm<KnowledgeDocument>" in asset_library
+    assert 'apiPostForm<KnowledgeDocument>("/agent/knowledge-documents", form)' in asset_library
+    assert "/reindex" in asset_library
+    assert "handleDeleteFilePoolDocument" in asset_library
+    assert 'apiDelete(`/agent/knowledge-documents/${encodeURIComponent(document.id)}`)' in asset_library
+    assert "文件池文件" in asset_library
+    assert "新建知识库" in asset_library
+    assert "onManageKnowledgeBases" in settings
+    assert "{knowledgeBases.length} 个知识库" in settings
+    assert "onKnowledgeUpload" not in settings
+    assert "onKnowledgeReindex" not in settings
+    assert "上传文档" not in settings
+    assert "knowledgeUploading" not in app
+    assert "knowledgeUploading?: boolean" not in avatar_stage
+    assert "const knowledgeStartBlocked" not in avatar_stage
+    assert "const startDisabled = baseDisabled" in avatar_stage
     assert "disabled={startDisabled}" in avatar_stage
     assert "knowledgeEnabled: true" in app
     assert "memoryEnabled: false" in app

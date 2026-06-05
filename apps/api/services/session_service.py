@@ -33,6 +33,23 @@ def _bool_hash(value: bool) -> str:
     return "1" if value else "0"
 
 
+def _normalize_knowledge_base_ids(
+    *,
+    knowledge_base_id: str | None,
+    knowledge_base_ids: list[str] | None,
+) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    candidates = knowledge_base_ids if knowledge_base_ids else [knowledge_base_id]
+    for candidate in candidates:
+        kb_id = str(candidate or "").strip()
+        if not kb_id or kb_id in seen:
+            continue
+        selected.append(kb_id)
+        seen.add(kb_id)
+    return selected
+
+
 async def create_session(
     r: redis.Redis,
     *,
@@ -49,9 +66,15 @@ async def create_session(
     agent_enabled: bool = False,
     memory_enabled: bool = False,
     knowledge_enabled: bool = False,
-    knowledge_base_id: str | None = "default",
+    knowledge_base_id: str | None = None,
+    knowledge_base_ids: list[str] | None = None,
 ) -> str:
     sid = f"sess_{uuid.uuid4().hex[:12]}"
+    selected_knowledge_base_ids = _normalize_knowledge_base_ids(
+        knowledge_base_id=knowledge_base_id,
+        knowledge_base_ids=knowledge_base_ids,
+    )
+    legacy_knowledge_base_id = selected_knowledge_base_ids[0] if selected_knowledge_base_ids else None
     data: dict[RedisHashValue, RedisHashValue] = {
         "session_id": sid,
         "avatar_id": avatar_id,
@@ -78,7 +101,9 @@ async def create_session(
         data["agent_enabled"] = _bool_hash(agent_enabled)
         data["memory_enabled"] = _bool_hash(memory_enabled)
         data["knowledge_enabled"] = _bool_hash(knowledge_enabled)
-        data["knowledge_base_id"] = knowledge_base_id or "default"
+        if legacy_knowledge_base_id:
+            data["knowledge_base_id"] = legacy_knowledge_base_id
+        data["knowledge_base_ids"] = json.dumps(selected_knowledge_base_ids, ensure_ascii=False)
     await _await_result(r.hset(session_key(sid), mapping=data))
     init_task: dict[str, Any] = {
         "cmd": "init",
@@ -106,7 +131,9 @@ async def create_session(
         init_task["agent_enabled"] = bool(agent_enabled)
         init_task["memory_enabled"] = bool(memory_enabled)
         init_task["knowledge_enabled"] = bool(knowledge_enabled)
-        init_task["knowledge_base_id"] = knowledge_base_id or "default"
+        if legacy_knowledge_base_id:
+            init_task["knowledge_base_id"] = legacy_knowledge_base_id
+        init_task["knowledge_base_ids"] = selected_knowledge_base_ids
     await _push_task(
         r,
         init_task,

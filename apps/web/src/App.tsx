@@ -13,7 +13,7 @@ import {
 import { TopBar, type StudioWorkflow } from "./components/TopBar";
 import { ToastStack, type ToastMessage, type ToastTone } from "./components/ToastStack";
 import { VideoBackground } from "./components/VideoBackground";
-import { AssetLibraryWorkspace } from "./components/AssetLibraryWorkspace";
+import { AssetLibraryWorkspace, type AssetLibraryTab } from "./components/AssetLibraryWorkspace";
 import { VideoCloneWorkspace } from "./components/VideoCloneWorkspace";
 import {
   DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG,
@@ -25,12 +25,15 @@ import {
   apiGet,
   apiPost,
   apiPostForm,
+  apiPut,
   buildApiUrl,
   uploadExportVideo,
+  type AvatarKnowledgeBasesResponse,
   type AvatarSummary,
+  type CreateSessionRequest,
   type CreateSessionResponse,
-  type KnowledgeDocument,
-  type KnowledgeDocumentsResponse,
+  type KnowledgeBaseSummary,
+  type KnowledgeBasesResponse,
   type VoiceCatalogItem,
 } from "./lib/api";
 import { modelConnectionBadge, type ModelStatus } from "./lib/modelStatus";
@@ -341,22 +344,88 @@ function readOrCreateClientUserId(): string {
   }
 }
 
+function normalizeKnowledgeBaseIds(ids: unknown, fallback: string[] = []): string[] {
+  if (!Array.isArray(ids)) return fallback;
+  const normalized = ids
+    .filter((id): id is string => typeof id === "string")
+    .map((id) => id.trim())
+    .filter((id) => Boolean(id) && id !== "default");
+  const deduped = Array.from(new Set(normalized));
+  return deduped.length ? deduped : fallback;
+}
+
+function placeholderKnowledgeBaseSummary(id: string): KnowledgeBaseSummary {
+  return {
+    id,
+    name: id,
+    document_count: 0,
+    ready_document_count: 0,
+    error_document_count: 0,
+    created_at: "",
+    updated_at: "",
+  };
+}
+
+function normalizeKnowledgeBaseSummaries(response: KnowledgeBasesResponse): KnowledgeBaseSummary[] {
+  const summaries = Array.isArray(response.knowledge_base_summaries)
+    ? response.knowledge_base_summaries
+    : [];
+  const knowledgeBases = Array.isArray(response.knowledge_bases)
+    ? response.knowledge_bases
+    : [];
+  const byId = new Map<string, KnowledgeBaseSummary>();
+  for (const summary of summaries) {
+    if (summary.id) byId.set(summary.id, summary);
+  }
+  for (const item of knowledgeBases) {
+    if (typeof item === "string") {
+      const trimmed = item.trim();
+      if (trimmed && !byId.has(trimmed)) {
+        byId.set(trimmed, placeholderKnowledgeBaseSummary(trimmed));
+      }
+    } else if (item?.id && !byId.has(item.id)) {
+      byId.set(item.id, item);
+    }
+  }
+  return Array.from(byId.values());
+}
+
+function normalizeSelectedKnowledgeBaseIds(
+  response: AvatarKnowledgeBasesResponse,
+  fallback: string[] = [],
+): string[] {
+  const directIds = normalizeKnowledgeBaseIds(response.knowledge_base_ids, []);
+  if (directIds.length) return directIds;
+  const summaryIds = Array.isArray(response.knowledge_base_summaries)
+    ? response.knowledge_base_summaries
+        .map((summary) => summary.id?.trim())
+        .filter((id): id is string => Boolean(id))
+    : [];
+  const deduped = Array.from(new Set(summaryIds));
+  return deduped.length ? deduped : fallback;
+}
+
 function readStoredAgentConfig(): AgentConfig {
   try {
     const raw = window.localStorage.getItem(AGENT_CONFIG_STORAGE_KEY);
     if (!raw) {
-      return { memoryEnabled: false, knowledgeEnabled: true, knowledgeBaseId: "default" };
+      return { memoryEnabled: false, knowledgeEnabled: true, knowledgeBaseIds: [] };
     }
-    const parsed = JSON.parse(raw) as Partial<AgentConfig>;
-    return {
+    const parsed = JSON.parse(raw) as Partial<AgentConfig> & { knowledgeBaseId?: unknown };
+    const knowledgeBaseIds = Array.isArray(parsed.knowledgeBaseIds)
+      ? normalizeKnowledgeBaseIds(parsed.knowledgeBaseIds)
+      : typeof parsed.knowledgeBaseId === "string" && parsed.knowledgeBaseId.trim()
+        ? normalizeKnowledgeBaseIds([parsed.knowledgeBaseId])
+        : [];
+    const migrated = {
       memoryEnabled: false,
       knowledgeEnabled: parsed.knowledgeEnabled !== false,
-      knowledgeBaseId: typeof parsed.knowledgeBaseId === "string" && parsed.knowledgeBaseId.trim()
-        ? parsed.knowledgeBaseId.trim()
-        : "default",
+      knowledgeBaseIds,
     };
+    writeStoredAgentConfig(migrated);
+    return migrated;
   } catch {
-    return { memoryEnabled: false, knowledgeEnabled: true, knowledgeBaseId: "default" };
+    return { memoryEnabled: false, knowledgeEnabled: true, knowledgeBaseIds: [] };
   }
 }
 
@@ -797,15 +866,20 @@ export default function App() {
     );
   }, []);
 
-  const appendAssistantError = useCallback((message: string) => {
-    const normalized = message.startsWith("出错了：") ? message : `出错了：${message}`;
-    const msgId = streamingAssistantMsgIdRef.current ?? pendingAssistantMsgIdRef.current;
-    streamingAssistantMsgIdRef.current = null;
-    pendingAssistantMsgIdRef.current = null;
+  const clearSubtitleState = useCallback(() => {
+    setCurrentSubtitle("");
     subtitleAccRef.current = "";
     subtitleMediaReadyRef.current = false;
     clearSubtitleFallbackTimer();
+    streamingAssistantMsgIdRef.current = null;
+    pendingAssistantMsgIdRef.current = null;
     setIsSpeaking(false);
+  }, [clearSubtitleFallbackTimer]);
+
+  const appendAssistantError = useCallback((message: string) => {
+    const normalized = message.startsWith("出错了：") ? message : `出错了：${message}`;
+    const msgId = streamingAssistantMsgIdRef.current ?? pendingAssistantMsgIdRef.current;
+    clearSubtitleState();
     if (msgId) {
       setMessages((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, text: normalized } : m)),
@@ -816,7 +890,7 @@ export default function App() {
       ...prev,
       { id: makeId(), role: "assistant", text: normalized, timestamp: Date.now() },
     ]);
-  }, [clearSubtitleFallbackTimer]);
+  }, [clearSubtitleState]);
 
   // UI
   const [settingsExpanded, setSettingsExpanded] = useState(() => {
@@ -851,14 +925,16 @@ export default function App() {
   const [ttsPreviewing, setTtsPreviewing] = useState(false);
   const [clientUserId] = useState(readOrCreateClientUserId);
   const [agentConfig, setAgentConfigState] = useState<AgentConfig>(readStoredAgentConfig);
-  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
-  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
-  const [knowledgeUploading, setKnowledgeUploading] = useState(false);
+  const [knowledgeBaseSummaries, setKnowledgeBaseSummaries] = useState<KnowledgeBaseSummary[]>([]);
+  const avatarKnowledgeBasesSyncReadyRef = useRef(false);
+  const lastPersistedAvatarKnowledgeBasesRef = useRef<Map<string, string[]>>(new Map());
+  const avatarKnowledgeBasesLoadSeqRef = useRef(0);
+  const [assetLibraryTab, setAssetLibraryTab] = useState<AssetLibraryTab>("exports");
   const setAgentConfig = useCallback((next: AgentConfig) => {
     const normalized = {
       memoryEnabled: false,
       knowledgeEnabled: next.knowledgeEnabled !== false,
-      knowledgeBaseId: next.knowledgeBaseId?.trim() || "default",
+      knowledgeBaseIds: normalizeKnowledgeBaseIds(next.knowledgeBaseIds),
     };
     setAgentConfigState(normalized);
     writeStoredAgentConfig(normalized);
@@ -930,82 +1006,96 @@ export default function App() {
     }, tone === "error" ? 5200 : 3600);
   }, []);
 
-  const refreshKnowledgeDocuments = useCallback(async () => {
-    setKnowledgeLoading(true);
+  const refreshKnowledgeBases = useCallback(async () => {
     try {
-      const response = await apiGet<KnowledgeDocumentsResponse>("/agent/knowledge-bases/default/documents");
-      setKnowledgeDocuments(response.documents);
+      const response = await apiGet<KnowledgeBasesResponse>("/agent/knowledge-bases");
+      setKnowledgeBaseSummaries(normalizeKnowledgeBaseSummaries(response));
     } catch (error) {
-      console.warn("load knowledge documents failed", error);
+      console.warn("load knowledge bases failed", error);
       const detail = error instanceof ApiError ? error.detail : null;
-      notify(detail ? `知识库读取失败：${detail}` : "知识库读取失败，请查看后端日志。", "error");
-    } finally {
-      setKnowledgeLoading(false);
+      notify(detail ? `知识库列表读取失败：${detail}` : "知识库列表读取失败，请查看后端日志。", "error");
     }
   }, [notify]);
 
-  const handleKnowledgeUpload = useCallback(async (file: File) => {
-    setKnowledgeUploading(true);
+  const refreshAvatarKnowledgeBases = useCallback(async (targetAvatarId: string) => {
+    if (!targetAvatarId) return;
+    const seq = ++avatarKnowledgeBasesLoadSeqRef.current;
+    avatarKnowledgeBasesSyncReadyRef.current = false;
     try {
-      const form = new FormData();
-      form.set("file", file);
-      const document = await apiPostForm<KnowledgeDocument>("/agent/knowledge-bases/default/documents", form);
-      setKnowledgeDocuments((prev) => [document, ...prev.filter((item) => item.id !== document.id)]);
-      notify(
-        document.status === "ready"
-          ? `知识库已上传：${document.filename}`
-          : `知识库已上传，索引失败：${document.error ?? document.filename}`,
-        document.status === "ready" ? "success" : "error",
+      const response = await apiGet<AvatarKnowledgeBasesResponse>(
+        `/agent/avatars/${encodeURIComponent(targetAvatarId)}/knowledge-bases`,
       );
-      await refreshKnowledgeDocuments();
+      if (seq !== avatarKnowledgeBasesLoadSeqRef.current) return;
+      const selectedIds = normalizeSelectedKnowledgeBaseIds(response);
+      lastPersistedAvatarKnowledgeBasesRef.current.set(targetAvatarId, selectedIds);
+      if (Array.isArray(response.knowledge_base_summaries) && response.knowledge_base_summaries.length) {
+        setKnowledgeBaseSummaries((prev) => {
+          const byId = new Map(prev.map((item) => [item.id, item]));
+          for (const summary of response.knowledge_base_summaries ?? []) {
+            if (summary.id) byId.set(summary.id, summary);
+          }
+          return Array.from(byId.values());
+        });
+      }
+      setAgentConfigState((prev) => {
+        const next = { ...prev, knowledgeBaseIds: selectedIds };
+        writeStoredAgentConfig(next);
+        return next;
+      });
     } catch (error) {
-      console.warn("upload knowledge document failed", error);
+      console.warn("load avatar knowledge bases failed", error);
       const detail = error instanceof ApiError ? error.detail : null;
-      notify(detail ? `知识库上传失败：${detail}` : "知识库上传失败，请查看后端日志。", "error");
+      notify(detail ? `形象知识库读取失败：${detail}` : "形象知识库读取失败，请查看后端日志。", "error");
     } finally {
-      setKnowledgeUploading(false);
+      if (seq === avatarKnowledgeBasesLoadSeqRef.current) {
+        avatarKnowledgeBasesSyncReadyRef.current = true;
+      }
     }
-  }, [notify, refreshKnowledgeDocuments]);
+  }, [notify]);
 
-  const handleKnowledgeDelete = useCallback(async (documentId: string) => {
-    try {
-      await apiDelete(`/agent/knowledge-bases/default/documents/${encodeURIComponent(documentId)}`);
-      setKnowledgeDocuments((prev) => prev.filter((document) => document.id !== documentId));
-      notify("知识库文档已删除。", "success");
-      await refreshKnowledgeDocuments();
-    } catch (error) {
-      console.warn("delete knowledge document failed", error);
-      const detail = error instanceof ApiError ? error.detail : null;
-      notify(detail ? `知识库删除失败：${detail}` : "知识库删除失败，请查看后端日志。", "error");
-    }
-  }, [notify, refreshKnowledgeDocuments]);
-
-  const handleKnowledgeReindex = useCallback(async (documentId: string) => {
-    setKnowledgeUploading(true);
-    try {
-      const document = await apiPost<KnowledgeDocument>(
-        `/agent/knowledge-bases/default/documents/${encodeURIComponent(documentId)}/reindex`,
-      );
-      setKnowledgeDocuments((prev) => prev.map((item) => (item.id === document.id ? document : item)));
-      notify(
-        document.status === "ready"
-          ? `知识库已重新索引：${document.filename}`
-          : `重新索引失败：${document.error ?? document.filename}`,
-        document.status === "ready" ? "success" : "error",
-      );
-      await refreshKnowledgeDocuments();
-    } catch (error) {
-      console.warn("reindex knowledge document failed", error);
-      const detail = error instanceof ApiError ? error.detail : null;
-      notify(detail ? `知识库重新索引失败：${detail}` : "知识库重新索引失败，请查看后端日志。", "error");
-    } finally {
-      setKnowledgeUploading(false);
-    }
-  }, [notify, refreshKnowledgeDocuments]);
+  const handleManageKnowledgeBases = useCallback(() => {
+    setAssetLibraryTab("knowledge");
+    setWorkflow("assetLibrary");
+  }, []);
 
   useEffect(() => {
-    void refreshKnowledgeDocuments();
-  }, [refreshKnowledgeDocuments]);
+    if (workflow === "realtime") void refreshKnowledgeBases();
+  }, [refreshKnowledgeBases, workflow]);
+
+  useEffect(() => {
+    void refreshAvatarKnowledgeBases(avatarId);
+  }, [avatarId, refreshAvatarKnowledgeBases]);
+
+  useEffect(() => {
+    if (!avatarKnowledgeBasesSyncReadyRef.current || !avatarId) return;
+    const selectedIds = normalizeKnowledgeBaseIds(agentConfig.knowledgeBaseIds);
+    const lastPersisted = lastPersistedAvatarKnowledgeBasesRef.current.get(avatarId) ?? [];
+    if (
+      lastPersisted.length === selectedIds.length &&
+      lastPersisted.every((id, index) => id === selectedIds[index])
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        await apiPut<AvatarKnowledgeBasesResponse>(
+          `/agent/avatars/${encodeURIComponent(avatarId)}/knowledge-bases`,
+          { knowledge_base_ids: selectedIds },
+        );
+        if (!cancelled) {
+          lastPersistedAvatarKnowledgeBasesRef.current.set(avatarId, selectedIds);
+        }
+      } catch (error) {
+        console.warn("persist avatar knowledge bases failed", error);
+        const detail = error instanceof ApiError ? error.detail : null;
+        notify(detail ? `形象知识库保存失败：${detail}` : "形象知识库保存失败，请查看后端日志。", "error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [agentConfig.knowledgeBaseIds, avatarId, notify]);
 
   const cleanupRealtimeRecordStreams = useCallback(() => {
     if (realtimeRecordMicStreamRef.current) {
@@ -1382,20 +1472,15 @@ export default function App() {
       closePeerConnection();
       setSessionId(null);
       setActiveAsrProvider("");
-      setIsSpeaking(false);
       setQueueInfo(null);
       setExpiringCountdown(null);
       slotAcquiredRef.current = null;
-      subtitleAccRef.current = "";
-      subtitleMediaReadyRef.current = false;
-      clearSubtitleFallbackTimer();
-      streamingAssistantMsgIdRef.current = null;
-      pendingAssistantMsgIdRef.current = null;
+      clearSubtitleState();
       if (clearMessages) {
         setMessages([]);
       }
     },
-    [clearSubtitleFallbackTimer, closePeerConnection],
+    [clearSubtitleState, closePeerConnection],
   );
 
   const prewarmKey = useCallback((targetAvatarId: string, targetModel: string) => {
@@ -1553,12 +1638,9 @@ export default function App() {
         setExpiringCountdown(null);
         setSessionId(null);
         setActiveAsrProvider("");
-        setIsSpeaking(false);
-        subtitleAccRef.current = "";
         const orphanId = streamingAssistantMsgIdRef.current;
         const pendingId = pendingAssistantMsgIdRef.current;
-        streamingAssistantMsgIdRef.current = null;
-        pendingAssistantMsgIdRef.current = null;
+        clearSubtitleState();
         if (orphanId || pendingId) {
           const removeIds = new Set([orphanId, pendingId].filter(Boolean));
           setMessages((prev) => prev.filter((m) => !removeIds.has(m.id)));
@@ -1571,18 +1653,14 @@ export default function App() {
         notify(`对话失败：${detail}`, "error");
       }
       if (ev === "speech.started") {
-        setIsSpeaking(true);
-        subtitleAccRef.current = "";
-        subtitleMediaReadyRef.current = false;
-        clearSubtitleFallbackTimer();
-        setCurrentSubtitle("");
         const staleId = streamingAssistantMsgIdRef.current;
+        const pendingId = pendingAssistantMsgIdRef.current;
+        clearSubtitleState();
+        setIsSpeaking(true);
         if (staleId) {
           setMessages((prev) => prev.filter((m) => m.id !== staleId));
-          streamingAssistantMsgIdRef.current = null;
         }
-        const id = pendingAssistantMsgIdRef.current ?? makeId();
-        pendingAssistantMsgIdRef.current = null;
+        const id = pendingId ?? makeId();
         streamingAssistantMsgIdRef.current = id;
         setMessages((prev) => {
           if (prev.some((m) => m.id === id)) {
@@ -1610,15 +1688,12 @@ export default function App() {
         }
       }
       if (ev === "speech.ended") {
-        setIsSpeaking(false);
-        clearSubtitleFallbackTimer();
         const d = data && typeof data === "object" ? (data as { text?: string }) : {};
         const fromEvent = typeof d.text === "string" ? d.text.trim() : "";
         const streamed = subtitleAccRef.current.trim();
         const finalText = fromEvent || streamed;
         const msgId = streamingAssistantMsgIdRef.current;
-        streamingAssistantMsgIdRef.current = null;
-        subtitleAccRef.current = "";
+        clearSubtitleState();
         if (msgId) {
           if (finalText) {
             setMessages((prev) =>
@@ -1633,11 +1708,10 @@ export default function App() {
             { id: makeId(), role: "assistant", text: finalText, timestamp: Date.now() },
           ]);
         }
-        subtitleMediaReadyRef.current = false;
       }
     });
     return stop;
-  }, [appendAssistantError, clearSubtitleFallbackTimer, flushSubtitleDisplay, flushSubtitleMessage, notify, sessionId]);
+  }, [appendAssistantError, clearSubtitleFallbackTimer, clearSubtitleState, flushSubtitleDisplay, flushSubtitleMessage, notify, sessionId]);
 
   // Resolves when FlashTalk slot is acquired (session.queued position=0)
   const slotAcquiredRef = useRef<(() => void) | null>(null);
@@ -1660,10 +1734,7 @@ export default function App() {
   // ---------- Actions ----------
   const handleStart = useCallback(async () => {
     if (!videoRef.current) return;
-    if (agentConfig.knowledgeEnabled && knowledgeUploading) {
-      notify("知识库文档正在上传或索引中，请完成后再开始对话，或先取消勾选知识库。", "info");
-      return;
-    }
+    clearSubtitleState();
     const lockedAsrProvider = normalizeAsrProvider(asrProvider, "dashscope");
     let latestRuntimeStatus: HealthResponse | null = null;
     try {
@@ -1702,6 +1773,7 @@ export default function App() {
     setQueueInfo(null);
     let createdSessionId: string | null = null;
     try {
+      const knowledgeBaseIds = normalizeKnowledgeBaseIds(agentConfig.knowledgeBaseIds);
       const created = await apiPost<CreateSessionResponse>("/sessions", {
         avatar_id: avatarId,
         model,
@@ -1721,8 +1793,9 @@ export default function App() {
         agent_enabled: agentConfig.memoryEnabled || agentConfig.knowledgeEnabled,
         memory_enabled: agentConfig.memoryEnabled,
         knowledge_enabled: agentConfig.knowledgeEnabled,
-        knowledge_base_id: agentConfig.knowledgeBaseId || "default",
-      });
+        knowledge_base_id: knowledgeBaseIds[0],
+        knowledge_base_ids: knowledgeBaseIds,
+      } satisfies CreateSessionRequest);
       createdSessionId = created.session_id;
       setSessionId(created.session_id);
       if (model === "fasterliveportrait") {
@@ -1788,6 +1861,7 @@ export default function App() {
     asrProvider,
     avatarId,
     clientUserId,
+    clearSubtitleState,
     closePeerConnection,
     edgeVoice,
     llmSystemPrompt,
@@ -1802,7 +1876,6 @@ export default function App() {
     ttsProvider,
     waitForSessionReady,
     fasterliveportraitConfig,
-    knowledgeUploading,
     wav2lipPostprocessMode,
   ]);
 
@@ -2140,6 +2213,7 @@ export default function App() {
 
   const handleAvatarChange = useCallback(
     (newId: string) => {
+      clearSubtitleState();
       setAvatarId(newId);
       writeStoredAvatarId(newId);
       void (async () => {
@@ -2151,7 +2225,7 @@ export default function App() {
         setConnection("idle");
       })();
     },
-    [releaseSession, resetLiveState],
+    [clearSubtitleState, releaseSession, resetLiveState],
   );
 
   const handleVideoCloneAvatarUploaded = useCallback(
@@ -2166,6 +2240,7 @@ export default function App() {
   );
 
   const handleModelChange = useCallback((newModel: string) => {
+    clearSubtitleState();
     setModel(newModel);
     void (async () => {
       const sid = sessionIdRef.current;
@@ -2175,7 +2250,7 @@ export default function App() {
       resetLiveState();
       setConnection("idle");
     })();
-  }, [releaseSession, resetLiveState]);
+  }, [clearSubtitleState, releaseSession, resetLiveState]);
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -2270,7 +2345,13 @@ export default function App() {
 
       {workflow === "assetLibrary" ? (
         <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
-          <AssetLibraryWorkspace refreshToken={assetLibraryRefreshKey} onNotify={notify} />
+          <AssetLibraryWorkspace
+            refreshToken={assetLibraryRefreshKey}
+            onNotify={notify}
+            initialTab={assetLibraryTab}
+            activeTabOverride={assetLibraryTab}
+            onActiveTabChange={setAssetLibraryTab}
+          />
         </div>
       ) : workflow === "videoCreation" ? (
         <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
@@ -2360,18 +2441,15 @@ export default function App() {
               setAsrModel(sttModelForProvider(normalized));
             }}
             configLocked={sessionConfigLocked}
+            agentConfig={agentConfig}
+            onAgentConfigChange={setAgentConfig}
+            knowledgeBases={knowledgeBaseSummaries}
+            onManageKnowledgeBases={() => void handleManageKnowledgeBases()}
             llmSystemPrompt={llmSystemPrompt}
             onLlmSystemPromptChange={setLlmSystemPrompt}
             onSavePrompt={() => void handleSavePrompt()}
             promptSaving={promptSaving}
             onOpenVoiceClone={() => setVoiceCloneOpen(true)}
-            knowledgeDocuments={knowledgeDocuments}
-            knowledgeLoading={knowledgeLoading}
-            knowledgeUploading={knowledgeUploading}
-            onKnowledgeUpload={(file) => void handleKnowledgeUpload(file)}
-            onKnowledgeDelete={(documentId) => void handleKnowledgeDelete(documentId)}
-            onKnowledgeReindex={(documentId) => void handleKnowledgeReindex(documentId)}
-            onKnowledgeRefresh={() => void refreshKnowledgeDocuments()}
           />
         </div>
 
@@ -2440,7 +2518,7 @@ export default function App() {
                     prewarmState={selectedPrewarmState}
                     agentConfig={agentConfig}
                     onAgentConfigChange={setAgentConfig}
-                    knowledgeUploading={knowledgeUploading}
+                    knowledgeBases={knowledgeBaseSummaries}
                     onAvatarChange={handleAvatarChange}
                     onStart={() => void handleStart()}
                     onCustomAvatarCreate={(file, name) => void handleCreateCustomAvatar(file, name)}

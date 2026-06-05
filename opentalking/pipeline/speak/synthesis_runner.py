@@ -228,7 +228,8 @@ class FlashTalkRunner:
         agent_enabled: bool = False,
         memory_enabled: bool = False,
         knowledge_enabled: bool = False,
-        knowledge_base_id: str | None = "default",
+        knowledge_base_id: str | None = None,
+        knowledge_base_ids: list[str] | None = None,
     ) -> None:
         self.session_id = session_id
         self.avatar_id = avatar_id
@@ -242,7 +243,8 @@ class FlashTalkRunner:
             agent_enabled=agent_enabled,
             memory_enabled=memory_enabled,
             knowledge_enabled=knowledge_enabled,
-            knowledge_base_id=knowledge_base_id or "default",
+            knowledge_base_id=knowledge_base_id,
+            knowledge_base_ids=knowledge_base_ids,
         )
         self.avatars_root = avatars_root
         self.redis = redis

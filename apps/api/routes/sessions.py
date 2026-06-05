@@ -218,15 +218,43 @@ def _normalize_agent_user_id(value: str | None) -> str | None:
     return user_id
 
 
+def _normalize_knowledge_base_ids(
+    *,
+    knowledge_base_id: str | None,
+    knowledge_base_ids: list[str] | None,
+) -> list[str]:
+    selected: list[str] = []
+    seen: set[str] = set()
+    candidates = knowledge_base_ids if knowledge_base_ids else [knowledge_base_id]
+    for candidate in candidates:
+        kb_id = str(candidate or "").strip()
+        if not kb_id or kb_id in seen:
+            continue
+        selected.append(kb_id)
+        seen.add(kb_id)
+    return selected
+
+
 def _normalize_agent_session_config(
     body: CreateSessionRequest,
-) -> tuple[str | None, bool, bool, bool, str]:
+) -> tuple[str | None, bool, bool, bool, str | None, list[str]]:
     agent_user_id = _normalize_agent_user_id(body.user_id)
     memory_enabled = bool(agent_user_id and body.memory_enabled)
     knowledge_enabled = body.knowledge_enabled is not False
     agent_enabled = bool(body.agent_enabled or memory_enabled or knowledge_enabled)
-    knowledge_base_id = (body.knowledge_base_id or "default").strip() or "default"
-    return agent_user_id, agent_enabled, memory_enabled, knowledge_enabled, knowledge_base_id
+    knowledge_base_ids = _normalize_knowledge_base_ids(
+        knowledge_base_id=body.knowledge_base_id,
+        knowledge_base_ids=body.knowledge_base_ids,
+    )
+    knowledge_base_id = knowledge_base_ids[0] if knowledge_base_ids else None
+    return (
+        agent_user_id,
+        agent_enabled,
+        memory_enabled,
+        knowledge_enabled,
+        knowledge_base_id,
+        knowledge_base_ids,
+    )
 
 
 log = logging.getLogger(__name__)
@@ -532,6 +560,7 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         memory_enabled,
         knowledge_enabled,
         knowledge_base_id,
+        knowledge_base_ids,
     ) = _normalize_agent_session_config(body)
 
     custom = _session_customizations(request).get(body.avatar_id, {})
@@ -563,6 +592,7 @@ async def create_session(body: CreateSessionRequest, request: Request) -> Create
         memory_enabled=memory_enabled,
         knowledge_enabled=knowledge_enabled,
         knowledge_base_id=knowledge_base_id,
+        knowledge_base_ids=knowledge_base_ids,
     )
     # Single-process mode: WebRTC offer runs immediately after; wait until init task
     # has created the SessionRunner (avoids 404 "session not loaded").

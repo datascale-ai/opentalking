@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import type { AvatarSummary } from "../lib/api";
+import type { AvatarSummary, KnowledgeBaseSummary } from "../lib/api";
 import { buildApiUrl } from "../lib/api";
 import type { ModelConnectionBadge } from "../lib/modelStatus";
 
@@ -8,7 +8,7 @@ const CUSTOM_REFERENCE_NAME_KEY = "opentalking-custom-reference-name";
 export type AgentConfig = {
   memoryEnabled: boolean;
   knowledgeEnabled: boolean;
-  knowledgeBaseId: string;
+  knowledgeBaseIds: string[];
 };
 
 type AvatarSelectionStageProps = {
@@ -29,7 +29,7 @@ type AvatarSelectionStageProps = {
   referenceSaving?: boolean;
   agentConfig: AgentConfig;
   onAgentConfigChange: (next: AgentConfig) => void;
-  knowledgeUploading?: boolean;
+  knowledgeBases: KnowledgeBaseSummary[];
 };
 
 function AvatarPreviewImage({ avatar, className }: { avatar: AvatarSummary; className: string }) {
@@ -76,7 +76,7 @@ export function AvatarSelectionStage({
   referenceSaving = false,
   agentConfig,
   onAgentConfigChange,
-  knowledgeUploading = false,
+  knowledgeBases,
 }: AvatarSelectionStageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customUploadOpen, setCustomUploadOpen] = useState(false);
@@ -89,18 +89,28 @@ export function AvatarSelectionStage({
   });
   const [customFile, setCustomFile] = useState<File | null>(null);
   const [customPreviewUrl, setCustomPreviewUrl] = useState<string | null>(null);
+  const selectedKnowledgeBaseIds = agentConfig.knowledgeBaseIds;
+  const knowledgeBasesById = new Map(knowledgeBases.map((kb) => [kb.id, kb]));
+  const selectedKnowledgeBases = selectedKnowledgeBaseIds.map((id) => (
+    knowledgeBasesById.get(id) ?? {
+      id,
+      name: id,
+      document_count: 0,
+      ready_document_count: 0,
+      error_document_count: 0,
+      created_at: "",
+      updated_at: "",
+    }
+  ));
   const baseDisabled = loading || queued || prewarmState === "preparing" || !selectedAvatar || !modelConnected;
-  const knowledgeStartBlocked = agentConfig.knowledgeEnabled && knowledgeUploading;
   const startLabel = queued
     ? "排队中"
     : loading
       ? "启动中..."
       : prewarmState === "preparing"
         ? "准备资产中..."
-        : knowledgeStartBlocked
-          ? "知识库处理中..."
-          : "开始对话";
-  const startDisabled = baseDisabled || knowledgeStartBlocked;
+        : "开始对话";
+  const startDisabled = baseDisabled;
 
   useEffect(() => {
     return () => {
@@ -126,6 +136,15 @@ export function AvatarSelectionStage({
     }
     onCustomAvatarCreate(customFile, name);
     setCustomUploadOpen(false);
+  };
+
+  const updateKnowledgeBaseIds = (nextIds: string[]) => {
+    const deduped = Array.from(new Set(nextIds.filter((id) => id.trim())));
+    onAgentConfigChange({
+      ...agentConfig,
+      knowledgeEnabled: deduped.length > 0,
+      knowledgeBaseIds: deduped,
+    });
   };
 
   return (
@@ -286,25 +305,39 @@ export function AvatarSelectionStage({
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-slate-600">Agent 增强</p>
                     <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                      {agentConfig.knowledgeBaseId || "default"}
+                      {knowledgeBases.length} 个知识库
                     </span>
                   </div>
-                  <div className="mt-2 grid grid-cols-1 gap-2">
-                    <label className="flex min-h-8 items-center gap-2 rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={agentConfig.knowledgeEnabled}
-                        disabled={baseDisabled}
-                        onChange={(event) =>
-                          onAgentConfigChange({
-                            ...agentConfig,
-                            knowledgeEnabled: event.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
-                      />
-                      知识库
-                    </label>
+                  <div className="mt-2 min-h-20 rounded-md border border-slate-200 bg-white p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">当前形象知识库</p>
+                      <span className="text-[11px] text-slate-400">{selectedKnowledgeBases.length} 项</span>
+                    </div>
+                    {selectedKnowledgeBases.length ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedKnowledgeBases.map((kb) => (
+                          <div
+                            key={kb.id}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-2 py-1 text-xs text-cyan-800"
+                          >
+                            <span className="min-w-0 truncate font-medium">{kb.name}</span>
+                            <button
+                              type="button"
+                              disabled={baseDisabled}
+                              onClick={() =>
+                                updateKnowledgeBaseIds(selectedKnowledgeBaseIds.filter((id) => id !== kb.id))
+                              }
+                              className="shrink-0 rounded-full px-1.5 py-0.5 font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:opacity-50"
+                              aria-label={`移除 ${kb.name}`}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="px-1 py-2 text-xs text-slate-400">未选择知识库</p>
+                    )}
                   </div>
                 </div>
                 {queued ? (

@@ -14,7 +14,8 @@ class AgentSessionConfig:
     agent_enabled: bool = False
     memory_enabled: bool = False
     knowledge_enabled: bool = False
-    knowledge_base_id: str | None = "default"
+    knowledge_base_id: str | None = None
+    knowledge_base_ids: list[str] | None = None
 
     @property
     def has_memory(self) -> bool:
@@ -23,6 +24,23 @@ class AgentSessionConfig:
     @property
     def has_knowledge(self) -> bool:
         return bool(self.agent_enabled and self.knowledge_enabled)
+
+    @property
+    def selected_knowledge_base_ids(self) -> list[str]:
+        selected: list[str] = []
+        seen: set[str] = set()
+        candidates = (
+            self.knowledge_base_ids
+            if self.knowledge_base_ids
+            else [self.knowledge_base_id]
+        )
+        for candidate in candidates:
+            kb_id = str(candidate or "").strip()
+            if not kb_id or kb_id in seen:
+                continue
+            selected.append(kb_id)
+            seen.add(kb_id)
+        return selected
 
 
 def default_memory_store() -> AgentMemoryStore:
@@ -61,8 +79,8 @@ async def build_agent_context(
     knowledge_chunks = []
     if config.has_knowledge and query.strip():
         kb_store = knowledge_store or default_knowledge_store()
-        chunks = await kb_store.query(
-            kb_id=config.knowledge_base_id or "default",
+        chunks = await kb_store.query_many(
+            kb_ids=config.selected_knowledge_base_ids,
             query=query,
             limit=3,
         )

@@ -18,7 +18,8 @@ class CreateSessionRequest(BaseModel):
     agent_enabled: bool = True
     memory_enabled: bool = False
     knowledge_enabled: bool = True
-    knowledge_base_id: str | None = "default"
+    knowledge_base_id: str | None = None
+    knowledge_base_ids: list[str] | None = None
 
 
 class FasterLivePortraitConfigRequest(BaseModel):

@@ -133,6 +133,29 @@ def _task_bool(task: dict[str, Any], key: str) -> bool:
     return False
 
 
+def _task_knowledge_base_ids(task: dict[str, Any]) -> list[str]:
+    raw = task.get("knowledge_base_ids")
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text:
+            try:
+                raw = json.loads(text)
+            except json.JSONDecodeError:
+                raw = [text]
+    if not isinstance(raw, list):
+        raw = [task.get("knowledge_base_id")]
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        kb_id = str(item or "").strip()
+        if not kb_id or kb_id in seen:
+            continue
+        selected.append(kb_id)
+        seen.add(kb_id)
+    return selected
+
+
 def _create_runner(
     task: dict[str, Any],
     r: Any,
@@ -145,12 +168,14 @@ def _create_runner(
     avatar_id = str(task["avatar_id"])
     settings = get_settings()
     backend = resolve_model_backend(model, settings)
+    knowledge_base_ids = _task_knowledge_base_ids(task)
     agent_kwargs = {
         "agent_user_id": str(task.get("user_id", "") or "").strip() or None,
         "agent_enabled": _task_bool(task, "agent_enabled"),
         "memory_enabled": _task_bool(task, "memory_enabled"),
         "knowledge_enabled": _task_bool(task, "knowledge_enabled"),
-        "knowledge_base_id": str(task.get("knowledge_base_id", "") or "default").strip() or "default",
+        "knowledge_base_id": knowledge_base_ids[0] if knowledge_base_ids else None,
+        "knowledge_base_ids": knowledge_base_ids,
     }
 
     # Mock mode: pick the in-process mock client (echoes reference image).

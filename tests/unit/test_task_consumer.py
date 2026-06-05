@@ -93,6 +93,17 @@ class ChatCapableRunner(StubRunner):
         return task
 
 
+def test_task_knowledge_base_ids_do_not_fallback_to_default() -> None:
+    assert task_consumer._task_knowledge_base_ids({}) == []
+    assert task_consumer._task_knowledge_base_ids({"knowledge_base_ids": []}) == []
+    assert task_consumer._task_knowledge_base_ids({"knowledge_base_id": ""}) == []
+    assert task_consumer._task_knowledge_base_ids({"knowledge_base_id": "kb_a"}) == ["kb_a"]
+    assert task_consumer._task_knowledge_base_ids({"knowledge_base_ids": ["kb_a", "kb_b", "kb_a"]}) == [
+        "kb_a",
+        "kb_b",
+    ]
+
+
 def test_create_runner_passes_wav2lip_postprocess_mode_to_unified_local_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

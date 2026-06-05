@@ -427,7 +427,7 @@ def test_create_session_passes_agent_config_to_service_for_audio_renderer_models
                 agent_enabled=True,
                 memory_enabled=True,
                 knowledge_enabled=True,
-                knowledge_base_id="default",
+                knowledge_base_id="kb_agent",
             ),
             request,
         )
@@ -439,10 +439,63 @@ def test_create_session_passes_agent_config_to_service_for_audio_renderer_models
     assert calls[0]["agent_enabled"] is True
     assert calls[0]["memory_enabled"] is True
     assert calls[0]["knowledge_enabled"] is True
-    assert calls[0]["knowledge_base_id"] == "default"
+    assert calls[0]["knowledge_base_id"] == "kb_agent"
 
 
-def test_agent_session_config_defaults_to_default_knowledge_base() -> None:
+def test_create_session_passes_multiple_knowledge_bases_to_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def fake_create_session(*args: object, **kwargs: object) -> str:
+        calls.append(kwargs)
+        sid = "sess_multi_kb"
+        redis = args[0]
+        await redis.hset(
+            session_key(sid),
+            mapping={
+                "session_id": sid,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+                "state": "worker_ready",
+            },
+        )
+        return sid
+
+    monkeypatch.setattr(sessions_routes.session_service, "create_session", fake_create_session)
+    monkeypatch.setattr(task_consumer, "slot_is_occupied", lambda: False)
+
+    avatars_dir = Path(__file__).resolve().parents[3] / "examples" / "avatars"
+    app = FastAPI()
+    app.state.redis = InMemoryRedis()
+    app.state.settings = SimpleNamespace(
+        avatars_dir=str(avatars_dir),
+        normalized_stt_default_provider="sensevoice",
+        normalized_stt_provider="sensevoice",
+        normalized_tts_default_provider="edge",
+        normalized_tts_provider="edge",
+        omnirt_endpoint="",
+    )
+    request = Request({"type": "http", "app": app})
+
+    response = asyncio.run(
+        sessions_routes.create_session(
+            CreateSessionRequest(
+                avatar_id="singer",
+                model="mock",
+                knowledge_base_ids=["kb_a", "kb_b"],
+                knowledge_enabled=True,
+            ),
+            request,
+        )
+    )
+
+    assert response.status == "created"
+    assert calls[0]["knowledge_base_ids"] == ["kb_a", "kb_b"]
+    assert calls[0]["knowledge_base_id"] == "kb_a"
+
+
+def test_agent_session_config_defaults_to_no_knowledge_base() -> None:
     body = CreateSessionRequest(
         avatar_id="singer",
         model="flashtalk",
@@ -455,13 +508,15 @@ def test_agent_session_config_defaults_to_default_knowledge_base() -> None:
         memory_enabled,
         knowledge_enabled,
         knowledge_base_id,
+        knowledge_base_ids,
     ) = sessions_routes._normalize_agent_session_config(body)
 
     assert agent_user_id == "client_test"
     assert agent_enabled is True
     assert memory_enabled is False
     assert knowledge_enabled is True
-    assert knowledge_base_id == "default"
+    assert knowledge_base_id is None
+    assert knowledge_base_ids == []
 
 
 def test_speak_audio_passes_request_level_stt_provider(

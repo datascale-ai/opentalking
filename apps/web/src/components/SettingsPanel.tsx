@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { AvatarSummary, KnowledgeDocument } from "../lib/api";
+import { useEffect, useState, type ReactNode } from "react";
+import type { AgentConfig } from "./AvatarSelectionStage";
+import type { AvatarSummary, KnowledgeBaseSummary } from "../lib/api";
 import { modelConnectionBadge, type ModelStatus } from "../lib/modelStatus";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
 
@@ -195,13 +196,10 @@ interface SettingsPanelProps {
   asrModel: string;
   onAsrProviderChange: (provider: string) => void;
   configLocked?: boolean;
-  knowledgeDocuments: KnowledgeDocument[];
-  knowledgeLoading?: boolean;
-  knowledgeUploading?: boolean;
-  onKnowledgeUpload: (file: File) => void;
-  onKnowledgeDelete: (documentId: string) => void;
-  onKnowledgeReindex: (documentId: string) => void;
-  onKnowledgeRefresh: () => void;
+  agentConfig: AgentConfig;
+  onAgentConfigChange: (next: AgentConfig) => void;
+  knowledgeBases: KnowledgeBaseSummary[];
+  onManageKnowledgeBases?: () => void;
 }
 
 type SettingsSectionProps = {
@@ -376,19 +374,6 @@ function LevelTwoList({
   );
 }
 
-function formatKnowledgeBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function knowledgeStatusLabel(document: KnowledgeDocument): string {
-  if (document.status === "ready") return `${document.chunk_count} 段`;
-  if (document.status === "error") return "索引失败";
-  return document.status;
-}
-
 export function SettingsPanel({
   expanded,
   onExpandedChange,
@@ -434,13 +419,10 @@ export function SettingsPanel({
   asrModel,
   onAsrProviderChange,
   configLocked = false,
-  knowledgeDocuments,
-  knowledgeLoading = false,
-  knowledgeUploading = false,
-  onKnowledgeUpload,
-  onKnowledgeDelete,
-  onKnowledgeReindex,
-  onKnowledgeRefresh,
+  agentConfig,
+  onAgentConfigChange,
+  knowledgeBases,
+  onManageKnowledgeBases,
 }: SettingsPanelProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     avatars: true,
@@ -451,7 +433,6 @@ export function SettingsPanel({
     role: true,
   });
   const [voiceView, setVoiceView] = useState<"providers" | "models" | "voices">("providers");
-  const knowledgeFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!voiceApplyNotice) return;
@@ -471,6 +452,15 @@ export function SettingsPanel({
 
   const toggleSection = (id: string) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+  const selectedKnowledgeBaseSet = new Set(agentConfig.knowledgeBaseIds);
+  const updateKnowledgeBaseIds = (nextIds: string[]) => {
+    const deduped = Array.from(new Set(nextIds.filter((id) => id.trim())));
+    onAgentConfigChange({
+      ...agentConfig,
+      knowledgeEnabled: deduped.length > 0,
+      knowledgeBaseIds: deduped,
+    });
   };
   const currentAvatar = avatars.find((a) => a.id === avatarId) ?? null;
   const modelStatusById = new Map(modelStatuses.map((item) => [item.id, item]));
@@ -534,14 +524,6 @@ export function SettingsPanel({
       return;
     }
     setVoiceView("providers");
-  };
-
-  const handleKnowledgeFileChange = (file: File | null) => {
-    if (!file) return;
-    onKnowledgeUpload(file);
-    if (knowledgeFileInputRef.current) {
-      knowledgeFileInputRef.current.value = "";
-    }
   };
 
   const updateFasterLivePortraitValue = (
@@ -612,96 +594,67 @@ export function SettingsPanel({
           open={openSections.knowledge}
           onToggle={toggleSection}
           action={
-            <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
-              default
-            </span>
+            <div className="flex shrink-0 items-center gap-2">
+              {onManageKnowledgeBases ? (
+                <button
+                  type="button"
+                  onClick={onManageKnowledgeBases}
+                  className="min-h-8 px-1 text-xs font-semibold text-slate-600 transition hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2"
+                >
+                  管理
+                </button>
+              ) : null}
+              <span className="shrink-0 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-500">
+                {knowledgeBases.length} 个知识库
+              </span>
+            </div>
           }
         >
-          <div className="space-y-3">
-            <input
-              ref={knowledgeFileInputRef}
-              type="file"
-              accept=".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"
-              className="hidden"
-              onChange={(event) => handleKnowledgeFileChange(event.currentTarget.files?.[0] ?? null)}
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => knowledgeFileInputRef.current?.click()}
-                disabled={knowledgeUploading}
-                className="min-h-9 flex-1 rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {knowledgeUploading ? "上传中..." : "上传文档"}
-              </button>
-              <button
-                type="button"
-                onClick={onKnowledgeRefresh}
-                disabled={knowledgeLoading || knowledgeUploading}
-                className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                刷新
-              </button>
-            </div>
-            <p className="text-[11px] font-medium leading-relaxed text-slate-500">
-              支持格式：TXT、Markdown（.md/.markdown）、PDF。扫描版 PDF 会尝试 OCR 后再索引。
-            </p>
-            <div className="space-y-2">
-              {knowledgeLoading ? (
-                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-                  正在读取知识库...
-                </p>
-              ) : knowledgeDocuments.length ? (
-                knowledgeDocuments.map((document) => (
-                  <div
-                    key={document.id}
-                    className={`rounded-lg border px-3 py-2 ${
-                      document.status === "ready"
-                        ? "border-slate-200 bg-white"
-                        : "border-amber-200 bg-amber-50"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-slate-800">{document.filename}</p>
-                        <p className="mt-1 truncate text-[11px] font-medium text-slate-400">
-                          {formatKnowledgeBytes(document.bytes)} · {knowledgeStatusLabel(document)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 gap-1">
-                        {document.status !== "ready" ? (
-                          <button
-                            type="button"
-                            onClick={() => onKnowledgeReindex(document.id)}
-                            disabled={knowledgeUploading}
-                            className="rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] font-semibold text-cyan-700 transition hover:border-cyan-300 hover:text-cyan-600 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            重试
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => onKnowledgeDelete(document.id)}
-                          disabled={knowledgeUploading}
-                          className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:border-rose-200 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    </div>
-                    {document.error ? (
-                      <p className="mt-2 line-clamp-2 text-[11px] font-medium leading-relaxed text-amber-700">
-                        {document.error}
-                      </p>
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-500">
-                  暂无文档
-                </p>
-              )}
-            </div>
+          <div className="grid grid-cols-1 gap-1">
+            {knowledgeBases.map((knowledgeBase) => {
+              const selected = selectedKnowledgeBaseSet.has(knowledgeBase.id);
+              const knowledgeBaseReady = knowledgeBase.ready_document_count > 0;
+              const statusLabel = knowledgeBaseReady
+                ? "已就绪"
+                : knowledgeBase.error_document_count > 0
+                  ? "异常"
+                  : "准备中";
+              return (
+                <button
+                  key={knowledgeBase.id}
+                  type="button"
+                  disabled={configLocked || !knowledgeBaseReady}
+                  onClick={() =>
+                    updateKnowledgeBaseIds(
+                      selected
+                        ? agentConfig.knowledgeBaseIds.filter((id) => id !== knowledgeBase.id)
+                        : [...agentConfig.knowledgeBaseIds, knowledgeBase.id],
+                    )
+                  }
+                  className={`flex min-h-9 items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                    selected
+                      ? "border-cyan-300 bg-white text-cyan-800 shadow-sm"
+                      : knowledgeBaseReady
+                        ? "border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:text-cyan-700"
+                        : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400"
+                  } ${configLocked ? "cursor-not-allowed opacity-60 hover:border-slate-100 hover:bg-slate-50" : ""}`}
+                >
+                  <span className="min-w-0 truncate">{knowledgeBase.name}</span>
+                  <span className={`shrink-0 text-[11px] ${
+                    knowledgeBaseReady
+                      ? selected ? "text-cyan-700" : "text-emerald-600"
+                      : knowledgeBase.error_document_count > 0 ? "text-amber-600" : "text-slate-400"
+                  }`}>
+                    {selected ? "已选" : statusLabel}
+                  </span>
+                </button>
+              );
+            })}
+            {!knowledgeBases.length ? (
+              <p className="rounded-md border border-dashed border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-500">
+                暂无知识库
+              </p>
+            ) : null}
           </div>
         </SettingsSection>
 

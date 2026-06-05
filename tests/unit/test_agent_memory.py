@@ -75,9 +75,10 @@ async def test_knowledge_store_round_trip_builds_agent_context(tmp_path) -> None
         db_path=tmp_path / "agent.sqlite",
         knowledge_root=tmp_path / "knowledge",
     )
+    knowledge_base = await store.create_knowledge_base(name="对话知识库")
 
     document = await store.add_document(
-        kb_id="default",
+        kb_id=knowledge_base.id,
         filename=source.name,
         mime_type="text/markdown",
         source_path=source,
@@ -90,7 +91,7 @@ async def test_knowledge_store_round_trip_builds_agent_context(tmp_path) -> None
         config=AgentSessionConfig(
             agent_enabled=True,
             knowledge_enabled=True,
-            knowledge_base_id="default",
+            knowledge_base_id=knowledge_base.id,
         ),
         avatar_id="anchor",
         query="默认会话会检索哪个知识库？",
@@ -100,6 +101,49 @@ async def test_knowledge_store_round_trip_builds_agent_context(tmp_path) -> None
     assert context is not None
     assert "<knowledge_base>" in context
     assert "OpenTalking 支持知识库上传" in context
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_builds_agent_context_across_multiple_kbs(tmp_path) -> None:
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+    )
+    first = await store.create_knowledge_base(name="产品知识库")
+    second = await store.create_knowledge_base(name="售后知识库")
+
+    first_doc = tmp_path / "first.md"
+    first_doc.write_text("产品知识库：OpenTalking 支持多知识库检索。", encoding="utf-8")
+    second_doc = tmp_path / "second.md"
+    second_doc.write_text("售后知识库：退货和退款政策。", encoding="utf-8")
+
+    await store.add_document(
+        kb_id=first.id,
+        filename=first_doc.name,
+        mime_type="text/markdown",
+        source_path=first_doc,
+    )
+    await store.add_document(
+        kb_id=second.id,
+        filename=second_doc.name,
+        mime_type="text/markdown",
+        source_path=second_doc,
+    )
+
+    context = await build_agent_context(
+        config=AgentSessionConfig(
+            agent_enabled=True,
+            knowledge_enabled=True,
+            knowledge_base_ids=[first.id, second.id],
+        ),
+        avatar_id="anchor",
+        query="支持什么检索和退款？",
+        knowledge_store=store,
+    )
+
+    assert context is not None
+    assert "OpenTalking 支持多知识库检索" in context
+    assert "退货和退款政策" in context
 
 
 @pytest.mark.asyncio
@@ -115,8 +159,9 @@ async def test_knowledge_store_reindexes_pdf_with_ocr_fallback(tmp_path, monkeyp
         db_path=tmp_path / "agent.sqlite",
         knowledge_root=tmp_path / "knowledge",
     )
+    knowledge_base = await store.create_knowledge_base(name="扫描知识库")
     document = await store.add_document(
-        kb_id="default",
+        kb_id=knowledge_base.id,
         filename=source.name,
         mime_type="application/pdf",
         source_path=source,
@@ -128,8 +173,8 @@ async def test_knowledge_store_reindexes_pdf_with_ocr_fallback(tmp_path, monkeyp
         "opentalking.agent.knowledge_store._extract_text",
         lambda path: ("扫描件 OCR 文本：OpenTalking 知识库可以重新索引。", None),
     )
-    reindexed = await store.reindex_document(kb_id="default", doc_id=document.id)
-    chunks = await store.query(kb_id="default", query="重新索引知识库", limit=3)
+    reindexed = await store.reindex_document(kb_id=knowledge_base.id, doc_id=document.id)
+    chunks = await store.query(kb_id=knowledge_base.id, query="重新索引知识库", limit=3)
 
     assert reindexed.status == "ready"
     assert reindexed.chunk_count == 1
