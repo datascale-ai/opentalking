@@ -9,14 +9,21 @@ export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
 export OMNIRT_HOME="$DIGITAL_HUMAN_HOME/omnirt/.omnirt"
 
-# Set mirrors first when package downloads are slow.
+# Set mirrors first when package downloads are slow. Keep caches and temp files
+# on the same data disk to avoid cross-device copies and small /tmp partitions.
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 export UV_HTTP_TIMEOUT=300
+export UV_CACHE_DIR="$DIGITAL_HUMAN_HOME/.cache/uv"
+export PIP_CACHE_DIR="$DIGITAL_HUMAN_HOME/.cache/pip"
+export TMPDIR="$DIGITAL_HUMAN_HOME/tmp"
+mkdir -p "$UV_CACHE_DIR" "$PIP_CACHE_DIR" "$TMPDIR"
 
 cd "$OMNIRT_REPO"
 uv sync --extra server --python 3.11
 ```
+
+The first `uv sync` can download several GB of CUDA PyTorch, cuDNN, cuBLAS, NCCL, Triton, and related wheels. Later venv rebuilds reuse `$UV_CACHE_DIR` and are much faster than the first deployment.
 
 ## 2. Prepare weights
 
@@ -24,7 +31,12 @@ uv sync --extra server --python 3.11
 
 ```bash title="Terminal"
 export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/musetalk-v15"
+# If the global OMNIRT_MODEL_ROOT is already used by other models, override
+# only MuseTalk instead:
+# export OMNIRT_MUSETALK_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/musetalk-v15"
 ```
+
+`$OMNIRT_MODEL_ROOT` must directly contain the subdirectories below. If your weights live in a directory such as `/opt/models/MuseTalk1.5`, point `OMNIRT_MODEL_ROOT` at that directory, not at its parent.
 
 The layout is the same as the local mode:
 
@@ -83,7 +95,9 @@ If `$OMNIRT_HOME/model-repos/MuseTalk` already points to a usable source checkou
 bash scripts/quickstart/start_omnirt_musetalk.sh --device cuda --port 9000 --musetalk-port 8766 --no-update
 ```
 
-The script installs the MuseTalk runtime, starts the MuseTalk WebSocket backend, starts the OmniRT audio2video gateway, and waits until `/v1/audio2video/models` reports `musetalk`. The first install creates `$OMNIRT_HOME/runtimes/musetalk/cuda/venv` and installs packages from the PyPI mirror plus the PyTorch CUDA wheel index (the current CUDA docs path uses cu124). If `download.pytorch.org` is unstable, prepare a wheel cache on a connected machine or reuse a verified runtime venv, then run this step again.
+The script installs the MuseTalk runtime, starts the MuseTalk WebSocket backend, starts the OmniRT audio2video gateway, and waits until `/v1/audio2video/models` reports `musetalk`. The first install creates `$OMNIRT_HOME/runtimes/musetalk/cuda/venv`. The MuseTalk CUDA runtime is pinned to Python 3.10, PyTorch 2.0.1 + cu118, diffusers 0.30.2, transformers 4.39.2, and accelerate 0.28.0, matching the official MuseTalk 1.5 dependency set. Do not upgrade diffusers or transformers here; newer releases can import torch APIs such as `torch.xpu` or `torch.float8_e4m3fn` that do not exist in torch 2.0.1. If `download.pytorch.org` is unstable, prepare a wheel cache on a connected machine or reuse a verified runtime venv, then run this step again.
+
+The script also inherits `UV_CACHE_DIR`, `PIP_CACHE_DIR`, and `TMPDIR` from section 1. Do not put these caches on a small system `/tmp`; the MuseTalk runtime install downloads PyTorch cu118, Triton, OpenMMLab, and related wheels, which can be slow on weak network paths.
 
 ## 5. Start OpenTalking
 

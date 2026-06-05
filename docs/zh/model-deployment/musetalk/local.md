@@ -62,7 +62,7 @@ Whisper 这里要求 OpenAI `openai-whisper` 的 `tiny.pt` 文件，不要把 Hu
 
 ## 3. 准备 MuseTalk 官方源码和预处理依赖
 
-OpenTalking local runtime 默认使用 OpenTalking 自己的 `.venv` 做推理和官方 MuseTalk 预处理。这样可以复用 `uv sync --extra models` 已安装的 torch / torchvision / cv2，避免再下载官方 `requirements.txt` 里的大体积 PyTorch。
+OpenTalking local runtime 使用 OpenTalking 自己的 `.venv` 做实时推理，但官方 MuseTalk 头像预处理需要带 `mmcv._ext` 的 full OpenMMLab 环境。不要把预处理 Python 指向只装了 `mmcv-lite` 的主 `.venv`；推荐使用独立的 `$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv`。
 
 ```bash title="终端"
 mkdir -p "$DIGITAL_HUMAN_HOME/model-repos"
@@ -71,15 +71,13 @@ git clone https://github.com/TMElyralab/MuseTalk.git "$DIGITAL_HUMAN_HOME/model-
 # 如果服务器已经有官方 MuseTalk checkout，直接指向已有目录即可。
 
 export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_HOME/.venv/bin/python"
+export OPENTALKING_MUSETALK_PREPROCESS_ROOT="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_MUSETALK_PREPROCESS_ROOT/venv/bin/python"
 
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m pip install json-tricks munkres pycocotools shapely terminaltables xtcocotools
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m pip install --no-build-isolation chumpy
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m mim install mmengine
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m pip install "mmcv-lite==2.0.1"
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m mim install "mmdet==3.1.0"
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m mim install "mmpose==1.1.0"
+bash scripts/quickstart/prepare_local_musetalk.sh
 ```
+
+`prepare_local_musetalk.sh` 会检查主 `.venv`、模型权重、MuseTalk 源码，以及独立预处理 venv。预处理 venv 会安装 `mmcv==2.0.1`、`mmdet==3.1.0`、`mmpose==1.1.0` 等官方预处理依赖；脚本会为常见 CUDA 11.8 环境自动补齐 `LD_LIBRARY_PATH`，确保 `mmcv._ext` 可加载。
 
 `start_unified.sh --backend local --model musetalk` 会再次调用 `scripts/quickstart/prepare_local_musetalk.sh` 做同样的依赖检查；上面的命令适合你想在启动前显式完成依赖安装。
 
@@ -87,7 +85,7 @@ export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_HOME/.venv/bin/pytho
 
 ```bash title="终端"
 export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_HOME/.venv/bin/python"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv/bin/python"
 export OPENTALKING_MUSETALK_DEVICE=cuda:0
 export OPENTALKING_TORCH_DEVICE=cuda:0
 # 多卡机器可按需限制可见卡，避免误选不可用 GPU。
@@ -122,4 +120,4 @@ curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 {"id":"musetalk","backend":"local","connected":true,"reason":"local_runtime"}
 ```
 
-打开 WebUI 后选择 MuseTalk 可用形象，发起一次实时对话。如果首个自定义形象没有预处理缓存，首次创建会话会比 Wav2Lip / QuickTalk 慢。
+打开 WebUI 后选择 MuseTalk 可用形象，发起一次实时对话。如果该形象没有 `prepared/prepared_info.json`，首次创建会话会先运行官方预处理，通常会明显慢于 Wav2Lip / QuickTalk；后续命中缓存后会快很多。若遇到 `No module named 'mmcv._ext'`，说明 `OPENTALKING_MUSETALK_PREPROCESS_PYTHON` 指向了错误环境或 CUDA library path 不完整，重新执行第 3 节的准备脚本。

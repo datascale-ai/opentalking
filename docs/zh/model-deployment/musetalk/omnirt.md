@@ -9,14 +9,20 @@ export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
 export OMNIRT_HOME="$DIGITAL_HUMAN_HOME/omnirt/.omnirt"
 
-# 网络较慢时先设置镜像。
+# 网络较慢时先设置镜像；缓存和临时目录放在同一个数据盘，避免跨盘拷贝和 /tmp 空间不足。
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 export UV_HTTP_TIMEOUT=300
+export UV_CACHE_DIR="$DIGITAL_HUMAN_HOME/.cache/uv"
+export PIP_CACHE_DIR="$DIGITAL_HUMAN_HOME/.cache/pip"
+export TMPDIR="$DIGITAL_HUMAN_HOME/tmp"
+mkdir -p "$UV_CACHE_DIR" "$PIP_CACHE_DIR" "$TMPDIR"
 
 cd "$OMNIRT_REPO"
 uv sync --extra server --python 3.11
 ```
+
+首次 `uv sync` 可能下载 CUDA 版 PyTorch、cuDNN、cuBLAS、NCCL、Triton 等数 GB 依赖。后续重建 venv 会复用 `$UV_CACHE_DIR`，明显快于首次部署。
 
 ## 2. 准备权重
 
@@ -24,7 +30,11 @@ uv sync --extra server --python 3.11
 
 ```bash title="终端"
 export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/musetalk-v15"
+# 如果全局 OMNIRT_MODEL_ROOT 已经用于其它模型，也可以只为 MuseTalk 覆盖：
+# export OMNIRT_MUSETALK_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/musetalk-v15"
 ```
+
+`$OMNIRT_MODEL_ROOT` 必须直接包含下面这些子目录。如果你的权重放在 `/opt/models/MuseTalk1.5` 这种目录，就把 `OMNIRT_MODEL_ROOT` 指到这一层，而不是它的父目录。
 
 目录结构与 local 模式一致：
 
@@ -83,7 +93,9 @@ bash scripts/quickstart/start_omnirt_musetalk.sh --device cuda --port 9000 --mus
 bash scripts/quickstart/start_omnirt_musetalk.sh --device cuda --port 9000 --musetalk-port 8766 --no-update
 ```
 
-脚本会安装 MuseTalk runtime、启动 MuseTalk WS backend、启动 OmniRT audio2video gateway，并等待 `/v1/audio2video/models` 报告 `musetalk`。首次安装会创建 `$OMNIRT_HOME/runtimes/musetalk/cuda/venv`，并从 PyPI 镜像和 PyTorch CUDA wheel 源（当前 CUDA 文档路径使用 cu124）安装依赖。如果 `download.pytorch.org` 访问不稳定，先在可联网机器准备 wheel cache 或复用已验证的 runtime venv，再重新执行本步骤。
+脚本会安装 MuseTalk runtime、启动 MuseTalk WS backend、启动 OmniRT audio2video gateway，并等待 `/v1/audio2video/models` 报告 `musetalk`。首次安装会创建 `$OMNIRT_HOME/runtimes/musetalk/cuda/venv`。MuseTalk CUDA runtime 固定使用 Python 3.10、PyTorch 2.0.1 + cu118、diffusers 0.30.2、transformers 4.39.2、accelerate 0.28.0 这组与官方 MuseTalk 1.5 兼容的依赖；不要升级到较新的 diffusers / transformers，否则会触发 `torch.xpu` 或 `torch.float8_e4m3fn` 这类与 torch 2.0.1 不兼容的导入错误。如果 `download.pytorch.org` 访问不稳定，先在可联网机器准备 wheel cache 或复用已验证的 runtime venv，再重新执行本步骤。
+
+脚本也会继承第 1 节的 `UV_CACHE_DIR`、`PIP_CACHE_DIR` 和 `TMPDIR`。不要把这些缓存放到空间紧张的系统盘 `/tmp`；MuseTalk runtime 首次安装会下载 PyTorch cu118、Triton、OpenMMLab 等 wheel，网络差时可能耗时较久。
 
 ## 5. 启动 OpenTalking
 

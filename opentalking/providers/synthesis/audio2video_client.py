@@ -206,6 +206,7 @@ class LocalAudio2VideoClient:
             raise FileNotFoundError(f"MuseTalk avatar preprocessing script not found: {script_path}")
 
         models_dir = self._resolve_musetalk_models_dir(repo_root)
+        official_python = self._resolve_musetalk_preprocess_python(repo_root)
         prepared_dir = avatar_path / "prepared"
         command = [
             sys.executable,
@@ -222,6 +223,8 @@ class LocalAudio2VideoClient:
             "--require-official",
             "--skip-if-ready",
         ]
+        if official_python is not None:
+            command.extend(["--official-python", str(official_python)])
         env = os.environ.copy()
         digital_home = env.get("DIGITAL_HUMAN_HOME")
         if digital_home:
@@ -230,6 +233,8 @@ class LocalAudio2VideoClient:
             env.setdefault("TMPDIR", str(tmp_dir))
             env.setdefault("TEMP", str(tmp_dir))
             env.setdefault("TMP", str(tmp_dir))
+        if official_python is not None:
+            env.setdefault("OPENTALKING_MUSETALK_PREPROCESS_PYTHON", str(official_python))
 
         logger.info("Preparing MuseTalk official avatar assets before session: %s", avatar_path)
         cp = subprocess.run(
@@ -270,6 +275,35 @@ class LocalAudio2VideoClient:
         if sibling_models.exists():
             return sibling_models
         return (repo_root / "models").resolve()
+
+    @staticmethod
+    def _resolve_musetalk_preprocess_python(repo_root: Path) -> Path | None:
+        raw = os.environ.get("OPENTALKING_MUSETALK_PREPROCESS_PYTHON")
+        if raw:
+            candidate = Path(raw).expanduser().absolute()
+            if candidate.is_file():
+                return candidate
+        digital_home = os.environ.get("DIGITAL_HUMAN_HOME")
+        if digital_home:
+            candidate = (
+                Path(digital_home)
+                / "runtimes"
+                / "musetalk-preprocess"
+                / "venv"
+                / "bin"
+                / "python"
+            ).expanduser().absolute()
+            if candidate.is_file():
+                return candidate
+        candidate = (
+            repo_root.parent
+            / "runtimes"
+            / "musetalk-preprocess"
+            / "venv"
+            / "bin"
+            / "python"
+        ).absolute()
+        return candidate if candidate.is_file() else None
 
     @staticmethod
     def _official_musetalk_prepared_ready(avatar_path: Path) -> bool:

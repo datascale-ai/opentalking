@@ -6,7 +6,6 @@ repo_name: datascale-ai/opentalking
 edit_uri: edit/main/docs/
 
 exclude_docs: |
-  superpowers/
   requirements.txt
   */design/architecture-review.md
   */design/realtime-digital-human-research.md

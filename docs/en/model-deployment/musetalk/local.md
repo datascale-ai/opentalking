@@ -62,7 +62,7 @@ ln -s face-parse-bisent face-parse-bisenet 2>/dev/null || true
 
 ## 3. Prepare MuseTalk source and preprocessing dependencies
 
-The local runtime uses OpenTalking's own `.venv` for both inference and official MuseTalk preprocessing by default. This reuses the torch / torchvision / cv2 packages from `uv sync --extra models` and avoids downloading the large PyTorch build from the official MuseTalk `requirements.txt` again.
+The local runtime uses OpenTalking's own `.venv` for realtime inference. Official MuseTalk avatar preprocessing needs the full OpenMMLab environment with `mmcv._ext`, so do not point the preprocessing Python at the main `.venv` when it only contains `mmcv-lite`. Use a separate `$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv`.
 
 ```bash title="Terminal"
 mkdir -p "$DIGITAL_HUMAN_HOME/model-repos"
@@ -71,15 +71,13 @@ git clone https://github.com/TMElyralab/MuseTalk.git "$DIGITAL_HUMAN_HOME/model-
 # If the server already has an official MuseTalk checkout, point OPENTALKING_MUSETALK_REPO to it.
 
 export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_HOME/.venv/bin/python"
+export OPENTALKING_MUSETALK_PREPROCESS_ROOT="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_MUSETALK_PREPROCESS_ROOT/venv/bin/python"
 
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m pip install json-tricks munkres pycocotools shapely terminaltables xtcocotools
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m pip install --no-build-isolation chumpy
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m mim install mmengine
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m pip install "mmcv-lite==2.0.1"
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m mim install "mmdet==3.1.0"
-"$OPENTALKING_MUSETALK_PREPROCESS_PYTHON" -m mim install "mmpose==1.1.0"
+bash scripts/quickstart/prepare_local_musetalk.sh
 ```
+
+`prepare_local_musetalk.sh` checks the main `.venv`, MuseTalk weights, the MuseTalk source checkout, and the separate preprocessing venv. The preprocessing venv installs `mmcv==2.0.1`, `mmdet==3.1.0`, `mmpose==1.1.0`, and other official preprocessing dependencies. The script also augments `LD_LIBRARY_PATH` for common CUDA 11.8 installations so `mmcv._ext` can load.
 
 `start_unified.sh --backend local --model musetalk` calls `scripts/quickstart/prepare_local_musetalk.sh` and checks the same dependencies again; the commands above are useful when you want to install them explicitly before startup.
 
@@ -87,7 +85,7 @@ export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_HOME/.venv/bin/pytho
 
 ```bash title="Terminal"
 export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_HOME/.venv/bin/python"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv/bin/python"
 export OPENTALKING_MUSETALK_DEVICE=cuda:0
 export OPENTALKING_TORCH_DEVICE=cuda:0
 # On multi-GPU hosts, optionally pin the visible GPU.
@@ -122,4 +120,4 @@ Expected status:
 {"id":"musetalk","backend":"local","connected":true,"reason":"local_runtime"}
 ```
 
-Open the WebUI, select a MuseTalk-capable avatar, and start one realtime conversation. The first session for an unprepared custom avatar can be slower than Wav2Lip or QuickTalk.
+Open the WebUI, select a MuseTalk-capable avatar, and start one realtime conversation. If the avatar does not have `prepared/prepared_info.json`, the first session runs official preprocessing first and is noticeably slower than Wav2Lip or QuickTalk; later sessions reuse the cache. If you see `No module named 'mmcv._ext'`, `OPENTALKING_MUSETALK_PREPROCESS_PYTHON` points at the wrong environment or the CUDA library path is incomplete; rerun the preparation script in section 3.

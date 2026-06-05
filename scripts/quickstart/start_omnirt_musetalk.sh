@@ -4,12 +4,11 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/../.." && pwd)"
 default_home="$(cd -- "$repo_root/.." && pwd)"
+# shellcheck disable=SC1091
+source "$script_dir/_helpers.sh"
 
 env_file="${OPENTALKING_QUICKSTART_ENV:-$script_dir/env}"
-if [[ -f "$env_file" ]]; then
-  # shellcheck disable=SC1090
-  source "$env_file"
-fi
+quickstart_source_env "$env_file"
 
 usage() {
   cat <<'USAGE'
@@ -93,9 +92,12 @@ esac
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
 export OMNIRT_REPO="${OMNIRT_REPO:-$DIGITAL_HUMAN_HOME/omnirt}"
-export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OMNIRT_MODEL_ROOT="${OMNIRT_MUSETALK_MODEL_ROOT:-${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}}"
 export OMNIRT_HOME="${OMNIRT_HOME:-$OMNIRT_REPO/.omnirt}"
 export TMPDIR="${TMPDIR:-$DIGITAL_HUMAN_HOME/tmp}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.cache/uv}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.cache/pip}"
+export OPENTALKING_MUSETALK_MMCV_FIND_LINKS="${OPENTALKING_MUSETALK_MMCV_FIND_LINKS:-$DIGITAL_HUMAN_HOME/wheelhouse}"
 
 omnirt_dir="$OMNIRT_REPO"
 run_dir="$DIGITAL_HUMAN_HOME/run"
@@ -105,7 +107,7 @@ gateway_log_file="$log_dir/omnirt-musetalk-gateway.log"
 backend_pid_file="$run_dir/omnirt-musetalk-ws.pid"
 backend_log_file="$log_dir/omnirt-musetalk-ws.log"
 
-mkdir -p "$run_dir" "$log_dir" "$TMPDIR"
+mkdir -p "$run_dir" "$log_dir" "$TMPDIR" "$UV_CACHE_DIR" "$PIP_CACHE_DIR"
 
 if [[ -f "$gateway_pid_file" ]]; then
   old_pid="$(cat "$gateway_pid_file" 2>/dev/null || true)"
@@ -156,9 +158,40 @@ omnirt_cli() {
   fi
 }
 
+_musetalk_runtime_ld_library_path() {
+  local py_bin="$1"
+  local paths=()
+  local site_dir
+  site_dir="$("$py_bin" - <<'PY' 2>/dev/null || true
+import site
+paths = site.getsitepackages()
+print(paths[0] if paths else "")
+PY
+)"
+  if [[ -n "$site_dir" && -d "$site_dir/torch/lib" ]]; then
+    paths+=("$site_dir/torch/lib")
+  fi
+  for candidate in \
+    /usr/local/cuda/lib64 \
+    /usr/local/cuda/extras/CUPTI/lib64 \
+    /usr/local/cuda-11.8/lib64 \
+    /usr/local/cuda-11.8/extras/CUPTI/lib64 \
+    /usr/local/cuda-11.8/nsight-systems-2022.4.2/target-linux-x64 \
+    /usr/local/cuda-11.7/lib64 \
+    /usr/local/cuda-11.7/extras/CUPTI/lib64; do
+    if [[ -d "$candidate" ]]; then
+      paths+=("$candidate")
+    fi
+  done
+  IFS=:
+  printf '%s' "${paths[*]}"
+}
+
 ensure_musetalk_openmmlab() {
   local py_bin="$1"
-  if "$py_bin" - <<'PY' >/dev/null 2>&1
+  local extra_ld
+  extra_ld="$(_musetalk_runtime_ld_library_path "$py_bin")"
+  if LD_LIBRARY_PATH="${extra_ld}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$py_bin" - <<'PY' >/dev/null 2>&1
 import importlib
 for name in ("mmengine", "mmcv", "mmdet", "mmpose"):
     importlib.import_module(name)
@@ -169,18 +202,24 @@ PY
 
   echo "Installing MuseTalk OpenMMLab dependencies into runtime venv ..."
   "$py_bin" -m pip install -U openmim
-  "$py_bin" -m mim install mmengine
-  "$py_bin" -m mim install "mmcv==2.0.1"
-  "$py_bin" -m mim install "mmdet==3.1.0"
-  "$py_bin" -m mim install "mmpose==1.1.0"
+  "$py_bin" -m pip install mmengine
+  if [[ -d "$OPENTALKING_MUSETALK_MMCV_FIND_LINKS" ]] && compgen -G "$OPENTALKING_MUSETALK_MMCV_FIND_LINKS/mmcv-2.0.1-*.whl" >/dev/null; then
+    "$py_bin" -m pip install --no-index --find-links "$OPENTALKING_MUSETALK_MMCV_FIND_LINKS" "mmcv==2.0.1"
+  else
+    "$py_bin" -m mim install "mmcv==2.0.1"
+  fi
+  "$py_bin" -m pip install --no-deps "mmdet==3.1.0"
+  "$py_bin" -m pip install --no-deps "mmpose==1.1.0"
 }
 
 check_musetalk_runtime_deps() {
   local py_bin="$1"
-  "$py_bin" - <<'PY'
+  local extra_ld
+  extra_ld="$(_musetalk_runtime_ld_library_path "$py_bin")"
+  LD_LIBRARY_PATH="${extra_ld}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" "$py_bin" - <<'PY'
 import importlib
 missing = []
-for name in ("torch", "torchvision", "torchaudio", "mmengine", "mmcv", "mmdet", "mmpose"):
+for name in ("torch", "torchvision", "torchaudio", "mmengine", "mmcv", "mmcv._ext", "mmdet", "mmpose"):
     try:
         importlib.import_module(name)
     except Exception as exc:
@@ -254,6 +293,8 @@ echo "  python:        $musetalk_python"
 if [[ "$install_deps" == "1" ]]; then
   ensure_musetalk_openmmlab "$musetalk_python" >>"$backend_log_file" 2>&1
 fi
+runtime_ld="$(_musetalk_runtime_ld_library_path "$musetalk_python")"
+export LD_LIBRARY_PATH="${runtime_ld}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 if ! check_musetalk_runtime_deps "$musetalk_python" >>"$backend_log_file" 2>&1; then
   echo "MuseTalk runtime dependencies are incomplete. Last log lines:" >&2
   tail -120 "$backend_log_file" >&2 || true

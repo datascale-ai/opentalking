@@ -162,6 +162,60 @@ def _prepare_repo_model_links(repo: Path, models_dir: Path) -> None:
                 shutil.copytree(target, link, dirs_exist_ok=True)
 
 
+def _prepend_env_path(env: dict[str, str], name: str, paths: list[Path]) -> None:
+    existing = env.get(name, "")
+    values: list[str] = []
+    seen: set[str] = set()
+    for path in paths:
+        value = str(path)
+        if value and path.exists() and value not in seen:
+            values.append(value)
+            seen.add(value)
+    for value in existing.split(os.pathsep):
+        if value and value not in seen:
+            values.append(value)
+            seen.add(value)
+    if values:
+        env[name] = os.pathsep.join(values)
+
+
+def _python_site_packages(py: Path) -> Path | None:
+    cp = subprocess.run(
+        [
+            str(py),
+            "-c",
+            "import site; paths=site.getsitepackages(); print(paths[0] if paths else '')",
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if cp.returncode != 0:
+        return None
+    raw = cp.stdout.strip()
+    return Path(raw) if raw else None
+
+
+def _augment_preprocess_env(env: dict[str, str], py: Path) -> None:
+    library_paths: list[Path] = []
+    site_packages = _python_site_packages(py)
+    if site_packages is not None:
+        library_paths.append(site_packages / "torch" / "lib")
+    library_paths.extend(
+        Path(path)
+        for path in (
+            "/usr/local/cuda/lib64",
+            "/usr/local/cuda/extras/CUPTI/lib64",
+            "/usr/local/cuda-11.8/lib64",
+            "/usr/local/cuda-11.8/extras/CUPTI/lib64",
+            "/usr/local/cuda-11.8/nsight-systems-2022.4.2/target-linux-x64",
+            "/usr/local/cuda-11.7/lib64",
+            "/usr/local/cuda-11.7/extras/CUPTI/lib64",
+        )
+    )
+    _prepend_env_path(env, "LD_LIBRARY_PATH", library_paths)
+
+
 def _official_preprocess_frames(
     *,
     repo: Path,
@@ -281,6 +335,7 @@ if __name__ == "__main__":
         )
         env = os.environ.copy()
         env.setdefault("TMPDIR", str(output_dir.parent))
+        _augment_preprocess_env(env, requested_python)
         cp = subprocess.run(
             [
                 str(requested_python),
