@@ -9,7 +9,9 @@ import {
   Sparkles,
   UserRoundCog,
   Volume2,
+  VolumeX,
 } from "lucide-react";
+import { useRef, useState } from "react";
 import type { SiteContent } from "../locales";
 
 const heroVideoUrl = "https://github.com/user-attachments/assets/44bbf1d9-75b1-4b0a-9704-c7f81c39446e";
@@ -22,6 +24,31 @@ type HeroStageProps = {
 };
 
 export function HeroStage({ copy }: HeroStageProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isSoundOn, setIsSoundOn] = useState(false);
+
+  const handleToggleSound = () => {
+    const video = videoRef.current;
+
+    if (!video) return;
+
+    if (isSoundOn) {
+      video.muted = true;
+      setIsSoundOn(false);
+      return;
+    }
+
+    video.muted = false;
+    video.volume = 0.8;
+    void video
+      .play()
+      .then(() => setIsSoundOn(true))
+      .catch(() => {
+        video.muted = true;
+        setIsSoundOn(false);
+      });
+  };
+
   return (
     <div className="hero-stage group">
       <div className="flex items-center justify-between border-b border-white/60 px-4 py-3">
@@ -38,10 +65,11 @@ export function HeroStage({ copy }: HeroStageProps) {
         <div className="absolute inset-4 rounded-lg bg-[linear-gradient(115deg,rgba(99,102,241,0.14),rgba(251,113,133,0.11),rgba(245,158,11,0.10))]" />
         <div className="relative mx-auto aspect-[9/16] w-full max-w-[320px] overflow-hidden rounded-lg bg-ink shadow-[0_24px_80px_rgba(8,17,31,0.26)] md:translate-x-2 md:translate-y-1.5">
           <video
+            ref={videoRef}
             className="h-full w-full object-cover transition duration-700 group-hover:scale-[1.018]"
             src={heroVideoUrl}
             autoPlay
-            muted
+            muted={!isSoundOn}
             loop
             playsInline
             controls={false}
@@ -51,6 +79,15 @@ export function HeroStage({ copy }: HeroStageProps) {
             <Activity className="h-4 w-4 text-mintline" />
             {copy.recordingLabel}
           </div>
+          <button
+            type="button"
+            className="focus-ring absolute bottom-4 right-4 z-10 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-white/35 bg-white/85 text-indigo-500 shadow-sm backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-white"
+            onClick={handleToggleSound}
+            aria-pressed={isSoundOn}
+            aria-label="Toggle video sound"
+          >
+            {!isSoundOn ? <VolumeX className="h-4 w-4 text-indigo-500" /> : <Volume2 className="h-4 w-4 text-indigo-500" />}
+          </button>
           <span className="scan-line" />
         </div>
 

@@ -496,7 +496,7 @@ export const siteContent: Record<Language, SiteContent> = {
     },
     heroStage: {
       sessionLabel: "live-session: 24fps",
-      recordingLabel: "实时录制 Demo",
+      recordingLabel: "实时录制演示",
       portraitLabel: "竖屏素材",
       productPanelTitle: "产品链路",
       pipelineItems: [
