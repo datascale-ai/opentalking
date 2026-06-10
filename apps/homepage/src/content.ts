@@ -134,7 +134,7 @@ export const caseStudies: CaseStudy[] = [
     features: ["实时问答", "角色音色", "字幕同步"],
     image: "/images/cases/live-sales.jpeg",
     accent: "amber",
-    videoUrl: "https://github.com/user-attachments/assets/826c777b-a9d2-49be-a1a0-b295c8a4b498",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d9d848c95001834806724661995/SaicQA0Ah7QA.mp4",
     sections: [
       {
         title: "场景挑战",
@@ -165,7 +165,7 @@ export const caseStudies: CaseStudy[] = [
     features: ["高质量形象", "长文本播报", "WebRTC 播放"],
     image: "/images/cases/news-anchor.jpeg",
     accent: "cyan",
-    videoUrl: "https://github.com/user-attachments/assets/34a282da-84cb-4134-bc4b-644356ac4f6f",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/1006e25f5001834806728756004/iscjqpxwBUAA.mp4",
     sections: [
       {
         title: "场景挑战",
@@ -196,7 +196,7 @@ export const caseStudies: CaseStudy[] = [
     features: ["多轮会话", "语音输入", "打断控制"],
     image: "/images/cases/companion.jpeg",
     accent: "mint",
-    videoUrl: "https://github.com/user-attachments/assets/44bbf1d9-75b1-4b0a-9704-c7f81c39446e",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/7865fde85001834806726853449/Uxof3qJw9oMA.mp4",
     sections: [
       {
         title: "场景挑战",
@@ -227,7 +227,7 @@ export const caseStudies: CaseStudy[] = [
     features: ["角色设定", "创意台词", "低门槛验证"],
     image: "/images/cases/anime-talk-show-preview.png",
     accent: "violet",
-    videoUrl: "https://github.com/user-attachments/assets/b3743604-7f50-40d1-9248-f2df80ea7308",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/53e1ae875001834806729384095/y2rxrMrkX9AA.mp4",
     sections: [
       {
         title: "场景挑战",
@@ -258,7 +258,7 @@ export const caseStudies: CaseStudy[] = [
     features: ["声音风格", "角色演绎", "后端切换"],
     image: "/images/cases/creative-performance-preview.png",
     accent: "rose",
-    videoUrl: "https://github.com/user-attachments/assets/98e813c2-f170-4cc8-b934-a77a72061d2e",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/26e7d30f5001834806725677498/DDWi04ozqdsA.mp4",
     sections: [
       {
         title: "场景挑战",

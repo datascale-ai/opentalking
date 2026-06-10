@@ -14,7 +14,7 @@ import {
 import { useRef, useState } from "react";
 import type { SiteContent } from "../locales";
 
-const heroVideoUrl = "https://github.com/user-attachments/assets/44bbf1d9-75b1-4b0a-9704-c7f81c39446e";
+const heroVideoUrl = "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/7865fde85001834806726853449/Uxof3qJw9oMA.mp4";
 
 const highlightIcons = [UserRoundCog, Volume2, DatabaseZap, Mic2];
 const pipelineIcons = [Bot, AudioLines, Cpu, Radio];
