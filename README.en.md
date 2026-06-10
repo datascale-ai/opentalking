@@ -70,7 +70,7 @@ The following demos show three frontend workflows in OpenTalking: real-time conv
     </td>
     <td align="center" valign="top" width="33%">
       <b>News Anchor</b><br/>
-      <video src="https://github.com/user-attachments/assets/1e357963-defb-4aaf-b9e4-0bc03cf43cc9" controls preload="metadata" width="248" height="441"></video><br/>
+      <video src="https://github.com/user-attachments/assets/ff7ba86b-927a-46f9-91a6-cfed5d332bda" controls preload="metadata" width="248" height="441"></video><br/>
     </td>
   </tr>
 </table>
