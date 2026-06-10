@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +11,11 @@ from httpx import ASGITransport, AsyncClient
 
 from apps.api.routes import agent as agent_routes
 from opentalking.agent import knowledge_store as knowledge_store_module
+from opentalking.agent.knowledge_index import (
+    LightRAGKnowledgeIndex,
+    LightRAGSearchResult,
+    LightRAGStatus,
+)
 from opentalking.agent.knowledge_store import KnowledgeStore
 
 
@@ -17,9 +23,124 @@ api_app = FastAPI()
 api_app.include_router(agent_routes.router)
 
 
+class FakeKnowledgeIndex:
+    def __init__(self) -> None:
+        self.indexed: list[dict[str, str]] = []
+        self.cleared: list[str] = []
+        self.deleted: list[tuple[str, str]] = []
+
+    def index_document(
+        self,
+        *,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        text: str,
+    ) -> None:
+        self.indexed.append(
+            {
+                "kb_id": kb_id,
+                "doc_id": doc_id,
+                "filename": filename,
+                "text": text,
+            }
+        )
+
+    def delete_document(self, *, kb_id: str, doc_id: str) -> None:
+        self.deleted.append((kb_id, doc_id))
+        self.indexed = [
+            item
+            for item in self.indexed
+            if not (item["kb_id"] == kb_id and item["doc_id"] == doc_id)
+        ]
+
+    def clear_knowledge_base(self, kb_id: str) -> None:
+        self.cleared.append(kb_id)
+        self.indexed = [item for item in self.indexed if item["kb_id"] != kb_id]
+
+    def query(self, *, kb_id: str, query: str, limit: int) -> list[LightRAGSearchResult]:
+        return [
+            LightRAGSearchResult(
+                doc_id=item["doc_id"],
+                text=f"LightRAG result for {query}: {item['text']}",
+                score=1.0,
+            )
+            for item in self.indexed
+            if item["kb_id"] == kb_id
+        ][:limit]
+
+    def status(self, *, kb_id: str) -> LightRAGStatus:
+        return LightRAGStatus(
+            available=True,
+            indexed=any(item["kb_id"] == kb_id for item in self.indexed),
+            reason="",
+        )
+
+
+class FailedKnowledgeIndex(FakeKnowledgeIndex):
+    def index_document(
+        self,
+        *,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        text: str,
+    ) -> None:
+        self.indexed.append(
+            {
+                "kb_id": kb_id,
+                "doc_id": doc_id,
+                "filename": filename,
+                "text": text,
+            }
+        )
+        raise RuntimeError("LightRAG index failed")
+
+
+class QueryFailedKnowledgeIndex(FakeKnowledgeIndex):
+    def query(self, *, kb_id: str, query: str, limit: int) -> list[LightRAGSearchResult]:
+        raise RuntimeError("LightRAG query failed")
+
+
+class LightRAGOnlyGuardStore(KnowledgeStore):
+    async def query(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("LightRAG-only diagnostics must not call KnowledgeStore.query")
+
+    async def query_many(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("LightRAG-only diagnostics must not call KnowledgeStore.query_many")
+
+
+def make_knowledge_store(tmp_path: Path, *, db_path: Path | None = None) -> KnowledgeStore:
+    return KnowledgeStore(
+        db_path=db_path or tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=FakeKnowledgeIndex(),
+    )
+
+
+def stored_document_path(db_path: Path, *, kb_id: str, doc_id: str) -> Path:
+    with sqlite3.connect(str(db_path)) as conn:
+        row = conn.execute(
+            "SELECT stored_path FROM knowledge_documents WHERE kb_id = ? AND id = ?",
+            (kb_id, doc_id),
+        ).fetchone()
+    assert row is not None
+    return Path(str(row[0]))
+
+
+def stored_file_path(db_path: Path, *, file_id: str) -> Path:
+    with sqlite3.connect(str(db_path)) as conn:
+        row = conn.execute(
+            "SELECT stored_path FROM knowledge_files WHERE id = ?",
+            (file_id,),
+        ).fetchone()
+    assert row is not None
+    return Path(str(row[0]))
+
+
 @pytest.mark.asyncio
 async def test_knowledge_store_lists_created_knowledge_bases(tmp_path: Path) -> None:
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     await store.initialize()
 
     assert await store.list_knowledge_bases() == []
@@ -34,7 +155,7 @@ async def test_knowledge_store_lists_created_knowledge_bases(tmp_path: Path) -> 
 
 @pytest.mark.asyncio
 async def test_knowledge_store_persists_avatar_knowledge_selection(tmp_path: Path) -> None:
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     await store.initialize()
     product = await store.create_knowledge_base("产品知识库")
     support = await store.create_knowledge_base("售后知识库")
@@ -97,7 +218,7 @@ async def test_knowledge_store_backfills_bases_from_existing_documents(tmp_path:
             ),
         )
 
-    store = KnowledgeStore(db_path=db_path, knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path, db_path=db_path)
     await store.initialize()
 
     bases = await store.list_knowledge_bases()
@@ -113,7 +234,7 @@ async def test_knowledge_store_backfills_bases_from_existing_documents(tmp_path:
 async def test_knowledge_store_add_document_creates_custom_base_summary(tmp_path: Path) -> None:
     source = tmp_path / "custom.md"
     source.write_text("custom knowledge base content", encoding="utf-8")
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     await store.initialize()
 
     await store.add_document(
@@ -134,7 +255,7 @@ async def test_knowledge_store_add_document_creates_custom_base_summary(tmp_path
 @pytest.mark.asyncio
 async def test_knowledge_store_persists_avatar_selection_positions(tmp_path: Path) -> None:
     db_path = tmp_path / "agent.sqlite"
-    store = KnowledgeStore(db_path=db_path, knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path, db_path=db_path)
     await store.initialize()
     first = await store.create_knowledge_base("First")
     second = await store.create_knowledge_base("Second")
@@ -200,7 +321,7 @@ async def test_knowledge_store_migrates_avatar_selection_positions_by_rowid(tmp_
                 ("singer", kb_id, now),
             )
 
-    store = KnowledgeStore(db_path=db_path, knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path, db_path=db_path)
     await store.initialize()
 
     assert await store.get_avatar_knowledge_bases("singer") == ["kb_b", "kb_a", "kb_c"]
@@ -213,7 +334,7 @@ async def test_knowledge_store_delete_base_preserves_db_when_file_cleanup_fails(
 ) -> None:
     source = tmp_path / "custom.md"
     source.write_text("custom knowledge base content", encoding="utf-8")
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     await store.initialize()
     created = await store.create_knowledge_base("Custom")
     await store.add_document(
@@ -241,14 +362,688 @@ async def test_knowledge_store_delete_base_preserves_db_when_file_cleanup_fails(
 
 
 @pytest.mark.asyncio
+async def test_knowledge_store_delete_document_removes_db_file_and_rebuilds_index(
+    tmp_path: Path,
+) -> None:
+    first_source = tmp_path / "first.md"
+    first_source.write_text("第一份资料", encoding="utf-8")
+    second_source = tmp_path / "second.md"
+    second_source.write_text("第二份资料", encoding="utf-8")
+    db_path = tmp_path / "agent.sqlite"
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=db_path,
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    first = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=first_source.name,
+        mime_type="text/markdown",
+        source_path=first_source,
+    )
+    second = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=second_source.name,
+        mime_type="text/markdown",
+        source_path=second_source,
+    )
+    first_stored_path = stored_document_path(db_path, kb_id=knowledge_base.id, doc_id=first.id)
+
+    deleted = await store.delete_document(kb_id=knowledge_base.id, doc_id=first.id)
+
+    assert deleted is True
+    assert not first_stored_path.exists()
+    assert index.cleared == [knowledge_base.id]
+    assert [item["doc_id"] for item in index.indexed] == [second.id]
+    with sqlite3.connect(str(db_path)) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_documents WHERE id = ?",
+            (first.id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id = ?",
+            (first.id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_documents WHERE id = ?",
+            (second.id,),
+        ).fetchone()[0] == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_delete_document_preserves_db_when_file_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "policy.md"
+    source.write_text("删除单个文档时，文件删不掉就不能先删 DB。", encoding="utf-8")
+    db_path = tmp_path / "agent.sqlite"
+    store = make_knowledge_store(tmp_path, db_path=db_path)
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    document = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    stored_path = stored_document_path(db_path, kb_id=knowledge_base.id, doc_id=document.id)
+    original_unlink = knowledge_store_module.Path.unlink
+
+    def fail_stored_file_unlink(self: Path, *args, **kwargs) -> None:
+        if self == stored_path:
+            raise PermissionError("locked")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(knowledge_store_module.Path, "unlink", fail_stored_file_unlink)
+
+    with pytest.raises(ValueError, match="failed to delete knowledge document file"):
+        await store.delete_document(kb_id=knowledge_base.id, doc_id=document.id)
+
+    assert stored_path.exists()
+    with sqlite3.connect(str(db_path)) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_documents WHERE id = ?",
+            (document.id,),
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE doc_id = ?",
+            (document.id,),
+        ).fetchone()[0] == document.chunk_count
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_delete_file_removes_pool_file_chunks_and_physical_file(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "shared.md"
+    source.write_text("共享文件池也要完整删除。", encoding="utf-8")
+    db_path = tmp_path / "agent.sqlite"
+    store = make_knowledge_store(tmp_path, db_path=db_path)
+    file_document = await store.add_file(
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    stored_path = stored_file_path(db_path, file_id=file_document.id)
+
+    deleted = await store.delete_file(file_document.id)
+
+    assert deleted is True
+    assert not stored_path.exists()
+    with sqlite3.connect(str(db_path)) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_files WHERE id = ?",
+            (file_document.id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_file_chunks WHERE file_id = ?",
+            (file_document.id,),
+        ).fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_delete_file_preserves_db_when_file_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "shared.md"
+    source.write_text("文件池删除失败也不能留下 DB 和文件不一致。", encoding="utf-8")
+    db_path = tmp_path / "agent.sqlite"
+    store = make_knowledge_store(tmp_path, db_path=db_path)
+    file_document = await store.add_file(
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    stored_path = stored_file_path(db_path, file_id=file_document.id)
+    original_unlink = knowledge_store_module.Path.unlink
+
+    def fail_stored_file_unlink(self: Path, *args, **kwargs) -> None:
+        if self == stored_path:
+            raise PermissionError("locked")
+        original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(knowledge_store_module.Path, "unlink", fail_stored_file_unlink)
+
+    with pytest.raises(ValueError, match="failed to delete knowledge file"):
+        await store.delete_file(file_document.id)
+
+    assert stored_path.exists()
+    with sqlite3.connect(str(db_path)) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_files WHERE id = ?",
+            (file_document.id,),
+        ).fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_file_chunks WHERE file_id = ?",
+            (file_document.id,),
+        ).fetchone()[0] == file_document.chunk_count
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_indexes_ready_documents_with_lightrag(tmp_path: Path) -> None:
+    source = tmp_path / "policy.md"
+    source.write_text("LightRAG 应该索引这份产品政策。", encoding="utf-8")
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+
+    document = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    assert document.status == "ready"
+    assert index.indexed == [
+        {
+            "kb_id": knowledge_base.id,
+            "doc_id": document.id,
+            "filename": "policy.md",
+            "text": "LightRAG 应该索引这份产品政策。",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_queries_lightrag_instead_of_sqlite_chunks(tmp_path: Path) -> None:
+    source = tmp_path / "policy.md"
+    source.write_text("这段文本不包含用户查询词，但是会由 LightRAG 返回。", encoding="utf-8")
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    chunks = await store.query_many(kb_ids=[knowledge_base.id], query="完全不同的查询词", limit=3)
+
+    assert chunks
+    assert chunks[0].filename == "policy.md"
+    assert chunks[0].text.startswith("LightRAG result for 完全不同的查询词")
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_rolls_back_lightrag_index_on_index_failure(tmp_path: Path) -> None:
+    source = tmp_path / "policy.md"
+    source.write_text("LightRAG 失败时不能留下半成品索引。", encoding="utf-8")
+    index = FailedKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+
+    document = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    assert document.status == "ready"
+    assert index.cleared == [knowledge_base.id]
+    assert index.status(kb_id=knowledge_base.id).indexed is False
+
+
+def test_lightrag_index_reports_unavailable_without_silent_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag")
+    monkeypatch.setattr(index, "_lightrag_available", lambda: False)
+
+    status = index.status(kb_id="kb_missing")
+
+    assert status.available is False
+    assert status.indexed is False
+    assert status.reason == "lightrag_not_installed"
+
+
+def test_lightrag_index_reports_empty_vector_chunks_as_not_indexed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag")
+    monkeypatch.setattr(index, "_lightrag_available", lambda: True)
+    working_dir = tmp_path / "lightrag" / "kb_empty"
+    working_dir.mkdir(parents=True)
+    (working_dir / "vdb_chunks.json").write_text(
+        json.dumps({"embedding_dim": 64, "data": [], "matrix": ""}),
+        encoding="utf-8",
+    )
+
+    status = index.status(kb_id="kb_empty")
+
+    assert status.available is True
+    assert status.indexed is False
+    assert status.reason == "index_empty"
+
+
+def test_lightrag_index_reports_failed_doc_status_as_not_indexed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag")
+    monkeypatch.setattr(index, "_lightrag_available", lambda: True)
+    working_dir = tmp_path / "lightrag" / "kb_failed"
+    working_dir.mkdir(parents=True)
+    (working_dir / "kv_store_doc_status.json").write_text(
+        json.dumps({"doc_failed": {"status": "failed", "error": "boom"}}),
+        encoding="utf-8",
+    )
+
+    status = index.status(kb_id="kb_failed")
+
+    assert status.available is True
+    assert status.indexed is False
+    assert status.reason == "index_failed"
+
+
+def test_lightrag_index_can_run_locally_without_tiktoken_network_cache(
+    tmp_path: Path,
+) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag", embedding_dim=64)
+
+    index.index_document(
+        kb_id="kb_smoke",
+        doc_id="doc_smoke",
+        filename="mixed.md",
+        text=(
+            "如果用户说“我部署卡住了，训练也卡住了”，健身教练可以回答："
+            "先检查基础层，训练里就是动作质量和恢复，部署里就是 WSL2、镜像和依赖。"
+        ),
+    )
+    results = index.query(
+        kb_id="kb_smoke",
+        query="我部署卡住了，训练也卡住了",
+        limit=1,
+    )
+
+    assert results
+    assert "先检查基础层" in results[0].text
+
+
+@pytest.mark.asyncio
+async def test_lightrag_index_runs_inside_existing_event_loop(tmp_path: Path) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag", embedding_dim=64)
+
+    index.index_document(
+        kb_id="kb_async",
+        doc_id="doc_async",
+        filename="mixed.md",
+        text=(
+            "如果用户说“我部署卡住了，训练也卡住了”，健身教练可以回答："
+            "先检查基础层，训练里就是动作质量和恢复，部署里就是 WSL2、镜像和依赖。"
+        ),
+    )
+    status = index.status(kb_id="kb_async")
+    results = index.query(
+        kb_id="kb_async",
+        query="我部署卡住了，训练也卡住了",
+        limit=1,
+    )
+
+    assert status.indexed is True
+    assert results
+    assert "先检查基础层" in results[0].text
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_does_not_fall_back_to_chunks_by_default_when_lightrag_query_fails(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "mixed.md"
+    source.write_text(
+        "如果用户说“我部署卡住了，训练也卡住了”，健身教练可以回答：先检查基础层。",
+        encoding="utf-8",
+    )
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=QueryFailedKnowledgeIndex(),
+    )
+    knowledge_base = await store.create_knowledge_base("混合知识库")
+    await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    chunks = await store.query(
+        kb_id=knowledge_base.id,
+        query="我部署卡住了，训练也卡住了",
+        limit=3,
+    )
+
+    assert chunks == []
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_can_enable_chunk_fallback_when_lightrag_query_fails(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "mixed.md"
+    source.write_text(
+        "如果用户说“我部署卡住了，训练也卡住了”，健身教练可以回答：先检查基础层。",
+        encoding="utf-8",
+    )
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=QueryFailedKnowledgeIndex(),
+        use_chunk_fallback=True,
+    )
+    knowledge_base = await store.create_knowledge_base("混合知识库")
+    await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    chunks = await store.query(
+        kb_id=knowledge_base.id,
+        query="我部署卡住了，训练也卡住了",
+        limit=3,
+    )
+
+    assert chunks
+    assert "先检查基础层" in chunks[0].text
+
+
+@pytest.mark.asyncio
+async def test_agent_lightrag_query_route_uses_index_without_chunk_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "mixed.md"
+    source.write_text(
+        "如果用户说“我部署卡住了，训练也卡住了”，健身教练可以回答：\n"
+        "先检查基础层，训练里就是动作质量和恢复，部署里就是 WSL2、镜像和依赖。",
+        encoding="utf-8",
+    )
+    index = FakeKnowledgeIndex()
+    store = LightRAGOnlyGuardStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    knowledge_base = await store.create_knowledge_base("混合知识库")
+    await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    transport = ASGITransport(app=api_app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            f"/agent/knowledge-bases/{knowledge_base.id}/lightrag/query",
+            json={"query": "我部署卡住了，训练也卡住了", "limit": 1},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "available": True,
+        "indexed": True,
+        "reason": "",
+        "results": [
+            {
+                "doc_id": index.indexed[0]["doc_id"],
+                "text": "LightRAG result for 我部署卡住了，训练也卡住了: "
+                "如果用户说“我部署卡住了，训练也卡住了”，健身教练可以回答：\n"
+                "先检查基础层，训练里就是动作质量和恢复，部署里就是 WSL2、镜像和依赖。",
+                "score": 1.0,
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_lightrag_query_route_reports_unavailable_without_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag")
+    monkeypatch.setattr(index, "_lightrag_available", lambda: False)
+    store = LightRAGOnlyGuardStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    transport = ASGITransport(app=api_app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/agent/knowledge-bases/kb_missing/lightrag/query",
+            json={"query": "我部署卡住了，训练也卡住了"},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "available": False,
+        "indexed": False,
+        "reason": "lightrag_not_installed",
+        "results": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_lightrag_query_route_reports_query_failure_without_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "mixed.md"
+    source.write_text("LightRAG 诊断路由只报告 LightRAG 自身状态。", encoding="utf-8")
+    store = LightRAGOnlyGuardStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=QueryFailedKnowledgeIndex(),
+    )
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    knowledge_base = await store.create_knowledge_base("混合知识库")
+    await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    transport = ASGITransport(app=api_app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            f"/agent/knowledge-bases/{knowledge_base.id}/lightrag/query",
+            json={"query": "诊断 LightRAG", "limit": 1},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "available": True,
+        "indexed": True,
+        "reason": "query_failed",
+        "results": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_imports_existing_file_into_lightrag(tmp_path: Path) -> None:
+    source = tmp_path / "shared.md"
+    source.write_text("共享文件导入知识库时也要写入 LightRAG。", encoding="utf-8")
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("复用知识库")
+
+    file_document = await store.add_file(
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    imported = await store.add_existing_document(
+        kb_id=knowledge_base.id,
+        source_doc_id=file_document.id,
+    )
+
+    assert imported.status == "ready"
+    assert index.indexed == [
+        {
+            "kb_id": knowledge_base.id,
+            "doc_id": imported.id,
+            "filename": "shared.md",
+            "text": "共享文件导入知识库时也要写入 LightRAG。",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_rebuilds_lightrag_index_after_document_delete(
+    tmp_path: Path,
+) -> None:
+    first_source = tmp_path / "first.md"
+    first_source.write_text("第一份资料", encoding="utf-8")
+    second_source = tmp_path / "second.md"
+    second_source.write_text("第二份资料", encoding="utf-8")
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    first = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=first_source.name,
+        mime_type="text/markdown",
+        source_path=first_source,
+    )
+    second = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=second_source.name,
+        mime_type="text/markdown",
+        source_path=second_source,
+    )
+
+    deleted = await store.delete_document(kb_id=knowledge_base.id, doc_id=first.id)
+
+    assert deleted is True
+    assert index.cleared == [knowledge_base.id]
+    assert [item["doc_id"] for item in index.indexed] == [second.id]
+    assert index.indexed[0]["text"] == "第二份资料"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_clears_lightrag_index_when_base_is_deleted(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "policy.md"
+    source.write_text("删除知识库时 LightRAG 工作目录也要清理。", encoding="utf-8")
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    deleted = await store.delete_knowledge_base(knowledge_base.id)
+
+    assert deleted is True
+    assert knowledge_base.id in index.cleared
+
+
+@pytest.mark.asyncio
+async def test_knowledge_store_delete_base_removes_db_rows_files_and_index(
+    tmp_path: Path,
+) -> None:
+    first_source = tmp_path / "first.md"
+    first_source.write_text("第一份资料", encoding="utf-8")
+    second_source = tmp_path / "second.md"
+    second_source.write_text("第二份资料", encoding="utf-8")
+    db_path = tmp_path / "agent.sqlite"
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=db_path,
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    first = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=first_source.name,
+        mime_type="text/markdown",
+        source_path=first_source,
+    )
+    second = await store.add_document(
+        kb_id=knowledge_base.id,
+        filename=second_source.name,
+        mime_type="text/markdown",
+        source_path=second_source,
+    )
+    await store.set_avatar_knowledge_bases("avatar", [knowledge_base.id])
+    first_path = stored_document_path(db_path, kb_id=knowledge_base.id, doc_id=first.id)
+    second_path = stored_document_path(db_path, kb_id=knowledge_base.id, doc_id=second.id)
+
+    deleted = await store.delete_knowledge_base(knowledge_base.id)
+
+    assert deleted is True
+    assert not first_path.exists()
+    assert not second_path.exists()
+    assert not (tmp_path / "knowledge" / knowledge_base.id).exists()
+    assert knowledge_base.id in index.cleared
+    with sqlite3.connect(str(db_path)) as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_bases WHERE id = ?",
+            (knowledge_base.id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_documents WHERE kb_id = ?",
+            (knowledge_base.id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE kb_id = ?",
+            (knowledge_base.id,),
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM avatar_knowledge_bases WHERE kb_id = ?",
+            (knowledge_base.id,),
+        ).fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
 async def test_agent_knowledge_document_routes_upload_list_delete(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    store = KnowledgeStore(
-        db_path=tmp_path / "agent.sqlite",
-        knowledge_root=tmp_path / "knowledge",
-    )
+    store = make_knowledge_store(tmp_path)
     monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
     knowledge_base = await store.create_knowledge_base("产品知识库")
     kb_id = knowledge_base.id
@@ -289,11 +1084,36 @@ async def test_agent_knowledge_document_routes_upload_list_delete(
 
 
 @pytest.mark.asyncio
+async def test_agent_knowledge_document_routes_reject_duplicate_kb_upload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = make_knowledge_store(tmp_path)
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    knowledge_base = await store.create_knowledge_base("产品知识库")
+    transport = httpx.ASGITransport(app=api_app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        first = await client.post(
+            f"/agent/knowledge-bases/{knowledge_base.id}/documents",
+            files={"file": ("产品知识.md", b"same content", "text/markdown")},
+        )
+        duplicate = await client.post(
+            f"/agent/knowledge-bases/{knowledge_base.id}/documents",
+            files={"file": ("产品知识.md", b"same content", "text/markdown")},
+        )
+
+    assert first.status_code == 200, first.text
+    assert duplicate.status_code == 409, duplicate.text
+    assert "already exists" in duplicate.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_agent_knowledge_routes_reuse_uploaded_documents(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
     scoped_base = await store.create_knowledge_base("临时知识库")
     transport = ASGITransport(app=api_app)
@@ -321,8 +1141,8 @@ async def test_agent_knowledge_routes_reuse_uploaded_documents(
             "/agent/knowledge-documents",
             files={"file": ("policy.md", b"shared policy text", "text/markdown")},
         )
-        assert duplicate_response.status_code == 200, duplicate_response.text
-        assert duplicate_response.json()["id"] == source["id"]
+        assert duplicate_response.status_code == 409, duplicate_response.text
+        assert "already exists" in duplicate_response.json()["detail"]
 
         all_documents_response = await client.get("/agent/knowledge-documents")
         assert all_documents_response.status_code == 200, all_documents_response.text
@@ -360,6 +1180,13 @@ async def test_agent_knowledge_routes_reuse_uploaded_documents(
         assert imported_response.status_code == 200, imported_response.text
         assert [document["filename"] for document in imported_response.json()["documents"]] == ["faq.txt"]
 
+        duplicate_import_response = await client.post(
+            f"/agent/knowledge-bases/{created['id']}/documents/import",
+            json={"document_ids": [second["id"]]},
+        )
+        assert duplicate_import_response.status_code == 409, duplicate_import_response.text
+        assert "already exists" in duplicate_import_response.json()["detail"]
+
         final_documents_response = await client.get(
             f"/agent/knowledge-bases/{created['id']}/documents"
         )
@@ -390,7 +1217,7 @@ async def test_agent_knowledge_base_routes_create_list_and_avatar_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
     transport = ASGITransport(app=api_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -433,7 +1260,7 @@ async def test_agent_knowledge_base_routes_rename_delete_without_default_guard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    store = KnowledgeStore(db_path=tmp_path / "agent.sqlite", knowledge_root=tmp_path / "knowledge")
+    store = make_knowledge_store(tmp_path)
     monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
     transport = ASGITransport(app=api_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -493,10 +1320,7 @@ async def test_agent_knowledge_document_route_reindexes_failed_document(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,
 ) -> None:
-    store = KnowledgeStore(
-        db_path=tmp_path / "agent.sqlite",
-        knowledge_root=tmp_path / "knowledge",
-    )
+    store = make_knowledge_store(tmp_path)
     monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
     knowledge_base = await store.create_knowledge_base("扫描知识库")
     kb_id = knowledge_base.id

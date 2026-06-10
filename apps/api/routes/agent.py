@@ -7,7 +7,11 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from opentalking.agent.context_builder import default_knowledge_store, default_memory_store
-from opentalking.agent.knowledge_store import MAX_DOCUMENT_BYTES, KnowledgeStore
+from opentalking.agent.knowledge_store import (
+    MAX_DOCUMENT_BYTES,
+    DuplicateKnowledgeDocumentError,
+    KnowledgeStore,
+)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -88,6 +92,24 @@ class ImportKnowledgeDocumentsRequest(BaseModel):
     document_ids: list[str]
 
 
+class LightRAGQueryRequest(BaseModel):
+    query: str
+    limit: int = 3
+
+
+class LightRAGQueryResultResponse(BaseModel):
+    doc_id: str
+    text: str
+    score: float
+
+
+class LightRAGQueryResponse(BaseModel):
+    available: bool
+    indexed: bool
+    reason: str
+    results: list[LightRAGQueryResultResponse]
+
+
 class DeleteKnowledgeDocumentResponse(BaseModel):
     deleted: bool
 
@@ -157,6 +179,8 @@ async def _add_uploaded_document(
                 mime_type=mime_type,
                 source_path=tmp.name,
             )
+        except DuplicateKnowledgeDocumentError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     return KnowledgeDocumentResponse(**asdict(doc))
@@ -186,6 +210,8 @@ async def _add_uploaded_file(
                 mime_type=mime_type,
                 source_path=tmp.name,
             )
+        except DuplicateKnowledgeDocumentError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     return KnowledgeDocumentResponse(**asdict(doc))
@@ -250,6 +276,13 @@ async def create_knowledge_base(
             except Exception:
                 pass
         raise HTTPException(status_code=404, detail="knowledge file not found") from exc
+    except DuplicateKnowledgeDocumentError as exc:
+        if "knowledge_base" in locals():
+            try:
+                await store.delete_knowledge_base(knowledge_base.id)
+            except Exception:
+                pass
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         if "knowledge_base" in locals():
             try:
@@ -286,6 +319,42 @@ async def delete_knowledge_base(kb_id: str) -> DeleteKnowledgeBaseResponse:
     if not deleted:
         raise HTTPException(status_code=404, detail="knowledge base not found")
     return DeleteKnowledgeBaseResponse(deleted=True)
+
+
+@router.post(
+    "/knowledge-bases/{kb_id}/lightrag/query",
+    response_model=LightRAGQueryResponse,
+)
+async def query_lightrag_index(
+    kb_id: str,
+    request: LightRAGQueryRequest,
+) -> LightRAGQueryResponse:
+    query = request.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query is required")
+    limit = min(max(1, request.limit), 20)
+    store = default_knowledge_store()
+    status = store.knowledge_index.status(kb_id=kb_id)
+    results = []
+    if status.available and status.indexed:
+        try:
+            results = store.knowledge_index.query(kb_id=kb_id, query=query, limit=limit)
+        except Exception:
+            return LightRAGQueryResponse(
+                available=status.available,
+                indexed=status.indexed,
+                reason="query_failed",
+                results=[],
+            )
+    return LightRAGQueryResponse(
+        available=status.available,
+        indexed=status.indexed,
+        reason=status.reason,
+        results=[
+            LightRAGQueryResultResponse(**asdict(result))
+            for result in results
+        ],
+    )
 
 
 @router.get(
@@ -401,6 +470,8 @@ async def import_knowledge_documents(
             )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="knowledge file not found") from exc
+    except DuplicateKnowledgeDocumentError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return KnowledgeDocumentsResponse(

@@ -65,10 +65,14 @@ def test_asset_library_limits_knowledge_upload_formats_and_normalizes_documents(
     source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
 
     assert 'const KNOWLEDGE_FILE_ACCEPT = ".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"' in source
+    assert 'const KNOWLEDGE_FILE_FORMAT_LABEL = ".txt、.md、.markdown、.pdf"' in source
+    assert "KNOWLEDGE_FILE_HINT" in source
+    assert "KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE" in source
     assert "accept={KNOWLEDGE_FILE_ACCEPT}" in source
+    assert source.count("{KNOWLEDGE_FILE_HINT}") >= 3
     assert "filterSupportedKnowledgeFiles" in source
     assert "unsupportedFiles.length" in source
-    assert "仅支持 .txt、.md、.markdown、.pdf 文件" in source
+    assert "onNotify?.(KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE" in source
     assert "normalizeKnowledgeDocuments" in source
     assert "normalizeKnowledgeDocument" in source
     assert "String(record.id ??" in source

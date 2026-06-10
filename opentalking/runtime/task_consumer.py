@@ -13,7 +13,8 @@ from typing import Any
 from opentalking.core.config import get_settings
 from opentalking.core.queue_status import set_flashtalk_queue_status
 from opentalking.core.redis_keys import TASK_QUEUE
-from opentalking.core.session_store import set_session_state
+from opentalking.core.session_store import get_session_record, set_session_state
+from opentalking.agent.context_builder import AgentSessionConfig
 from opentalking.runtime.bus import publish_event
 from opentalking.pipeline.session.runner import SessionRunner
 from opentalking.pipeline.speak.synthesis_runner import FlashTalkRunner
@@ -156,6 +157,43 @@ def _task_knowledge_base_ids(task: dict[str, Any]) -> list[str]:
     return selected
 
 
+def _update_runner_agent_knowledge_bases(runner: Any, knowledge_base_ids: list[str]) -> None:
+    current = getattr(runner, "agent_config", None)
+    if current is None:
+        return
+    knowledge_enabled = bool(knowledge_base_ids)
+    runner.agent_config = AgentSessionConfig(
+        user_id=getattr(current, "user_id", None),
+        agent_enabled=bool(getattr(current, "agent_enabled", False) or knowledge_enabled),
+        memory_enabled=bool(getattr(current, "memory_enabled", False)),
+        knowledge_enabled=knowledge_enabled,
+        knowledge_base_id=knowledge_base_ids[0] if knowledge_base_ids else None,
+        knowledge_base_ids=knowledge_base_ids,
+    )
+
+
+async def _task_with_latest_agent_knowledge(task: dict[str, Any], r: Any, sid: str) -> dict[str, Any]:
+    try:
+        record = await get_session_record(r, sid)
+    except Exception:
+        log.warning("failed to read latest session agent knowledge config: session=%s", sid, exc_info=True)
+        return task
+    if not record:
+        return task
+    merged = dict(task)
+    for key in (
+        "agent_enabled",
+        "memory_enabled",
+        "knowledge_enabled",
+        "knowledge_base_id",
+        "knowledge_base_ids",
+        "user_id",
+    ):
+        if key in record:
+            merged[key] = record[key]
+    return merged
+
+
 def _create_runner(
     task: dict[str, Any],
     r: Any,
@@ -290,6 +328,7 @@ async def _do_init(
     sid: str,
 ) -> None:
     """Create runner and call prepare(); caller holds the slot lock if needed."""
+    task = await _task_with_latest_agent_knowledge(task, r, sid)
     runner = _create_runner(task, r, avatars_root, device)
     runners[sid] = runner
     try:
@@ -536,6 +575,8 @@ async def handle_worker_task(
                 tts_model=tts_model or None,
                 enqueue_unix=enqueue_value,
             )
+    elif cmd == "update_agent_knowledge_bases":
+        _update_runner_agent_knowledge_bases(runner, _task_knowledge_base_ids(task))
     elif cmd == "speak_flashtalk_audio":
         pcm_path = task.get("pcm_path")
         pcm_key = task.get("pcm_key")

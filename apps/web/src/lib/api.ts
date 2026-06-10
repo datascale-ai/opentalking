@@ -246,6 +246,15 @@ export type AvatarKnowledgeBasesRequest = {
   knowledge_base_ids: string[];
 };
 
+export type SessionKnowledgeBasesRequest = {
+  knowledge_base_ids: string[];
+};
+
+export type SessionKnowledgeBasesResponse = {
+  session_id: string;
+  knowledge_base_ids: string[];
+};
+
 export type CreateSessionRequest = {
   persona_id?: string;
   avatar_id?: string;

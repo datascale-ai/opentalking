@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -102,6 +103,139 @@ def test_task_knowledge_base_ids_do_not_fallback_to_default() -> None:
         "kb_a",
         "kb_b",
     ]
+
+
+def test_handle_worker_task_updates_live_runner_knowledge_base_selection() -> None:
+    class RunnerWithAgentConfig(StubRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.agent_config = SimpleNamespace(
+                user_id="client_test",
+                agent_enabled=True,
+                memory_enabled=False,
+                knowledge_enabled=True,
+                knowledge_base_id="kb_old",
+                knowledge_base_ids=["kb_old"],
+            )
+
+    runner = RunnerWithAgentConfig()
+    runners = {"sess_live": runner}
+
+    async def run() -> None:
+        await handle_worker_task(
+            {
+                "cmd": "update_agent_knowledge_bases",
+                "session_id": "sess_live",
+                "knowledge_base_ids": ["kb_new", "kb_second", "kb_new"],
+            },
+            InMemoryRedis(),
+            Path("examples/avatars"),
+            "cpu",
+            runners,  # type: ignore[arg-type]
+        )
+
+    asyncio.run(run())
+
+    assert runner.agent_config.knowledge_enabled is True
+    assert runner.agent_config.knowledge_base_id == "kb_new"
+    assert runner.agent_config.knowledge_base_ids == ["kb_new", "kb_second"]
+
+
+def test_handle_worker_task_can_clear_live_runner_knowledge_base_selection() -> None:
+    class RunnerWithAgentConfig(StubRunner):
+        def __init__(self) -> None:
+            super().__init__()
+            self.agent_config = SimpleNamespace(
+                user_id="client_test",
+                agent_enabled=True,
+                memory_enabled=False,
+                knowledge_enabled=True,
+                knowledge_base_id="kb_old",
+                knowledge_base_ids=["kb_old"],
+            )
+
+    runner = RunnerWithAgentConfig()
+    runners = {"sess_live": runner}
+
+    async def run() -> None:
+        await handle_worker_task(
+            {
+                "cmd": "update_agent_knowledge_bases",
+                "session_id": "sess_live",
+                "knowledge_base_ids": [],
+            },
+            InMemoryRedis(),
+            Path("examples/avatars"),
+            "cpu",
+            runners,  # type: ignore[arg-type]
+        )
+
+    asyncio.run(run())
+
+    assert runner.agent_config.agent_enabled is True
+    assert runner.agent_config.knowledge_enabled is False
+    assert runner.agent_config.knowledge_base_id is None
+    assert runner.agent_config.knowledge_base_ids == []
+
+
+def test_init_task_uses_latest_session_knowledge_base_selection() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeRunner(StubRunner):
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__()
+            captured.update(kwargs)
+
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(task_consumer, "SessionRunner", FakeRunner)
+        monkeypatch.setattr(
+            task_consumer,
+            "resolve_model_backend",
+            lambda *_args, **_kwargs: type("Backend", (), {"backend": "local"})(),
+        )
+        monkeypatch.setattr(task_consumer, "get_adapter", lambda _model: object())
+
+        async def run() -> None:
+            redis = InMemoryRedis()
+            await redis.hset(
+                session_key("sess_init_latest"),
+                mapping={
+                    "session_id": "sess_init_latest",
+                    "avatar_id": "singer",
+                    "model": "other_local",
+                    "state": "created",
+                    "agent_enabled": "1",
+                    "memory_enabled": "0",
+                    "knowledge_enabled": "1",
+                    "knowledge_base_id": "kb_latest",
+                    "knowledge_base_ids": '["kb_latest"]',
+                },
+            )
+            await handle_worker_task(
+                {
+                    "cmd": "init",
+                    "session_id": "sess_init_latest",
+                    "avatar_id": "singer",
+                    "model": "other_local",
+                    "agent_enabled": True,
+                    "memory_enabled": False,
+                    "knowledge_enabled": True,
+                    "knowledge_base_id": "kb_stale",
+                    "knowledge_base_ids": ["kb_stale"],
+                },
+                redis,
+                Path("examples/avatars"),
+                "cpu",
+                {},
+            )
+
+        asyncio.run(run())
+    finally:
+        monkeypatch.undo()
+
+    assert captured["knowledge_base_id"] == "kb_latest"
+    assert captured["knowledge_base_ids"] == ["kb_latest"]
 
 
 def test_create_runner_passes_wav2lip_postprocess_mode_to_unified_local_runner(

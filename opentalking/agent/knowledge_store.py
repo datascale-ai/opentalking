@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import os
 import re
 import shutil
@@ -13,10 +14,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from opentalking.agent.knowledge_index import KnowledgeIndex, default_knowledge_index
+
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
 SUPPORTED_EXTENSIONS = SUPPORTED_TEXT_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS
+SUPPORTED_EXTENSIONS_LABEL = ".txt, .md, .markdown and .pdf"
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 MAX_CHUNK_CHARS = 1200
 CHUNK_OVERLAP_CHARS = 160
@@ -58,6 +64,10 @@ class KnowledgeChunk:
     filename: str
     text: str
     score: float
+
+
+class DuplicateKnowledgeDocumentError(ValueError):
+    """Raised when the same filename/content is uploaded twice."""
 
 
 def _utc_now() -> str:
@@ -382,9 +392,24 @@ def _split_chunks(text: str) -> list[str]:
 
 
 class KnowledgeStore:
-    def __init__(self, *, db_path: str | Path, knowledge_root: str | Path) -> None:
+    def __init__(
+        self,
+        *,
+        db_path: str | Path,
+        knowledge_root: str | Path,
+        knowledge_index: KnowledgeIndex | None = None,
+        use_chunk_fallback: bool = False,
+    ) -> None:
         self.db_path = Path(db_path)
         self.knowledge_root = Path(knowledge_root)
+        self._knowledge_index = knowledge_index
+        self.use_chunk_fallback = use_chunk_fallback
+
+    @property
+    def knowledge_index(self) -> KnowledgeIndex:
+        if self._knowledge_index is None:
+            self._knowledge_index = default_knowledge_index(self.knowledge_root)
+        return self._knowledge_index
 
     async def initialize(self) -> None:
         self._initialize_sync()
@@ -679,6 +704,7 @@ class KnowledgeStore:
             kb_dir = self.knowledge_root / kb_id
             if kb_dir.exists():
                 shutil.rmtree(kb_dir)
+            self.knowledge_index.clear_knowledge_base(kb_id)
         except FileNotFoundError:
             pass
         except Exception as exc:
@@ -809,7 +835,21 @@ class KnowledgeStore:
             raise ValueError("document is larger than 20MB")
         suffix = Path(filename).suffix.lower() or source_path.suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
-            raise ValueError("only .txt, .md and .pdf documents are supported")
+            raise ValueError(f"only {SUPPORTED_EXTENSIONS_LABEL} documents are supported")
+        sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        with self._connect() as conn:
+            existing_row = conn.execute(
+                """
+                SELECT id
+                FROM knowledge_documents
+                WHERE kb_id = ? AND filename = ? AND sha256 = ?
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT 1
+                """,
+                (kb_id, filename, sha256),
+            ).fetchone()
+        if existing_row is not None:
+            raise DuplicateKnowledgeDocumentError(f"knowledge document already exists: {filename}")
 
         doc_id = _new_id("doc")
         kb_dir = self.knowledge_root / kb_id / "documents"
@@ -817,7 +857,6 @@ class KnowledgeStore:
         stored_name = f"{doc_id}{suffix}"
         stored_path = kb_dir / stored_name
         shutil.copyfile(source_path, stored_path)
-        sha256 = hashlib.sha256(stored_path.read_bytes()).hexdigest()
         text, error = _extract_text(stored_path)
         chunks = _split_chunks(text)
         status = "ready" if chunks else "error"
@@ -873,6 +912,13 @@ class KnowledgeStore:
                         " ".join(sorted(_tokenize(chunk))),
                     ),
                 )
+        if status == "ready":
+            self._index_document_best_effort_sync(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=filename,
+                text=text,
+            )
         return self._get_document_sync(kb_id, doc_id)
 
     def _add_file_sync(
@@ -892,7 +938,7 @@ class KnowledgeStore:
             raise ValueError("document is larger than 20MB")
         suffix = Path(filename).suffix.lower() or source_path.suffix.lower()
         if suffix not in SUPPORTED_EXTENSIONS:
-            raise ValueError("only .txt, .md and .pdf documents are supported")
+            raise ValueError(f"only {SUPPORTED_EXTENSIONS_LABEL} documents are supported")
 
         sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
         with self._connect() as conn:
@@ -907,7 +953,7 @@ class KnowledgeStore:
                 (filename, sha256),
             ).fetchone()
         if existing_row is not None:
-            return self._get_file_sync(str(existing_row["id"]))
+            raise DuplicateKnowledgeDocumentError(f"knowledge file already exists: {filename}")
 
         file_id = _new_id("file")
         pool_dir = self.knowledge_root / "_file_pool"
@@ -1031,12 +1077,14 @@ class KnowledgeStore:
             if reference_rows:
                 names = "、".join(f"「{str(reference_row['name'])}」" for reference_row in reference_rows)
                 raise ValueError(f"请先删除知识库{names}后再删除文件")
-            conn.execute("DELETE FROM knowledge_file_chunks WHERE file_id = ?", (clean_file_id,))
-            conn.execute("DELETE FROM knowledge_files WHERE id = ?", (clean_file_id,))
         try:
             Path(str(row["stored_path"])).unlink(missing_ok=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise ValueError("failed to delete knowledge file") from exc
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("DELETE FROM knowledge_file_chunks WHERE file_id = ?", (clean_file_id,))
+            conn.execute("DELETE FROM knowledge_files WHERE id = ?", (clean_file_id,))
         return True
 
     def _get_document_sync(self, kb_id: str, doc_id: str) -> KnowledgeDocument:
@@ -1064,6 +1112,64 @@ class KnowledgeStore:
         if row is None:
             return None
         return Path(str(row["stored_path"]))
+
+    def _index_document_best_effort_sync(
+        self,
+        *,
+        kb_id: str,
+        doc_id: str,
+        filename: str,
+        text: str,
+    ) -> None:
+        try:
+            self.knowledge_index.index_document(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=filename,
+                text=text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "LightRAG indexing failed for knowledge document %s in %s; clearing stale index",
+                doc_id,
+                kb_id,
+                exc_info=exc,
+            )
+            try:
+                self.knowledge_index.clear_knowledge_base(kb_id)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "failed to clear LightRAG index after indexing failure for %s",
+                    kb_id,
+                    exc_info=True,
+                )
+
+    def _rebuild_knowledge_index_sync(self, kb_id: str) -> None:
+        kb_id = _safe_kb_id(kb_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, filename, stored_path
+                FROM knowledge_documents
+                WHERE kb_id = ? AND status = 'ready'
+                ORDER BY created_at ASC, id ASC
+                """,
+                (kb_id,),
+            ).fetchall()
+        self.knowledge_index.clear_knowledge_base(kb_id)
+        for row in rows:
+            stored_path = Path(str(row["stored_path"]))
+            if not stored_path.is_file():
+                continue
+            text, _error = _extract_text(stored_path)
+            if not _split_chunks(text):
+                continue
+            self._index_document_best_effort_sync(
+                kb_id=kb_id,
+                doc_id=str(row["id"]),
+                filename=str(row["filename"]),
+                text=text,
+            )
 
     def _add_existing_document_sync(self, *, kb_id: str, source_doc_id: str) -> KnowledgeDocument:
         self._initialize_sync()
@@ -1093,7 +1199,9 @@ class KnowledgeStore:
                 (kb_id, str(source_row["filename"]), str(source_row["sha256"])),
             ).fetchone()
         if existing_row is not None:
-            return self._get_document_sync(kb_id, str(existing_row["id"]))
+            raise DuplicateKnowledgeDocumentError(
+                f"knowledge document already exists: {str(source_row['filename'])}"
+            )
         source_path = Path(str(source_row["stored_path"]))
         if not source_path.is_file():
             raise ValueError("stored knowledge document file is missing")
@@ -1161,6 +1269,14 @@ class KnowledgeStore:
                         str(chunk_row["tokens"]),
                     ),
                 )
+        if str(source_row["status"]) == "ready" and chunk_rows:
+            text = "\n\n".join(str(chunk_row["text"]) for chunk_row in chunk_rows).strip()
+            self._index_document_best_effort_sync(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=str(source_row["filename"]),
+                text=text,
+            )
         return self._get_document_sync(kb_id, doc_id)
 
     def _reindex_document_sync(self, kb_id: str, doc_id: str) -> KnowledgeDocument:
@@ -1171,6 +1287,7 @@ class KnowledgeStore:
             raise KeyError("knowledge document not found")
         if not stored_path.is_file():
             raise ValueError("stored knowledge document file is missing")
+        filename = self._get_document_sync(kb_id, doc_id).filename
         text, error = _extract_text(stored_path)
         chunks = _split_chunks(text)
         status = "ready" if chunks else "error"
@@ -1203,6 +1320,14 @@ class KnowledgeStore:
                         " ".join(sorted(_tokenize(chunk))),
                     ),
                 )
+        self.knowledge_index.delete_document(kb_id=kb_id, doc_id=doc_id)
+        if status == "ready":
+            self._index_document_best_effort_sync(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=filename,
+                text=text,
+            )
         return self._get_document_sync(kb_id, doc_id)
 
     def _delete_document_sync(self, kb_id: str, doc_id: str) -> bool:
@@ -1216,51 +1341,112 @@ class KnowledgeStore:
             ).fetchone()
             if row is None:
                 return False
-            conn.execute("DELETE FROM knowledge_chunks WHERE kb_id = ? AND doc_id = ?", (kb_id, doc_id))
-            conn.execute("DELETE FROM knowledge_documents WHERE kb_id = ? AND id = ?", (kb_id, doc_id))
         try:
             Path(str(row["stored_path"])).unlink(missing_ok=True)
-        except Exception:
-            pass
+        except Exception as exc:
+            raise ValueError("failed to delete knowledge document file") from exc
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("DELETE FROM knowledge_chunks WHERE kb_id = ? AND doc_id = ?", (kb_id, doc_id))
+            conn.execute("DELETE FROM knowledge_documents WHERE kb_id = ? AND id = ?", (kb_id, doc_id))
+        self._rebuild_knowledge_index_sync(kb_id)
         return True
 
     def _query_sync(self, kb_id: str, query: str, limit: int) -> list[KnowledgeChunk]:
         self._initialize_sync()
         kb_id = _safe_kb_id(kb_id)
-        query_tokens = _tokenize(query)
-        if not query_tokens:
+        if not query.strip():
             return []
         safe_limit = min(8, max(1, int(limit)))
+        chunks = self._query_lightrag_sync(kb_id, query, safe_limit)
+        if chunks:
+            return chunks
+
+        if not self.use_chunk_fallback:
+            return []
+
+        return self._query_chunk_fallback_sync(kb_id, query, safe_limit)
+
+    def _query_lightrag_sync(
+        self,
+        kb_id: str,
+        query: str,
+        safe_limit: int,
+    ) -> list[KnowledgeChunk]:
         with self._connect() as conn:
-            rows = conn.execute(
+            filename_rows = conn.execute(
                 """
-                SELECT c.id, c.doc_id, c.kb_id, c.text, c.tokens, d.filename
-                FROM knowledge_chunks c
-                JOIN knowledge_documents d ON d.id = c.doc_id
-                WHERE c.kb_id = ? AND d.status = 'ready'
+                SELECT id, filename
+                FROM knowledge_documents
+                WHERE kb_id = ? AND status = 'ready'
+                ORDER BY updated_at DESC, created_at DESC
                 """,
                 (kb_id,),
             ).fetchall()
-        scored: list[tuple[float, sqlite3.Row]] = []
+        filenames_by_doc_id = {str(row["id"]): str(row["filename"]) for row in filename_rows}
+        fallback_filename = "LightRAG"
+        try:
+            results = self.knowledge_index.query(kb_id=kb_id, query=query, limit=safe_limit)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "LightRAG query failed for knowledge base %s; using chunk fallback if enabled",
+                kb_id,
+                exc_info=exc,
+            )
+            return []
+        chunks = [
+            KnowledgeChunk(
+                id=_new_id("rag"),
+                doc_id=result.doc_id,
+                kb_id=kb_id,
+                filename=filenames_by_doc_id.get(result.doc_id, fallback_filename),
+                text=result.text,
+                score=float(result.score),
+            )
+            for result in results[:safe_limit]
+            if result.text.strip()
+        ]
+        return chunks
+
+    def _query_chunk_fallback_sync(
+        self,
+        kb_id: str,
+        query: str,
+        safe_limit: int,
+    ) -> list[KnowledgeChunk]:
+        query_tokens = _tokenize(query)
+        if not query_tokens:
+            return []
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT c.id, c.doc_id, c.kb_id, d.filename, c.text, c.tokens
+                FROM knowledge_chunks c
+                JOIN knowledge_documents d ON d.id = c.doc_id
+                WHERE c.kb_id = ? AND d.status = 'ready'
+                ORDER BY d.updated_at DESC, c.chunk_index ASC
+                """,
+                (kb_id,),
+            ).fetchall()
+        scored: list[KnowledgeChunk] = []
         for row in rows:
             chunk_tokens = set(str(row["tokens"] or "").split())
             overlap = query_tokens & chunk_tokens
             if not overlap:
                 continue
-            score = len(overlap) / max(1.0, len(query_tokens) ** 0.5)
-            scored.append((score, row))
-        scored.sort(key=lambda item: item[0], reverse=True)
-        return [
-            KnowledgeChunk(
-                id=str(row["id"]),
-                doc_id=str(row["doc_id"]),
-                kb_id=str(row["kb_id"]),
-                filename=str(row["filename"]),
-                text=str(row["text"]),
-                score=float(score),
+            score = len(overlap) / max(1, len(query_tokens))
+            scored.append(
+                KnowledgeChunk(
+                    id=str(row["id"]),
+                    doc_id=str(row["doc_id"]),
+                    kb_id=str(row["kb_id"]),
+                    filename=str(row["filename"]),
+                    text=str(row["text"]),
+                    score=score,
+                )
             )
-            for score, row in scored[:safe_limit]
-        ]
+        scored.sort(key=lambda chunk: chunk.score, reverse=True)
+        return scored[:safe_limit]
 
     def _query_many_sync(self, kb_ids: list[str], query: str, limit: int) -> list[KnowledgeChunk]:
         selected: list[str] = []
@@ -1277,7 +1463,16 @@ class KnowledgeStore:
         safe_limit = min(8, max(1, int(limit)))
         chunks: list[KnowledgeChunk] = []
         for kb_id in selected:
-            chunks.extend(self._query_sync(kb_id, query, safe_limit))
+            chunks.extend(self._query_lightrag_sync(kb_id, query, safe_limit))
+        chunks.sort(key=lambda chunk: chunk.score, reverse=True)
+        if chunks:
+            return chunks[:safe_limit]
+
+        if not self.use_chunk_fallback:
+            return []
+
+        for kb_id in selected:
+            chunks.extend(self._query_chunk_fallback_sync(kb_id, query, safe_limit))
         chunks.sort(key=lambda chunk: chunk.score, reverse=True)
         return chunks[:safe_limit]
 

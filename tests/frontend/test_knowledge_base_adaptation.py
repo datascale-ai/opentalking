@@ -98,8 +98,24 @@ def test_settings_panel_places_knowledge_between_avatar_and_model() -> None:
     assert "已就绪" in source
     assert "准备中" in source
     assert "knowledgeBaseReady" in source
-    assert "disabled={configLocked || !knowledgeBaseReady}" in source
+    assert "disabled={!knowledgeBaseReady}" in source
     assert "knowledgeDocuments" not in source
+
+
+def test_realtime_knowledge_selection_can_sync_to_live_session() -> None:
+    app_source = (ROOT / "apps/web/src/App.tsx").read_text(encoding="utf-8")
+    settings_source = (ROOT / "apps/web/src/components/SettingsPanel.tsx").read_text(encoding="utf-8")
+    api_source = (ROOT / "apps/web/src/lib/api.ts").read_text(encoding="utf-8")
+
+    assert "SessionKnowledgeBasesRequest" in api_source
+    assert "SessionKnowledgeBasesResponse" in api_source
+    assert "/knowledge-bases`" in app_source
+    assert "syncSessionKnowledgeBases" in app_source
+    assert "knowledgeSyncChainRef" in app_source
+    assert "sessionIdRef.current !== sid" in app_source
+    assert "void syncSessionKnowledgeBases(normalized.knowledgeBaseIds)" in app_source
+    assert "disabled={configLocked || !knowledgeBaseReady}" not in settings_source
+    assert "disabled={!knowledgeBaseReady}" in settings_source
 
 
 def test_realtime_settings_panel_does_not_manage_knowledge_documents() -> None:

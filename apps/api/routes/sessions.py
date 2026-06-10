@@ -26,6 +26,8 @@ from apps.api.schemas.session import (
     CreateSessionRequest,
     CreateSessionResponse,
     FasterLivePortraitConfigRequest,
+    SessionKnowledgeBasesRequest,
+    SessionKnowledgeBasesResponse,
     SpeakRequest,
     WebRTCOfferRequest,
 )
@@ -41,6 +43,7 @@ from opentalking.core.session_store import (
 from opentalking.avatar.fasterliveportrait_config import (
     normalize_fasterliveportrait_runtime_config,
 )
+from opentalking.agent.context_builder import AgentSessionConfig
 from opentalking.providers.stt.dashscope.adapter import (
     decode_audio_file_to_pcm_i16,
     ensure_wav_16k_mono,
@@ -256,6 +259,25 @@ def _normalize_agent_session_config(
         knowledge_enabled,
         knowledge_base_id,
         knowledge_base_ids,
+    )
+
+
+def _update_runner_agent_knowledge_bases(runner: object, knowledge_base_ids: list[str]) -> None:
+    current = getattr(runner, "agent_config", None)
+    if current is None:
+        return
+    knowledge_enabled = bool(knowledge_base_ids)
+    setattr(
+        runner,
+        "agent_config",
+        AgentSessionConfig(
+            user_id=getattr(current, "user_id", None),
+            agent_enabled=bool(getattr(current, "agent_enabled", False) or knowledge_enabled),
+            memory_enabled=bool(getattr(current, "memory_enabled", False)),
+            knowledge_enabled=knowledge_enabled,
+            knowledge_base_id=knowledge_base_ids[0] if knowledge_base_ids else None,
+            knowledge_base_ids=knowledge_base_ids,
+        ),
     )
 
 
@@ -828,6 +850,31 @@ async def get_session(session_id: str, request: Request) -> dict[str, str]:
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
     return s
+
+
+@router.post("/{session_id}/knowledge-bases", response_model=SessionKnowledgeBasesResponse)
+async def update_session_knowledge_bases(
+    session_id: str,
+    body: SessionKnowledgeBasesRequest,
+    request: Request,
+) -> SessionKnowledgeBasesResponse:
+    r: redis.Redis = request.app.state.redis
+    s = await session_service.get_session(r, session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="session not found")
+    selected_ids = await session_service.update_agent_knowledge_bases(
+        r,
+        session_id,
+        knowledge_base_ids=body.knowledge_base_ids,
+    )
+    runners = getattr(request.app.state, "session_runners", None)
+    runner = runners.get(session_id) if isinstance(runners, dict) else None
+    if runner is not None:
+        _update_runner_agent_knowledge_bases(runner, selected_ids)
+    return SessionKnowledgeBasesResponse(
+        session_id=session_id,
+        knowledge_base_ids=selected_ids,
+    )
 
 
 @router.post("/{session_id}/start")

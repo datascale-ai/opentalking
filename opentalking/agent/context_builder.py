@@ -23,7 +23,11 @@ class AgentSessionConfig:
 
     @property
     def has_knowledge(self) -> bool:
-        return bool(self.agent_enabled and self.knowledge_enabled)
+        return bool(
+            self.agent_enabled
+            and self.knowledge_enabled
+            and self.selected_knowledge_base_ids
+        )
 
     @property
     def selected_knowledge_base_ids(self) -> list[str]:
@@ -57,6 +61,7 @@ def default_knowledge_store() -> KnowledgeStore:
     return KnowledgeStore(
         db_path=Path(settings.agent_memory_sqlite_path),
         knowledge_root=Path(settings.agent_knowledge_root),
+        use_chunk_fallback=bool(settings.agent_lightrag_chunk_fallback_enabled),
     )
 
 

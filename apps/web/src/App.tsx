@@ -37,6 +37,8 @@ import {
   type KnowledgeBasesResponse,
   type PersonaSummary,
   type PersonasResponse,
+  type SessionKnowledgeBasesRequest,
+  type SessionKnowledgeBasesResponse,
   type VoiceCatalogItem,
 } from "./lib/api";
 import { modelConnectionBadge, type ModelStatus } from "./lib/modelStatus";
@@ -818,6 +820,7 @@ export default function App() {
   const realtimeRecordMicStreamRef = useRef<MediaStream | null>(null);
   const pendingRealtimeExportRef = useRef<PendingRealtimeExport | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const knowledgeSyncChainRef = useRef<Promise<void>>(Promise.resolve());
   const speakAudioAbortRef = useRef<AbortController | null>(null);
   const ttsPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsPreviewUrlRef = useRef<string | null>(null);
@@ -960,15 +963,6 @@ export default function App() {
   const lastPersistedAvatarKnowledgeBasesRef = useRef<Map<string, string[]>>(new Map());
   const avatarKnowledgeBasesLoadSeqRef = useRef(0);
   const [assetLibraryTab, setAssetLibraryTab] = useState<AssetLibraryTab>("exports");
-  const setAgentConfig = useCallback((next: AgentConfig) => {
-    const normalized = {
-      memoryEnabled: false,
-      knowledgeEnabled: next.knowledgeEnabled !== false,
-      knowledgeBaseIds: normalizeKnowledgeBaseIds(next.knowledgeBaseIds),
-    };
-    setAgentConfigState(normalized);
-    writeStoredAgentConfig(normalized);
-  }, []);
   const selectedModelStatus = modelStatuses.find((item) => item.id === model);
   const selectedModelBadge = modelConnectionBadge(selectedModelStatus, models.includes(model));
   const selectedModelConnected = selectedModelBadge.connected;
@@ -1035,6 +1029,39 @@ export default function App() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, tone === "error" ? 5200 : 3600);
   }, []);
+
+  const syncSessionKnowledgeBases = useCallback((knowledgeBaseIds: string[]) => {
+    const sid = sessionIdRef.current;
+    if (!sid) return;
+    const selectedIds = normalizeKnowledgeBaseIds(knowledgeBaseIds);
+    knowledgeSyncChainRef.current = knowledgeSyncChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (sessionIdRef.current !== sid) return;
+        await apiPost<SessionKnowledgeBasesResponse>(
+          `/sessions/${sid}/knowledge-bases`,
+          {
+            knowledge_base_ids: selectedIds,
+          } satisfies SessionKnowledgeBasesRequest,
+        );
+      })
+      .catch((error) => {
+        console.warn("sync session knowledge bases failed", error);
+        const detail = error instanceof ApiError ? error.detail : null;
+        notify(detail ? `会话知识库切换失败：${detail}` : "会话知识库切换失败，请查看后端日志。", "error");
+      });
+  }, [notify]);
+
+  const setAgentConfig = useCallback((next: AgentConfig) => {
+    const normalized = {
+      memoryEnabled: false,
+      knowledgeEnabled: next.knowledgeEnabled !== false,
+      knowledgeBaseIds: normalizeKnowledgeBaseIds(next.knowledgeBaseIds),
+    };
+    setAgentConfigState(normalized);
+    writeStoredAgentConfig(normalized);
+    void syncSessionKnowledgeBases(normalized.knowledgeBaseIds);
+  }, [syncSessionKnowledgeBases]);
 
   const refreshKnowledgeBases = useCallback(async () => {
     try {

@@ -40,6 +40,9 @@ const KIND_LABELS: Record<ExportVideoItem["kind"], string> = {
 
 const KNOWLEDGE_FILE_ACCEPT = ".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf";
 const KNOWLEDGE_FILE_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".pdf"]);
+const KNOWLEDGE_FILE_FORMAT_LABEL = ".txt、.md、.markdown、.pdf";
+const KNOWLEDGE_FILE_HINT = `支持格式：${KNOWLEDGE_FILE_FORMAT_LABEL}`;
+const KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE = `仅支持 ${KNOWLEDGE_FILE_FORMAT_LABEL} 文件，已忽略不支持的文件。`;
 
 function formatDuration(seconds: number | null): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return "-";
@@ -1040,7 +1043,7 @@ export function AssetLibraryWorkspace({
                       Array.from(event.currentTarget.files ?? []),
                     );
                     if (unsupportedFiles.length) {
-                      onNotify?.("仅支持 .txt、.md、.markdown、.pdf 文件，已忽略不支持的文件。", "error");
+                      onNotify?.(KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE, "error");
                     }
                     if (supportedFiles.length) {
                       setNewKnowledgeFiles((prev) => appendUniqueFiles(prev, supportedFiles));
@@ -1049,7 +1052,10 @@ export function AssetLibraryWorkspace({
                   }}
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-700">上传新文件</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-700">上传新文件</p>
+                    <p className="mt-1 text-xs text-slate-500">{KNOWLEDGE_FILE_HINT}</p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => newKnowledgeFileInputRef.current?.click()}
@@ -1166,7 +1172,7 @@ export function AssetLibraryWorkspace({
                       Array.from(event.currentTarget.files ?? []),
                     );
                     if (unsupportedFiles.length) {
-                      onNotify?.("仅支持 .txt、.md、.markdown、.pdf 文件，已忽略不支持的文件。", "error");
+                      onNotify?.(KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE, "error");
                     }
                     if (supportedFiles.length) {
                       setFilePoolFiles((prev) => appendUniqueFiles(prev, supportedFiles));
@@ -1175,7 +1181,10 @@ export function AssetLibraryWorkspace({
                   }}
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-700">上传新文件</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-700">上传新文件</p>
+                    <p className="mt-1 text-xs text-slate-500">{KNOWLEDGE_FILE_HINT}</p>
+                  </div>
                   <button
                     type="button"
                     disabled={filePoolUploading}
@@ -1258,7 +1267,7 @@ export function AssetLibraryWorkspace({
                       Array.from(event.currentTarget.files ?? []),
                     );
                     if (unsupportedFiles.length) {
-                      onNotify?.("仅支持 .txt、.md、.markdown、.pdf 文件，已忽略不支持的文件。", "error");
+                      onNotify?.(KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE, "error");
                     }
                     if (supportedFiles.length) {
                       setUploadKnowledgeFiles((prev) => appendUniqueFiles(prev, supportedFiles));
@@ -1267,7 +1276,10 @@ export function AssetLibraryWorkspace({
                   }}
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-slate-700">上传新文件</p>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-700">上传新文件</p>
+                    <p className="mt-1 text-xs text-slate-500">{KNOWLEDGE_FILE_HINT}</p>
+                  </div>
                   <button
                     type="button"
                     disabled={documentActionId === "__upload__"}

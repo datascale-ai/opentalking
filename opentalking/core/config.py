@@ -61,6 +61,18 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "memory_sqlite_path": "agent_memory_sqlite_path",
             "knowledge_root": "agent_knowledge_root",
             "persona_root": "persona_root",
+            "lightrag_root": "agent_lightrag_root",
+            "lightrag_query_mode": "agent_lightrag_query_mode",
+            "lightrag_llm_base_url": "agent_lightrag_llm_base_url",
+            "lightrag_llm_api_key": "agent_lightrag_llm_api_key",
+            "lightrag_llm_model": "agent_lightrag_llm_model",
+            "lightrag_embedding_base_url": "agent_lightrag_embedding_base_url",
+            "lightrag_embedding_api_key": "agent_lightrag_embedding_api_key",
+            "lightrag_embedding_model": "agent_lightrag_embedding_model",
+            "lightrag_embedding_dim": "agent_lightrag_embedding_dim",
+            "lightrag_embedding_max_token_size": "agent_lightrag_embedding_max_token_size",
+            "lightrag_language": "agent_lightrag_language",
+            "lightrag_chunk_fallback_enabled": "agent_lightrag_chunk_fallback_enabled",
         },
         "tts": {
             "default_provider": "tts_default_provider",
@@ -340,6 +352,19 @@ class Settings(BaseSettings):
     agent_knowledge_root: str = Field(default="./data/knowledge")
     #: Persona Package 本地存储目录；默认 ./data/personas
     persona_root: str = Field(default="./data/personas")
+    #: LightRAG 知识库索引目录；留空时使用 agent_knowledge_root/_lightrag
+    agent_lightrag_root: str = Field(default="")
+    agent_lightrag_query_mode: str = Field(default="hybrid")
+    agent_lightrag_llm_base_url: str = Field(default="")
+    agent_lightrag_llm_api_key: str = Field(default="")
+    agent_lightrag_llm_model: str = Field(default="")
+    agent_lightrag_embedding_base_url: str = Field(default="")
+    agent_lightrag_embedding_api_key: str = Field(default="")
+    agent_lightrag_embedding_model: str = Field(default="text-embedding-v4")
+    agent_lightrag_embedding_dim: int = Field(default=1024)
+    agent_lightrag_embedding_max_token_size: int = Field(default=8192)
+    agent_lightrag_language: str = Field(default="Chinese")
+    agent_lightrag_chunk_fallback_enabled: bool = Field(default=False)
 
     #: CosyVoice 复刻时，百炼需拉取公网 URL；若留空则用请求的 Host 拼 URL（内网部署请填公网可达地址）
     public_base_url: str = ""

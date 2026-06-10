@@ -154,6 +154,40 @@ async def update_session_state(r: redis.Redis, sid: str, state: str) -> None:
     await set_session_state(r, sid, state)
 
 
+async def update_agent_knowledge_bases(
+    r: redis.Redis,
+    sid: str,
+    *,
+    knowledge_base_ids: list[str] | None = None,
+    knowledge_base_id: str | None = None,
+) -> list[str]:
+    selected_knowledge_base_ids = _normalize_knowledge_base_ids(
+        knowledge_base_id=knowledge_base_id,
+        knowledge_base_ids=knowledge_base_ids,
+    )
+    legacy_knowledge_base_id = selected_knowledge_base_ids[0] if selected_knowledge_base_ids else ""
+    await _await_result(
+        r.hset(
+            session_key(sid),
+            mapping={
+                "agent_enabled": "1",
+                "knowledge_enabled": _bool_hash(bool(selected_knowledge_base_ids)),
+                "knowledge_base_id": legacy_knowledge_base_id,
+                "knowledge_base_ids": json.dumps(selected_knowledge_base_ids, ensure_ascii=False),
+            },
+        )
+    )
+    await _push_task(
+        r,
+        {
+            "cmd": "update_agent_knowledge_bases",
+            "session_id": sid,
+            "knowledge_base_ids": selected_knowledge_base_ids,
+        },
+    )
+    return selected_knowledge_base_ids
+
+
 async def update_fasterliveportrait_config(
     r: redis.Redis,
     sid: str,

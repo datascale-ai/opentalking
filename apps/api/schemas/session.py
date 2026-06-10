@@ -43,6 +43,15 @@ class FasterLivePortraitConfigRequest(BaseModel):
     flag_lip_retargeting: bool | None = None
 
 
+class SessionKnowledgeBasesRequest(BaseModel):
+    knowledge_base_ids: list[str] = Field(default_factory=list)
+
+
+class SessionKnowledgeBasesResponse(BaseModel):
+    session_id: str
+    knowledge_base_ids: list[str]
+
+
 class CreateSessionResponse(BaseModel):
     session_id: str
     status: str = "created"

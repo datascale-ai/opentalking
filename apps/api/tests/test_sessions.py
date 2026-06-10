@@ -495,6 +495,148 @@ def test_create_session_passes_multiple_knowledge_bases_to_service(
     assert calls[0]["knowledge_base_id"] == "kb_a"
 
 
+def test_update_session_knowledge_bases_tracks_live_single_multi_and_cleared_selection() -> None:
+    class RunnerWithAgentConfig:
+        def __init__(self) -> None:
+            self.agent_config = SimpleNamespace(
+                user_id="client_test",
+                agent_enabled=True,
+                memory_enabled=False,
+                knowledge_enabled=False,
+                knowledge_base_id=None,
+                knowledge_base_ids=[],
+            )
+
+    async def run() -> dict[str, object]:
+        redis = InMemoryRedis()
+        sid = "sess_live_kb"
+        await redis.hset(
+            session_key(sid),
+            mapping={
+                "session_id": sid,
+                "avatar_id": "singer",
+                "model": "mock",
+                "state": "worker_ready",
+                "agent_enabled": "1",
+                "memory_enabled": "0",
+                "knowledge_enabled": "0",
+                "knowledge_base_id": "",
+                "knowledge_base_ids": "[]",
+            },
+        )
+        runner = RunnerWithAgentConfig()
+        app = FastAPI()
+        app.state.redis = redis
+        app.state.session_runners = {sid: runner}
+        request = Request({"type": "http", "app": app})
+
+        observed: list[dict[str, object]] = []
+        for selected in (
+            ["kb_a"],
+            ["kb_a", "kb_b", "kb_a"],
+            ["kb_b"],
+            [],
+        ):
+            response = await sessions_routes.update_session_knowledge_bases(
+                sid,
+                sessions_routes.SessionKnowledgeBasesRequest(knowledge_base_ids=selected),
+                request,
+            )
+            observed.append(
+                {
+                    "response": response.model_dump(),
+                    "record": await redis.hgetall(session_key(sid)),
+                    "runner_knowledge_enabled": runner.agent_config.knowledge_enabled,
+                    "runner_knowledge_base_id": runner.agent_config.knowledge_base_id,
+                    "runner_knowledge_base_ids": list(runner.agent_config.knowledge_base_ids),
+                }
+            )
+        return {
+            "observed": observed,
+        }
+
+    result = asyncio.run(run())
+    observed = result["observed"]
+
+    assert observed[0]["response"] == {
+        "session_id": "sess_live_kb",
+        "knowledge_base_ids": ["kb_a"],
+    }
+    assert observed[0]["record"]["knowledge_base_id"] == "kb_a"  # type: ignore[index]
+    assert observed[0]["record"]["knowledge_base_ids"] == '["kb_a"]'  # type: ignore[index]
+    assert observed[0]["runner_knowledge_enabled"] is True
+    assert observed[0]["runner_knowledge_base_id"] == "kb_a"
+    assert observed[0]["runner_knowledge_base_ids"] == ["kb_a"]
+
+    assert observed[1]["response"] == {
+        "session_id": "sess_live_kb",
+        "knowledge_base_ids": ["kb_a", "kb_b"],
+    }
+    assert observed[1]["record"]["knowledge_base_id"] == "kb_a"  # type: ignore[index]
+    assert observed[1]["record"]["knowledge_base_ids"] == '["kb_a", "kb_b"]'  # type: ignore[index]
+    assert observed[1]["runner_knowledge_enabled"] is True
+    assert observed[1]["runner_knowledge_base_id"] == "kb_a"
+    assert observed[1]["runner_knowledge_base_ids"] == ["kb_a", "kb_b"]
+
+    assert observed[2]["response"] == {
+        "session_id": "sess_live_kb",
+        "knowledge_base_ids": ["kb_b"],
+    }
+    assert observed[2]["record"]["knowledge_base_id"] == "kb_b"  # type: ignore[index]
+    assert observed[2]["record"]["knowledge_base_ids"] == '["kb_b"]'  # type: ignore[index]
+    assert observed[2]["runner_knowledge_enabled"] is True
+    assert observed[2]["runner_knowledge_base_id"] == "kb_b"
+    assert observed[2]["runner_knowledge_base_ids"] == ["kb_b"]
+
+    assert observed[3]["response"] == {
+        "session_id": "sess_live_kb",
+        "knowledge_base_ids": [],
+    }
+    assert observed[3]["record"]["knowledge_enabled"] == "0"  # type: ignore[index]
+    assert observed[3]["record"]["knowledge_base_id"] == ""  # type: ignore[index]
+    assert observed[3]["record"]["knowledge_base_ids"] == "[]"  # type: ignore[index]
+    assert observed[3]["runner_knowledge_enabled"] is False
+    assert observed[3]["runner_knowledge_base_id"] is None
+    assert observed[3]["runner_knowledge_base_ids"] == []
+
+
+def test_update_session_knowledge_bases_can_clear_selection_without_defaulting() -> None:
+    async def run() -> dict[str, str]:
+        redis = InMemoryRedis()
+        sid = "sess_clear_kb"
+        await redis.hset(
+            session_key(sid),
+            mapping={
+                "session_id": sid,
+                "avatar_id": "singer",
+                "model": "mock",
+                "state": "worker_ready",
+                "agent_enabled": "1",
+                "memory_enabled": "0",
+                "knowledge_enabled": "1",
+                "knowledge_base_id": "kb_old",
+                "knowledge_base_ids": '["kb_old"]',
+            },
+        )
+        app = FastAPI()
+        app.state.redis = redis
+        app.state.session_runners = {}
+        request = Request({"type": "http", "app": app})
+
+        await sessions_routes.update_session_knowledge_bases(
+            sid,
+            sessions_routes.SessionKnowledgeBasesRequest(knowledge_base_ids=[]),
+            request,
+        )
+        return await redis.hgetall(session_key(sid))
+
+    record = asyncio.run(run())
+
+    assert record["knowledge_enabled"] == "0"
+    assert record["knowledge_base_id"] == ""
+    assert record["knowledge_base_ids"] == "[]"
+
+
 def test_agent_session_config_defaults_to_no_knowledge_base() -> None:
     body = CreateSessionRequest(
         avatar_id="singer",

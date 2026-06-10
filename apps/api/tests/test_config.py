@@ -93,3 +93,33 @@ def test_export_settings_have_safe_defaults(monkeypatch, tmp_path) -> None:
 
     assert settings.exports_dir == "./data/exports"
     assert settings.export_max_bytes == 1024 * 1024 * 1024
+
+
+def test_agent_lightrag_settings_read_prefixed_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENTALKING_AGENT_LIGHTRAG_QUERY_MODE", "mix")
+    monkeypatch.setenv("OPENTALKING_AGENT_LIGHTRAG_EMBEDDING_MODEL", "text-embedding-v3")
+    monkeypatch.setenv("OPENTALKING_AGENT_LIGHTRAG_EMBEDDING_DIM", "1536")
+    monkeypatch.setenv("OPENTALKING_AGENT_LIGHTRAG_CHUNK_FALLBACK_ENABLED", "false")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.agent_lightrag_query_mode == "mix"
+    assert settings.agent_lightrag_embedding_model == "text-embedding-v3"
+    assert settings.agent_lightrag_embedding_dim == 1536
+    assert settings.agent_lightrag_chunk_fallback_enabled is False
+
+
+def test_agent_lightrag_chunk_fallback_defaults_to_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENTALKING_AGENT_LIGHTRAG_CHUNK_FALLBACK_ENABLED", raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.agent_lightrag_chunk_fallback_enabled is False
+
+
+def test_agent_lightrag_chunk_fallback_can_be_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENTALKING_AGENT_LIGHTRAG_CHUNK_FALLBACK_ENABLED", "true")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.agent_lightrag_chunk_fallback_enabled is True

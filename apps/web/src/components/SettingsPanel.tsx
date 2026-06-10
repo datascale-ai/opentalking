@@ -623,7 +623,7 @@ export function SettingsPanel({
                 <button
                   key={knowledgeBase.id}
                   type="button"
-                  disabled={configLocked || !knowledgeBaseReady}
+                  disabled={!knowledgeBaseReady}
                   onClick={() =>
                     updateKnowledgeBaseIds(
                       selected
@@ -637,7 +637,7 @@ export function SettingsPanel({
                       : knowledgeBaseReady
                         ? "border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:text-cyan-700"
                         : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400"
-                  } ${configLocked ? "cursor-not-allowed opacity-60 hover:border-slate-100 hover:bg-slate-50" : ""}`}
+                  }`}
                 >
                   <span className="min-w-0 truncate">{knowledgeBase.name}</span>
                   <span className={`shrink-0 text-[11px] ${
