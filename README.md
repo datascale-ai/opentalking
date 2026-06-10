@@ -53,43 +53,60 @@ OpenTalking 提供 Web 服务界面，用于管理数字人对话链路：可以
 
 ### Demo 视频
 
-以下是 OpenTalking 典型场景演示视频，展示数字人在不同内容形态下的表现。
+以下是 OpenTalking 典型场景演示视频，覆盖实时对话、视频创作和视频克隆三类前端工作流。
 
-<table>
+<table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td align="center" colspan="3">
-      <b>实时手机录制</b><br/>
-      <video src="https://github.com/user-attachments/assets/a3abce76-12c0-4b8b-844f-bbc5c3227dc7" controls width="100%"></video><br/>
-    </td>
+    <th align="center" colspan="3">A. 实时对话</th>
   </tr>
   <tr>
-    <td align="center" valign="top" width="33%">
-      <b>动漫脱口秀</b><br/>
-      <video src="https://github.com/user-attachments/assets/b3743604-7f50-40d1-9248-f2df80ea7308" controls width="100%"></video><br/>
-    </td>
     <td align="center" valign="top" width="33%">
       <b>电商带货</b><br/>
-      <video src="https://github.com/user-attachments/assets/826c777b-a9d2-49be-a1a0-b295c8a4b498" controls width="100%"></video><br/>
+      <video src="https://github.com/user-attachments/assets/4646f29d-f773-4f95-84a9-8128ea97ac14" controls preload="metadata" width="248" height="441"></video><br/>
     </td>
     <td align="center" valign="top" width="33%">
-      <b>新闻女主播</b><br/>
-      <video src="https://github.com/user-attachments/assets/34a282da-84cb-4134-bc4b-644356ac4f6f" controls width="100%"></video><br/>
+      <b>陪伴案例</b><br/>
+      <video src="https://github.com/user-attachments/assets/6e80d2ac-36a0-41bb-8394-26e0c1121cb6" controls preload="metadata" width="248" height="441"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>新闻主播</b><br/>
+      <video src="https://github.com/user-attachments/assets/1e357963-defb-4aaf-b9e4-0bc03cf43cc9" controls preload="metadata" width="248" height="441"></video><br/>
     </td>
   </tr>
+</table>
+
+<table width="100%" cellpadding="0" cellspacing="0">
   <tr>
-    <td align="center" valign="top" colspan="3">
-      <table>
-        <tr>
-          <td align="center" valign="top" width="50%">
-            <b>创意演唱 / 模仿秀</b><br/>
-            <video src="https://github.com/user-attachments/assets/98e813c2-f170-4cc8-b934-a77a72061d2e" controls width="100%"></video><br/>
-          </td>
-          <td align="center" valign="top" width="50%">
-            <b>陪伴类角色</b><br/>
-            <video src="https://github.com/user-attachments/assets/44bbf1d9-75b1-4b0a-9704-c7f81c39446e" controls width="100%"></video><br/>
-          </td>
-        </tr>
-      </table>
+    <th align="center" colspan="3">B. 视频创作</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <b>语音 drive</b><br/>
+      <video src="https://github.com/user-attachments/assets/d2b93d0c-2ee6-409f-84d9-79d109d8592c" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>文字 drive</b><br/>
+      <video src="https://github.com/user-attachments/assets/d1d4df8d-c599-4c6d-b61c-eec361e9556c" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>克隆音色 drive</b><br/>
+      <video src="https://github.com/user-attachments/assets/87b3efc4-d54a-4d2a-8d70-c37834154518" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+  </tr>
+</table>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
+    <th align="center" colspan="2">C. 视频克隆</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <b>摄像头实时模仿</b><br/>
+      <video src="https://github.com/user-attachments/assets/cd8c9e7b-66a6-46c8-b6c8-61632ce1a712" controls preload="metadata" width="386" height="217"></video><br/>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <b>上传视频模仿</b><br/>
+      <video src="https://github.com/user-attachments/assets/f39527bb-6c3c-491d-96d1-6bfcf55ed8f0" controls preload="metadata" width="386" height="217"></video><br/>
     </td>
   </tr>
 </table>
