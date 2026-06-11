@@ -106,7 +106,7 @@ OpenTalking 提供 Web 服务界面，用于管理数字人对话链路：可以
     </td>
     <td align="center" valign="top" width="50%">
       <b>上传视频模仿</b><br/>
-      <video src="https://github.com/user-attachments/assets/f39527bb-6c3c-491d-96d1-6bfcf55ed8f0" controls preload="metadata" width="386" height="217"></video><br/>
+      <video src="https://github.com/user-attachments/assets/5e8a5ae9-e39e-48ee-8c41-930369edc6b4" controls preload="metadata" width="386" height="217"></video><br/>
     </td>
   </tr>
 </table>

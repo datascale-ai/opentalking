@@ -106,7 +106,7 @@ The following demos show three frontend workflows in OpenTalking: real-time conv
     </td>
     <td align="center" valign="top" width="50%">
       <b>Uploaded Video Mimicry</b><br/>
-      <video src="https://github.com/user-attachments/assets/f39527bb-6c3c-491d-96d1-6bfcf55ed8f0" controls preload="metadata" width="386" height="217"></video><br/>
+      <video src="https://github.com/user-attachments/assets/5e8a5ae9-e39e-48ee-8c41-930369edc6b4" controls preload="metadata" width="386" height="217"></video><br/>
     </td>
   </tr>
 </table>
