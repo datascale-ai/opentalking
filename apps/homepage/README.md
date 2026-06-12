@@ -85,6 +85,25 @@ curl http://127.0.0.1:<PORT>/github-api/repos/datascale-ai/opentalking
 
 The GitHub stats endpoint should return JSON containing `stargazers_count` and `forks_count`.
 
+Traffic dashboard:
+
+```text
+http://127.0.0.1:<PORT>/traffic
+http://127.0.0.1:<PORT>/en/traffic
+```
+
+The dashboard is linked from the OpenTalking logo in the footer. The server stores analytics events in SQLite at:
+
+```text
+<PROJECT_DIR>/apps/homepage/.analytics/homepage_analytics.sqlite3
+```
+
+You can override the path if needed:
+
+```bash
+HOMEPAGE_ANALYTICS_DB="<CUSTOM_SQLITE_PATH>"
+```
+
 ## 5. Run As A systemd Service
 
 Create a service file:
@@ -161,4 +180,3 @@ For production, it is recommended to put Nginx or Caddy in front of uvicorn and 
 ```
 
 When using a reverse proxy, only Nginx or Caddy needs to expose public ports. uvicorn can stay on localhost.
-

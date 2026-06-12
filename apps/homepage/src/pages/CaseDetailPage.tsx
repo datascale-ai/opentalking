@@ -1,4 +1,5 @@
 import { ArrowLeft, CheckCircle2, ExternalLink, PlayCircle } from "lucide-react";
+import { trackAnalyticsEvent } from "../analytics";
 import { CaseCard } from "../components/CaseCard";
 import type { CaseStudy } from "../content";
 import type { SiteContent } from "../locales";
@@ -56,7 +57,22 @@ export function CaseDetailPage({
                   <PlayCircle className="h-5 w-5 text-indigo-200" />
                   <span className="font-semibold">{copy.videoTitle}</span>
                 </div>
-                <video className="aspect-video w-full bg-black" src={item.videoUrl} controls poster={item.image} />
+                <video
+                  className="aspect-video w-full bg-black"
+                  src={item.videoUrl}
+                  controls
+                  poster={item.image}
+                  onPlay={() =>
+                    trackAnalyticsEvent({
+                      eventName: "video_play",
+                      path: window.location.pathname,
+                      language: window.location.pathname === "/en" || window.location.pathname.startsWith("/en/") ? "en" : "zh",
+                      page: "caseDetail",
+                      caseSlug: item.slug,
+                      videoId: `case-${item.slug}`,
+                    })
+                  }
+                />
               </div>
             ) : null}
 

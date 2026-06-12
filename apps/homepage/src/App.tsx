@@ -1,5 +1,6 @@
 import { Footer } from "./components/Footer";
 import { Navbar } from "./components/Navbar";
+import { trackAnalyticsEvent } from "./analytics";
 import type { PageKey } from "./content";
 import { siteContent, type Language } from "./locales";
 import { AboutPage } from "./pages/AboutPage";
@@ -91,6 +92,16 @@ function App() {
     setRoute(fallbackRoute);
   }, [content.caseStudies, currentPage, language, route.caseSlug]);
 
+  useEffect(() => {
+    trackAnalyticsEvent({
+      eventName: "page_view",
+      path: window.location.pathname,
+      language,
+      page: currentPage,
+      caseSlug: route.caseSlug,
+    });
+  }, [currentPage, language, route.caseSlug]);
+
   const pushRoute = (nextRoute: RouteState) => {
     const nextPath = getRoutePath(nextRoute);
 
@@ -165,7 +176,7 @@ function App() {
           <AboutPage contactChannels={content.contactChannels} copy={content.about} docsHref={content.docsHref} />
         ) : null}
       </main>
-      <Footer copy={content.footer} navItems={content.navItems} onNavigate={handleNavigate} />
+      <Footer copy={content.footer} language={language} navItems={content.navItems} onNavigate={handleNavigate} />
     </div>
   );
 }

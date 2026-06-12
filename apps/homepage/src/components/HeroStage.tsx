@@ -12,6 +12,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { trackAnalyticsEvent } from "../analytics";
 import type { SiteContent } from "../locales";
 
 const heroVideoUrl = "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/7865fde85001834806726853449/Uxof3qJw9oMA.mp4";
@@ -73,6 +74,15 @@ export function HeroStage({ copy }: HeroStageProps) {
             loop
             playsInline
             controls={false}
+            onPlay={() =>
+              trackAnalyticsEvent({
+                eventName: "video_play",
+                path: window.location.pathname,
+                language: window.location.pathname === "/en" || window.location.pathname.startsWith("/en/") ? "en" : "zh",
+                page: "home",
+                videoId: "hero-companion-character",
+              })
+            }
           />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,17,31,0),rgba(8,17,31,0.08))]" />
           <div className="absolute left-4 top-4 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-white shadow-sm backdrop-blur-xl">

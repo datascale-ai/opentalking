@@ -1,25 +1,30 @@
 import { ArrowUpRight, Github, MessageCircle } from "lucide-react";
 import type { NavItem, PageKey } from "../content";
 import { productLinks } from "../content";
-import type { SiteContent } from "../locales";
+import type { Language, SiteContent } from "../locales";
 
 type FooterProps = {
   copy: SiteContent["footer"];
+  language: Language;
   navItems: NavItem[];
   onNavigate: (page: PageKey) => void;
 };
 
-export function Footer({ copy, navItems, onNavigate }: FooterProps) {
+export function Footer({ copy, language, navItems, onNavigate }: FooterProps) {
+  const trafficHref = language === "en" ? "/en/traffic" : "/traffic";
+
   return (
     <footer className="border-t border-indigo-100 bg-white/75 backdrop-blur-xl">
       <div className="mx-auto grid max-w-7xl gap-8 px-5 py-12 lg:grid-cols-[1.12fr_0.72fr_0.72fr_0.9fr]">
         <div>
           <div className="flex items-center gap-3">
-            <img
-              src="/images/logo.png"
-              alt="OpenTalking logo"
-              className="h-12 w-12 rounded-lg border border-indigo-100 bg-white object-contain p-1 shadow-sm"
-            />
+            <a className="focus-ring rounded-lg" href={trafficHref} aria-label="Open traffic dashboard">
+              <img
+                src="/images/logo.png"
+                alt="OpenTalking logo"
+                className="h-12 w-12 rounded-lg border border-indigo-100 bg-white object-contain p-1 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              />
+            </a>
             <div>
               <p className="font-semibold text-ink">OpenTalking</p>
               <p className="text-sm text-slate-500">{copy.tagline}</p>
