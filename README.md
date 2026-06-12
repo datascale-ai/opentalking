@@ -19,6 +19,10 @@
 </p>
 
 <p align="center">
+  <a href="https://www.opentalking.net/#github"><b>🌐 Visit OpenTalking Website</b></a>
+</p>
+
+<p align="center">
   <a href="#快速开始">快速开始</a> ·
   <a href="#选择部署路线">部署路线</a> ·
   <a href="#模型支持">模型支持</a> ·

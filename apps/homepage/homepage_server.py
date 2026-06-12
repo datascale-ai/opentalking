@@ -133,7 +133,10 @@ async def record_analytics_event(request: FastAPIRequest):
     if event_name not in {"page_view", "video_play"}:
         return JSONResponse({"ok": False}, status_code=202)
 
-    referrer = clamp_text(payload.get("referrer") or request.headers.get("referer"))
+    if "referrer" in payload:
+        referrer = clamp_text(payload.get("referrer"))
+    else:
+        referrer = clamp_text(request.headers.get("referer"))
     row = (
         datetime.now(timezone.utc).isoformat(),
         event_name,
@@ -205,6 +208,15 @@ TRAFFIC_COPY = {
             "views_total": "Views",
             "unique_total": "Unique Visitors",
         },
+        "video_names": {
+            "hero-companion-character": "首页主视觉：陪伴类角色",
+            "case-ecommerce-livestream": "案例：电商带货",
+            "case-news-anchor": "案例：新闻主播",
+            "case-companion-character": "案例：陪伴类角色",
+            "case-anime-talk-show": "案例：动漫脱口秀",
+            "case-creative-performance": "案例：创意演唱 / 模仿秀",
+            "case-mobile-recording": "案例：实时手机录制",
+        },
         "columns": {
             "path": "路径",
             "views": "访问",
@@ -242,6 +254,15 @@ TRAFFIC_COPY = {
             "unique_title": "Unique visitors in last 7 days",
             "views_total": "Views",
             "unique_total": "Unique Visitors",
+        },
+        "video_names": {
+            "hero-companion-character": "Hero: Companion Character",
+            "case-ecommerce-livestream": "Case: E-commerce Livestream",
+            "case-news-anchor": "Case: News Anchor",
+            "case-companion-character": "Case: Companion Character",
+            "case-anime-talk-show": "Case: Anime Talk Show",
+            "case-creative-performance": "Case: Creative Performance",
+            "case-mobile-recording": "Case: Mobile Recording",
         },
         "columns": {
             "path": "Path",
@@ -391,6 +412,13 @@ def render_traffic_dashboard(language):
         LIMIT 10
         """
     )
+    top_videos = [
+        {
+            **row,
+            "video_label": copy["video_names"].get(row.get("video_id"), row.get("video_id") or "-"),
+        }
+        for row in top_videos
+    ]
     daily_views = query_rows(
         """
         SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS count
@@ -572,7 +600,7 @@ def render_traffic_dashboard(language):
             </section>
             <section>
               <h2>{escape(copy["sections"]["top_videos"])}</h2>
-              {render_table(top_videos, [("video_id", copy["columns"]["video"]), ("count", copy["columns"]["plays"])])}
+              {render_table(top_videos, [("video_label", copy["columns"]["video"]), ("count", copy["columns"]["plays"])])}
             </section>
             <section>
               <h2>{escape(copy["sections"]["daily_views"])}</h2>

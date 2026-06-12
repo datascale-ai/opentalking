@@ -8,7 +8,15 @@ type AnalyticsPayload = {
 };
 
 const analyticsEndpoint = "/analytics/event";
-const initialReferrer = document.referrer;
+const sourceReferrers: Record<string, string> = {
+  "#github": "https://github.com/datascale-ai/opentalking",
+};
+const sourceReferrer = sourceReferrers[window.location.hash.toLowerCase()];
+const initialReferrer = sourceReferrer ?? document.referrer;
+
+if (sourceReferrer) {
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+}
 
 export const trackAnalyticsEvent = (payload: AnalyticsPayload) => {
   const body = JSON.stringify({

@@ -19,6 +19,10 @@
 </p>
 
 <p align="center">
+  <a href="https://www.opentalking.net/#github"><b>🌐 Visit OpenTalking Website</b></a>
+</p>
+
+<p align="center">
   <a href="#quickstart">Quickstart</a> ·
   <a href="#choose-a-deployment-path">Deployment</a> ·
   <a href="#supported-models">Models</a> ·
