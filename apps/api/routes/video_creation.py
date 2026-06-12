@@ -14,7 +14,7 @@ from opentalking.video_creation import VideoCreationService
 
 router = APIRouter(prefix="/video-creation", tags=["video-creation"])
 
-_AUDIO_SOURCES = {"upload", "tts_text", "voice_clone"}
+_AUDIO_SOURCES = {"upload", "tts_text", "voice_clone", "reference_video"}
 _INDEXTTS_PROVIDERS = {"indextts", "local_indextts", "omnirt_indextts"}
 
 
@@ -94,13 +94,14 @@ async def create_video_creation_job(
     tts_provider: str | None = Form(default=None),
     tts_model: str | None = Form(default=None),
     voice: str | None = Form(default=None),
+    duration_sec: int | None = Form(default=None),
     fasterliveportrait_config: str | None = Form(default=None),
     indextts_config: str | None = Form(default=None),
     indextts_emotion_audio_file: UploadFile | None = File(default=None),
 ) -> dict[str, Any]:
     source = audio_source.strip().lower()
     if source not in _AUDIO_SOURCES:
-        raise HTTPException(status_code=400, detail="audio_source must be upload, tts_text, or voice_clone")
+        raise HTTPException(status_code=400, detail="audio_source must be upload, tts_text, voice_clone, or reference_video")
     settings = request.app.state.settings
     flp_config = _parse_fasterliveportrait_config(model, fasterliveportrait_config)
     emotion_audio_path = await _save_indextts_emotion_audio(indextts_emotion_audio_file)
@@ -136,6 +137,15 @@ async def create_video_creation_job(
                 )
             finally:
                 upload_path.unlink(missing_ok=True)
+            return _with_download_url(result)
+
+        if source == "reference_video":
+            result = await service.create_reference_video(
+                model=model,
+                avatar_id=avatar_id,
+                duration_sec=duration_sec,
+                title=title,
+            )
             return _with_download_url(result)
 
         result = await service.create_from_tts_text(

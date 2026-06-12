@@ -28,6 +28,8 @@ from opentalking.providers.tts.factory import build_tts_adapter
 
 log = logging.getLogger(__name__)
 
+REFERENCE_DRIVER_AUDIO_PATH = Path(__file__).resolve().parent / "assets" / "reference_drivers" / "flashtalk_default_driver.wav"
+
 SUPPORTED_VIDEO_CREATION_MODELS = {
     "flashtalk",
     "flashhead",
@@ -49,6 +51,13 @@ def _settings_int(settings: object, name: str, default: int) -> int:
         return default
 
 
+def _settings_float(settings: object, name: str, default: float) -> float:
+    try:
+        return float(getattr(settings, name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 def _export_with_download_url(item: dict[str, Any]) -> dict[str, Any]:
     return {**item, "download_url": f"/exports/videos/{item['id']}/download"}
 
@@ -56,6 +65,68 @@ def _export_with_download_url(item: dict[str, Any]) -> dict[str, Any]:
 def _safe_title(title: str | None, *, model: str, avatar_id: str) -> str:
     value = (title or "").strip()
     return value or f"视频创作 · {model} · {avatar_id}"
+
+
+def _reference_duration_options(settings: object) -> set[int]:
+    raw = str(getattr(settings, "video_creation_reference_durations", "") or "10,30,60")
+    options: set[int] = set()
+    for part in raw.split(","):
+        try:
+            value = int(part.strip())
+        except ValueError:
+            continue
+        if value > 0:
+            options.add(value)
+    return options or {10, 30, 60}
+
+
+def _validate_reference_duration(settings: object, duration_sec: int | None) -> int:
+    options = _reference_duration_options(settings)
+    value = min(options) if duration_sec is None else int(duration_sec)
+    if value not in options:
+        allowed = ", ".join(str(item) for item in sorted(options))
+        raise ValueError(f"duration_sec must be one of: {allowed}")
+    return value
+
+
+def _build_reference_driver_pcm(total_samples: int, *, level: float = 480.0) -> np.ndarray:
+    samples = max(0, int(total_samples))
+    if samples == 0:
+        return np.zeros(0, dtype=np.int16)
+    amplitude = max(1.0, min(float(level), 32767.0))
+    t = np.arange(samples, dtype=np.float32) / 16000.0
+    carrier = np.sin(2.0 * np.pi * 120.0 * t) + 0.35 * np.sin(2.0 * np.pi * 240.0 * t)
+    envelope = 0.55 + 0.45 * np.sin(2.0 * np.pi * 1.8 * t) ** 2
+    pcm = carrier * envelope * (amplitude / 1.35)
+    return np.clip(np.rint(pcm), -32768, 32767).astype(np.int16)
+
+
+def _reference_driver_audio_path(settings: object) -> Path:
+    raw = str(getattr(settings, "video_creation_reference_driver_audio", "") or "").strip()
+    return Path(raw).expanduser().resolve() if raw else REFERENCE_DRIVER_AUDIO_PATH
+
+
+def _fit_reference_driver_pcm(pcm: np.ndarray, total_samples: int) -> np.ndarray:
+    target = max(0, int(total_samples))
+    if target == 0:
+        return np.zeros(0, dtype=np.int16)
+    source = np.asarray(pcm, dtype=np.int16).reshape(-1)
+    if source.size == 0:
+        raise ValueError("reference driver audio decoded to empty PCM")
+    repeats = int(np.ceil(float(target) / float(source.size)))
+    return np.tile(source, repeats)[:target].astype(np.int16, copy=False)
+
+
+async def _load_reference_driver_pcm(settings: object, total_samples: int) -> np.ndarray | None:
+    path = _reference_driver_audio_path(settings)
+    if not path.is_file():
+        return None
+    try:
+        pcm = await decode_audio_file_to_pcm_i16(path)
+        return _fit_reference_driver_pcm(pcm, total_samples)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("reference driver audio unavailable, falling back to synthetic PCM: path=%s error=%s", path, exc)
+        return None
 
 
 def _avatar_dir(settings: object, avatar_id: str) -> Path:
@@ -602,6 +673,32 @@ class VideoCreationService:
             title=title,
             source=source,
             fasterliveportrait_config=fasterliveportrait_config,
+        )
+
+    async def create_reference_video(
+        self,
+        *,
+        model: str,
+        avatar_id: str,
+        duration_sec: int | None,
+        title: str,
+    ) -> dict[str, Any]:
+        model_value = _normalize_model(model)
+        if model_value != "flashtalk":
+            raise ValueError("reference video generation only supports flashtalk")
+        duration = _validate_reference_duration(self.settings, duration_sec)
+        sample_rate = 16000
+        total_samples = duration * sample_rate
+        pcm = await _load_reference_driver_pcm(self.settings, total_samples)
+        if pcm is None:
+            level = _settings_float(self.settings, "video_creation_reference_driver_level", 480.0)
+            pcm = _build_reference_driver_pcm(total_samples, level=level)
+        return await self._create_from_pcm(
+            model=model_value,
+            avatar_id=avatar_id,
+            pcm=pcm,
+            title=title,
+            source="reference_video",
         )
 
     async def _resample_pcm(self, pcm: np.ndarray, sample_rate: int) -> np.ndarray:

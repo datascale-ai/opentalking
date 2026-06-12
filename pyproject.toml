@@ -145,7 +145,7 @@ opentalking-persona = "apps.cli.persona:main"
 include-package-data = true
 
 [tool.setuptools.package-data]
-opentalking = ["assets/voices/system/*/*.json", "assets/voices/system/*/*.txt", "assets/voices/system/*/*.wav"]
+opentalking = ["assets/voices/system/*/*.json", "assets/voices/system/*/*.txt", "assets/voices/system/*/*.wav", "assets/reference_drivers/*.wav"]
 
 [tool.setuptools.packages.find]
 where = ["."]

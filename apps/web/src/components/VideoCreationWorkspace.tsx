@@ -18,6 +18,7 @@ import type { TtsProviderExtended } from "../constants/ttsBailian";
 import { buildTTSPreviewPayload, requestTTSPreview } from "../lib/ttsPreview";
 
 export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone";
+type VideoCreationMode = "spoken_video" | "reference_video";
 
 type VoiceOpt = { id: string; label: string; targetModel?: string | null };
 
@@ -51,6 +52,12 @@ const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = 
   { id: "tts_text", label: "文本合成" },
   { id: "voice_clone", label: "复刻音色" },
 ];
+
+const REFERENCE_DURATION_OPTIONS = [
+  { value: 10, label: "10s" },
+  { value: 30, label: "30s" },
+  { value: 60, label: "1min" },
+] as const;
 
 const VIDEO_CREATION_MODELS = ["flashtalk", "flashhead", "fasterliveportrait", "musetalk", "quicktalk", "wav2lip"];
 const VIDEO_CREATION_MODEL_LABELS: Record<string, string> = {
@@ -262,6 +269,8 @@ export function VideoCreationWorkspace({
   onFasterLivePortraitConfigChange,
 }: VideoCreationWorkspaceProps) {
   const selectedAvatar = avatars.find((avatar) => avatar.id === avatarId) ?? avatars[0] ?? null;
+  const [creationMode, setCreationMode] = useState<VideoCreationMode>("spoken_video");
+  const [referenceDurationSec, setReferenceDurationSec] = useState<(typeof REFERENCE_DURATION_OPTIONS)[number]["value"]>(10);
   const [model, setModel] = useState(() => VIDEO_CREATION_MODELS.find((item) => models.includes(item)) ?? "fasterliveportrait");
   const [audioSource, setAudioSource] = useState<VideoCreationAudioSource>("upload");
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -287,8 +296,9 @@ export function VideoCreationWorkspace({
       ? "后端默认音色"
       : qwenVoiceOptions.find((voice) => voice.id === qwenVoice)?.label ?? qwenVoice;
   const cloneVoiceCount = voiceCatalog.filter((item) => item.source === "clone").length;
-  const canPreviewTts = audioSource !== "upload";
-  const showIndexTTSControls = audioSource !== "upload" && INDEXTTS_PROVIDER_SET.has(ttsProvider);
+  const isReferenceVideoMode = creationMode === "reference_video";
+  const canPreviewTts = !isReferenceVideoMode && audioSource !== "upload";
+  const showIndexTTSControls = !isReferenceVideoMode && audioSource !== "upload" && INDEXTTS_PROVIDER_SET.has(ttsProvider);
   const effectiveIndexTTSConfig = showIndexTTSControls ? buildIndexTTSQualityConfig(indexTTSRequestConfig(indexttsConfig)) : undefined;
   const showIndexTTSEmotionStrength = indexttsConfig.emotion_mode !== "voice";
 
@@ -431,11 +441,15 @@ export function VideoCreationWorkspace({
       onNotify?.("请先选择数字人资产。", "info");
       return;
     }
-    if (audioSource === "upload" && !audioFile) {
+    if (isReferenceVideoMode && !models.includes("flashtalk")) {
+      onNotify?.("当前环境没有可用 FlashTalk 模型，无法生成参考视频。", "info");
+      return;
+    }
+    if (!isReferenceVideoMode && audioSource === "upload" && !audioFile) {
       onNotify?.("请先上传音频文件。", "info");
       return;
     }
-    if (audioSource !== "upload" && !text.trim()) {
+    if (!isReferenceVideoMode && audioSource !== "upload" && !text.trim()) {
       onNotify?.("请输入要合成的口播文本。", "info");
       return;
     }
@@ -446,6 +460,19 @@ export function VideoCreationWorkspace({
     setGenerating(true);
     setResult(null);
     try {
+      if (isReferenceVideoMode) {
+        const response = await createVideoCreationJob({
+          model: "flashtalk",
+          avatarId: selectedAvatar.id,
+          title,
+          audioSource: "reference_video",
+          durationSec: referenceDurationSec,
+        });
+        setResult(response.export_video);
+        onExportCreated?.(response.export_video);
+        onNotify?.(`参考视频已保存到资产库：${response.export_video.title}`, "success");
+        return;
+      }
       const response = await createVideoCreationJob({
         model: effectiveModel,
         avatarId: selectedAvatar.id,
@@ -470,7 +497,7 @@ export function VideoCreationWorkspace({
     } finally {
       setGenerating(false);
     }
-  }, [audioFile, audioSource, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, onExportCreated, onNotify, qwenModel, qwenVoice, selectedAvatar, showIndexTTSControls, text, title, ttsProvider]);
+  }, [audioFile, audioSource, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, isReferenceVideoMode, models, onExportCreated, onNotify, qwenModel, qwenVoice, referenceDurationSec, selectedAvatar, showIndexTTSControls, text, title, ttsProvider]);
 
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
@@ -537,12 +564,31 @@ export function VideoCreationWorkspace({
           <div className="border-b border-slate-200 px-4 py-3">
             <p className="text-xs font-medium text-slate-500">Offline Generation</p>
             <h2 className="text-base font-semibold text-slate-950">离线数字人口播</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setCreationMode("spoken_video")}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${creationMode === "spoken_video" ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+              >
+                离线数字人口播
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreationMode("reference_video");
+                  setModel("flashtalk");
+                }}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${creationMode === "reference_video" ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+              >
+                图片生成参考视频
+              </button>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="block text-sm font-medium text-slate-700">
                 生成模型
-                <select value={effectiveModel} onChange={(event) => setModel(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                <select value={isReferenceVideoMode ? "flashtalk" : effectiveModel} onChange={(event) => setModel(event.target.value)} disabled={isReferenceVideoMode} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
                   {VIDEO_CREATION_MODELS.map((item) => (
                     <option key={item} value={item} disabled={!models.includes(item)}>{VIDEO_CREATION_MODEL_LABELS[item] ?? item}{models.includes(item) ? "" : "（不可用）"}</option>
                   ))}
@@ -554,7 +600,7 @@ export function VideoCreationWorkspace({
               </label>
             </div>
 
-            {effectiveModel === "fasterliveportrait" ? (
+            {!isReferenceVideoMode && effectiveModel === "fasterliveportrait" ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-800">FasterLivePortrait 参数</p>
@@ -624,30 +670,61 @@ export function VideoCreationWorkspace({
               </div>
             ) : null}
 
-            <div className="mt-5">
-              <p className="text-sm font-semibold text-slate-800">音频来源</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {AUDIO_SOURCE_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setAudioSource(option.id)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${audioSource === option.id ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+            {!isReferenceVideoMode ? (
+              <div className="mt-5">
+                <p className="text-sm font-semibold text-slate-800">音频来源</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {AUDIO_SOURCE_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setAudioSource(option.id)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${audioSource === option.id ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-800">参考视频时长</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {REFERENCE_DURATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setReferenceDurationSec(option.value)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${referenceDurationSec === option.value ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                  {selectedAvatar ? (
+                    <>
+                      <img src={buildApiUrl(`/avatars/${encodeURIComponent(selectedAvatar.id)}/preview`)} alt={selectedAvatar.name ?? selectedAvatar.id} className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-900">{selectedAvatar.name ?? selectedAvatar.id}</span>
+                        <span className="block text-xs text-slate-500">FlashTalk 使用内部低能量驱动音频生成参考视频</span>
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm font-medium text-slate-500">请先在左侧选择或上传参考图片</span>
+                  )}
+                </div>
+              </div>
+            )}
 
-            {audioSource === "upload" ? (
+            {!isReferenceVideoMode && audioSource === "upload" ? (
               <label className="mt-4 block rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
                 <span className="font-semibold">上传音频</span>
                 <span className="mt-1 block text-xs text-slate-500">支持 wav/mp3/m4a/webm 等 ffmpeg 可解码格式，服务端限制文件大小。</span>
                 <input type="file" accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg" className="mt-3 block w-full text-xs" onChange={(event) => setAudioFile(event.currentTarget.files?.[0] ?? null)} />
                 {audioFile ? <span className="mt-2 block text-xs font-medium text-cyan-700">已选择：{audioFile.name}</span> : null}
               </label>
-            ) : (
+            ) : !isReferenceVideoMode ? (
               <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <label className="block text-sm font-medium text-slate-700">
                   <span className="flex items-center justify-between gap-3">
@@ -883,7 +960,7 @@ export function VideoCreationWorkspace({
                   </div>
                 ) : null}
               </div>
-            )}
+            ) : null}
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button type="button" disabled={generating || !selectedAvatar || !availableVideoModels.length} onClick={() => void handleGenerate()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">

@@ -87,6 +87,28 @@ class FakeVideoCreator:
             },
         }
 
+    async def create_reference_video(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(("reference", kwargs))
+        return {
+            "job_id": "job-reference",
+            "status": "done",
+            "source": "reference_video",
+            "export_video": {
+                "id": "export-reference",
+                "kind": "video_creation",
+                "title": kwargs["title"],
+                "duration_sec": float(kwargs["duration_sec"]),
+                "size_bytes": 9,
+                "mime_type": "video/mp4",
+                "created_at": "2026-06-03T00:00:00Z",
+                "path": str(Path(str(getattr(self.settings, "exports_dir"))) / "reference.mp4"),
+                "download_url": "/exports/videos/export-reference/download",
+                "session_id": None,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+            },
+        }
+
 
 def _client(tmp_path: Path, monkeypatch):
     avatars = tmp_path / "avatars"
@@ -233,6 +255,32 @@ def test_video_creation_tts_text_passes_voice_model_without_audio_preview(tmp_pa
     assert response.json()["export_video"]["model"] == "quicktalk"
 
 
+
+
+def test_video_creation_reference_video_passes_duration(tmp_path: Path, monkeypatch) -> None:
+    client, creators = _client(tmp_path, monkeypatch)
+    with client:
+        response = client.post(
+            "/video-creation/jobs",
+            data={
+                "model": "flashtalk",
+                "avatar_id": "anchor",
+                "audio_source": "reference_video",
+                "title": "Reference take",
+                "duration_sec": "30",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    call_type, kwargs = creators[0].calls[0]
+    assert call_type == "reference"
+    assert kwargs["model"] == "flashtalk"
+    assert kwargs["avatar_id"] == "anchor"
+    assert kwargs["title"] == "Reference take"
+    assert kwargs["duration_sec"] == 30
+    payload = response.json()
+    assert payload["source"] == "reference_video"
+    assert payload["export_video"]["duration_sec"] == 30.0
 
 def test_video_creation_tts_text_passes_indextts_config(tmp_path: Path, monkeypatch) -> None:
     client, creators = _client(tmp_path, monkeypatch)
@@ -1228,3 +1276,230 @@ def test_video_creation_rejects_oversized_uploaded_audio(tmp_path: Path, monkeyp
         )
 
     assert response.status_code == 413
+
+
+def test_reference_video_duration_options_default_and_settings() -> None:
+    from opentalking import video_creation as video_creation_module
+
+    assert video_creation_module._reference_duration_options(SimpleNamespace()) == {10, 30, 60}
+    assert video_creation_module._reference_duration_options(
+        SimpleNamespace(video_creation_reference_durations="5, 10, bad, 120")
+    ) == {5, 10, 120}
+
+
+def test_reference_video_driver_pcm_matches_duration_and_is_low_energy() -> None:
+    from opentalking import video_creation as video_creation_module
+
+    pcm = video_creation_module._build_reference_driver_pcm(16000 * 10, level=480.0)
+
+    assert pcm.dtype == np.int16
+    assert pcm.shape == (16000 * 10,)
+    assert int(np.max(np.abs(pcm))) <= 480
+    assert int(np.max(np.abs(pcm))) > 0
+    assert int(np.count_nonzero(pcm)) > 1000
+
+
+@pytest.mark.asyncio
+async def test_create_reference_video_rejects_non_flashtalk(tmp_path: Path) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_avatar(avatars)
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            video_creation_reference_durations="10,30,60",
+        )
+    )
+
+    with pytest.raises(ValueError, match="reference video generation only supports flashtalk"):
+        await service.create_reference_video(
+            model="quicktalk",
+            avatar_id="anchor",
+            duration_sec=10,
+            title="Reference take",
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_reference_video_uses_synthetic_driver_pcm_when_audio_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_avatar(avatars)
+    captured: dict[str, object] = {}
+
+    async def fake_create_from_pcm(self, **kwargs: object) -> dict[str, object]:
+        del self
+        captured.update(kwargs)
+        pcm = np.asarray(kwargs["pcm"], dtype=np.int16)
+        return {
+            "job_id": "job-reference",
+            "status": "done",
+            "source": kwargs["source"],
+            "export_video": {
+                "id": "export-reference",
+                "kind": "video_creation",
+                "title": kwargs["title"],
+                "duration_sec": float(pcm.size) / 16000.0,
+                "size_bytes": 9,
+                "mime_type": "video/mp4",
+                "created_at": "2026-06-03T00:00:00Z",
+                "path": str(exports / "reference.mp4"),
+                "download_url": "/exports/videos/export-reference/download",
+                "session_id": None,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+            },
+        }
+
+    monkeypatch.setattr(VideoCreationService, "_create_from_pcm", fake_create_from_pcm)
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            video_creation_reference_durations="10,30,60",
+            video_creation_reference_driver_audio=str(tmp_path / "missing-driver.wav"),
+            video_creation_reference_driver_level=240,
+        )
+    )
+    result = await service.create_reference_video(
+        model="flashtalk",
+        avatar_id="anchor",
+        duration_sec=10,
+        title="Reference take",
+    )
+
+    pcm = np.asarray(captured["pcm"], dtype=np.int16)
+    assert captured["model"] == "flashtalk"
+    assert captured["avatar_id"] == "anchor"
+    assert captured["source"] == "reference_video"
+    assert pcm.shape == (16000 * 10,)
+    assert int(np.max(np.abs(pcm))) <= 240
+    assert result["source"] == "reference_video"
+    assert result["export_video"]["duration_sec"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_create_reference_video_uses_default_driver_audio(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_avatar(avatars)
+    driver_audio = tmp_path / "driver.wav"
+    driver_pcm = np.array([100, -100, 200, -200], dtype=np.int16)
+
+    from opentalking import video_creation as video_creation_module
+
+    video_creation_module._write_wav(driver_audio, driver_pcm, sample_rate=16000)
+    captured: dict[str, object] = {}
+
+    async def fake_create_from_pcm(self, **kwargs: object) -> dict[str, object]:
+        del self
+        captured.update(kwargs)
+        pcm = np.asarray(kwargs["pcm"], dtype=np.int16)
+        return {
+            "job_id": "job-reference",
+            "status": "done",
+            "source": kwargs["source"],
+            "export_video": {
+                "id": "export-reference",
+                "kind": "video_creation",
+                "title": kwargs["title"],
+                "duration_sec": float(pcm.size) / 16000.0,
+                "size_bytes": 9,
+                "mime_type": "video/mp4",
+                "created_at": "2026-06-03T00:00:00Z",
+                "path": str(exports / "reference.mp4"),
+                "download_url": "/exports/videos/export-reference/download",
+                "session_id": None,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+            },
+        }
+
+    monkeypatch.setattr(VideoCreationService, "_create_from_pcm", fake_create_from_pcm)
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            video_creation_reference_durations="10,30,60",
+            video_creation_reference_driver_audio=str(driver_audio),
+        )
+    )
+
+    result = await service.create_reference_video(
+        model="flashtalk",
+        avatar_id="anchor",
+        duration_sec=10,
+        title="Reference take",
+    )
+
+    pcm = np.asarray(captured["pcm"], dtype=np.int16)
+    assert pcm.shape == (16000 * 10,)
+    assert pcm[:8].tolist() == [100, -100, 200, -200, 100, -100, 200, -200]
+    assert result["source"] == "reference_video"
+    assert result["export_video"]["duration_sec"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_create_reference_video_falls_back_when_default_driver_audio_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_avatar(avatars)
+    captured: dict[str, object] = {}
+
+    async def fake_create_from_pcm(self, **kwargs: object) -> dict[str, object]:
+        del self
+        captured.update(kwargs)
+        pcm = np.asarray(kwargs["pcm"], dtype=np.int16)
+        return {
+            "job_id": "job-reference",
+            "status": "done",
+            "source": kwargs["source"],
+            "export_video": {
+                "id": "export-reference",
+                "kind": "video_creation",
+                "title": kwargs["title"],
+                "duration_sec": float(pcm.size) / 16000.0,
+                "size_bytes": 9,
+                "mime_type": "video/mp4",
+                "created_at": "2026-06-03T00:00:00Z",
+                "path": str(exports / "reference.mp4"),
+                "download_url": "/exports/videos/export-reference/download",
+                "session_id": None,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+            },
+        }
+
+    monkeypatch.setattr(VideoCreationService, "_create_from_pcm", fake_create_from_pcm)
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            video_creation_reference_durations="10,30,60",
+            video_creation_reference_driver_audio=str(tmp_path / "missing.wav"),
+            video_creation_reference_driver_level=240,
+        )
+    )
+
+    result = await service.create_reference_video(
+        model="flashtalk",
+        avatar_id="anchor",
+        duration_sec=10,
+        title="Reference take",
+    )
+
+    pcm = np.asarray(captured["pcm"], dtype=np.int16)
+    assert pcm.shape == (16000 * 10,)
+    assert int(np.max(np.abs(pcm))) <= 240
+    assert int(np.count_nonzero(pcm)) > 1000
+    assert result["source"] == "reference_video"

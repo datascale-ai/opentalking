@@ -164,7 +164,7 @@ export async function uploadExportVideo(input: UploadExportVideoInput): Promise<
 }
 
 
-export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone";
+export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone" | "reference_video";
 
 export type IndexTTSEmotionMode = "voice" | "text" | "vector" | "audio";
 
@@ -198,6 +198,7 @@ export type CreateVideoCreationJobInput = {
   ttsProvider?: string;
   ttsModel?: string;
   voice?: string;
+  durationSec?: number;
   fasterliveportraitConfig?: Record<string, unknown>;
   indexttsConfig?: IndexTTSConfig;
   indexttsEmotionAudioFile?: File | null;
@@ -216,6 +217,9 @@ export async function createVideoCreationJob(input: CreateVideoCreationJobInput)
   if (input.ttsProvider) form.set("tts_provider", input.ttsProvider);
   if (input.ttsModel) form.set("tts_model", input.ttsModel);
   if (input.voice) form.set("voice", input.voice);
+  if (input.durationSec != null) {
+    form.set("duration_sec", String(input.durationSec));
+  }
   if (input.fasterliveportraitConfig) {
     form.set("fasterliveportrait_config", JSON.stringify(input.fasterliveportraitConfig));
   }
