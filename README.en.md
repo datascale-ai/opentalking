@@ -19,7 +19,9 @@
 </p>
 
 <p align="center">
-  <a href="https://www.opentalking.net/#github"><b>🌐 Visit OpenTalking Website</b></a>
+  <a href="https://www.opentalking.net/#github">
+    <img src="https://img.shields.io/badge/Visit%20OpenTalking%20Website-00A6D6?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Visit OpenTalking Website">
+  </a>
 </p>
 
 <p align="center">
