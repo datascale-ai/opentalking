@@ -8,8 +8,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from opentalking.core.types.frames import VideoFrameData
-from opentalking.models.quicktalk.adapter import QuickTalkAdapter
+from opentalking.core.types.frames import AudioChunk, VideoFrameData
+from opentalking.models.quicktalk.adapter import (
+    QuickTalkAdapter,
+    _configured_quicktalk_device,
+    _default_quicktalk_device,
+)
 
 
 def _write_quicktalk_local_assets(asset_root: Path) -> None:
@@ -54,6 +58,47 @@ def test_quicktalk_runtime_available_rejects_unavailable_explicit_cuda(
     monkeypatch.setenv("OPENTALKING_QUICKTALK_DEVICE", "cuda:6")
 
     assert QuickTalkAdapter.runtime_available() is False
+
+
+def test_quicktalk_default_device_prefers_mps_on_apple_silicon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeMps:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+    fake_torch = types.SimpleNamespace(backends=types.SimpleNamespace(mps=FakeMps()))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr("platform.system", lambda: "Darwin")
+    monkeypatch.setattr("platform.machine", lambda: "arm64")
+
+    assert _default_quicktalk_device() == "mps"
+
+
+def test_quicktalk_default_device_falls_back_to_cpu_on_apple_silicon_without_mps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeMps:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    fake_torch = types.SimpleNamespace(backends=types.SimpleNamespace(mps=FakeMps()))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setattr("platform.system", lambda: "Darwin")
+    monkeypatch.setattr("platform.machine", lambda: "arm64")
+
+    assert _default_quicktalk_device() == "cpu"
+
+
+def test_quicktalk_configured_device_preserves_explicit_generic_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_DEVICE", raising=False)
+    monkeypatch.delenv("OPENTALKING_TORCH_DEVICE", raising=False)
+
+    assert _configured_quicktalk_device("auto", "cuda:3") == "cuda:3"
 
 
 def test_quicktalk_adapter_treats_empty_asset_root_env_as_unset(
@@ -125,6 +170,94 @@ def test_quicktalk_adapter_falls_back_to_model_root_env(
 
     assert captured["asset_root"] == asset_root.resolve()
     assert captured["template_video"] == template.resolve()
+
+
+def test_quicktalk_adapter_falls_back_to_settings_asset_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset_root = tmp_path / "models" / "quicktalk"
+    _write_quicktalk_pth_assets(asset_root)
+    avatar_dir = tmp_path / "avatars" / "anchor"
+    quicktalk_dir = avatar_dir / "quicktalk"
+    quicktalk_dir.mkdir(parents=True)
+    template = quicktalk_dir / "template_512x512.mp4"
+    template.write_bytes(b"video")
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "anchor",
+                "model_type": "quicktalk",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 512,
+                "height": 512,
+                "version": "1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    captured: dict[str, Path | str | None] = {}
+
+    class FakeWorker:
+        fps = 25
+
+        def __init__(
+            self,
+            *,
+            asset_root: Path,
+            template_video: Path,
+            device: str,
+            hubert_device: str | None,
+            model_backend: str,
+            **_: object,
+        ) -> None:
+            captured["asset_root"] = asset_root
+            captured["template_video"] = template_video
+            captured["device"] = device
+            captured["hubert_device"] = hubert_device
+            captured["model_backend"] = model_backend
+
+        def make_state(self) -> object:
+            return object()
+
+    fake_runtime = types.ModuleType("opentalking.models.quicktalk.runtime")
+    fake_runtime.RealtimeV3Worker = FakeWorker
+    monkeypatch.setitem(sys.modules, "opentalking.models.quicktalk.runtime", fake_runtime)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_ASSET_ROOT", raising=False)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_MODEL_ROOT", raising=False)
+    monkeypatch.delenv("OMNIRT_QUICKTALK_MODEL_ROOT", raising=False)
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_ASSET_ROOT", "")
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_MODEL_ROOT", "")
+
+    from opentalking.core.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        "opentalking.core.config.get_settings",
+        lambda: types.SimpleNamespace(
+            quicktalk_asset_root=str(asset_root),
+            quicktalk_model_root="",
+            quicktalk_device="mps",
+            quicktalk_hubert_device="cpu",
+            quicktalk_model_backend="onnx",
+            torch_device="",
+            device="",
+        ),
+    )
+
+    try:
+        adapter = QuickTalkAdapter()
+        adapter.load_avatar(str(avatar_dir))
+    finally:
+        get_settings.cache_clear()
+
+    assert captured["asset_root"] == asset_root.resolve()
+    assert captured["template_video"] == template.resolve()
+    assert captured["device"] == "mps"
+    assert captured["hubert_device"] == "cpu"
+    assert captured["model_backend"] == "onnx"
 
 
 def test_quicktalk_adapter_accepts_avatar_with_quicktalk_metadata(
@@ -554,6 +687,94 @@ def test_quicktalk_adapter_warmup_runs_silence_and_restores_stream_state() -> No
     assert np.all(pcm == 0)
     assert state.frame_index == 7
     assert state.session_state == {"existing": True}
+
+
+def test_quicktalk_adapter_can_downsample_generated_frames_for_mac(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_FPS", "14")
+    adapter = QuickTalkAdapter()
+    generated_rep_ids: list[int] = []
+
+    class FakeWorker:
+        fps = 25
+
+        def prepare_pcm_features(self, pcm, sample_rate):
+            return [np.full((1, 1), i, dtype=np.float32) for i in range(21)], 0.1
+
+        def generate_frames_from_reps(self, reps, state=None):
+            del state
+            for rep in reps:
+                generated_rep_ids.append(int(rep[0, 0]))
+                yield np.zeros((4, 4, 3), dtype=np.uint8)
+
+    state = types.SimpleNamespace(
+        worker=FakeWorker(),
+        fps=25,
+        frame_index=0,
+        session_state=None,
+    )
+
+    features, frames = adapter.render_audio_chunk(
+        state,  # type: ignore[arg-type]
+        AudioChunk(
+            data=np.zeros(13714, dtype=np.int16),
+            sample_rate=16000,
+            duration_ms=857.125,
+        ),
+    )
+
+    assert len(features.reps) == 21
+    assert len(frames) == 12
+    assert state.frame_index == 12
+    assert generated_rep_ids == [0, 2, 4, 5, 7, 9, 11, 13, 15, 16, 18, 20]
+
+
+def test_quicktalk_adapter_downsamples_through_live_render_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking.pipeline.speak.render_pipeline import render_audio_chunk_sync
+
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_FPS", "14")
+    adapter = QuickTalkAdapter()
+    generated_rep_ids: list[int] = []
+
+    class FakeWorker:
+        fps = 25
+
+        def prepare_pcm_features(self, pcm, sample_rate):
+            return [np.full((1, 1), i, dtype=np.float32) for i in range(21)], 0.1
+
+        def generate_frames_from_reps(self, reps, state=None):
+            del state
+            for rep in reps:
+                generated_rep_ids.append(int(rep[0, 0]))
+                yield np.zeros((4, 4, 3), dtype=np.uint8)
+
+    state = types.SimpleNamespace(
+        worker=FakeWorker(),
+        fps=25,
+        frame_index=0,
+        extra={},
+        session_state=None,
+    )
+
+    next_frame_idx, frames = render_audio_chunk_sync(
+        adapter,
+        state,
+        AudioChunk(
+            data=np.zeros(13714, dtype=np.int16),
+            sample_rate=16000,
+            duration_ms=857.125,
+        ),
+        frame_index_start=0,
+        speech_frame_index_start=0,
+    )
+
+    assert next_frame_idx == 12
+    assert len(frames) == 12
+    assert frames[1].timestamp_ms == pytest.approx(1000.0 / 14.0)
+    assert generated_rep_ids == [0, 2, 4, 5, 7, 9, 11, 13, 15, 16, 18, 20]
 
 
 def test_quicktalk_adapter_evicts_old_worker_cache_entries(

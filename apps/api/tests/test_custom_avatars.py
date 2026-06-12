@@ -75,6 +75,7 @@ def test_create_custom_avatar_adds_listed_asset_with_preview(tmp_path):
 
 
 def test_quicktalk_model_root_falls_back_to_omnirt_model_root(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_ASSET_ROOT", raising=False)
     monkeypatch.delenv("OPENTALKING_QUICKTALK_MODEL_ROOT", raising=False)
     monkeypatch.delenv("OMNIRT_QUICKTALK_MODEL_ROOT", raising=False)
     monkeypatch.setenv("OMNIRT_MODEL_ROOT", str(tmp_path / "shared-models"))
@@ -83,6 +84,35 @@ def test_quicktalk_model_root_falls_back_to_omnirt_model_root(tmp_path, monkeypa
 
     assert avatars._settings_quicktalk_model_root(settings) == (
         tmp_path / "shared-models" / "quicktalk"
+    ).resolve()
+
+
+def test_quicktalk_model_root_prefers_asset_root_setting_and_env(tmp_path, monkeypatch):
+    env_asset_root = tmp_path / "env-quicktalk"
+    setting_asset_root = tmp_path / "settings-quicktalk"
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_ASSET_ROOT", str(env_asset_root))
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_MODEL_ROOT", str(tmp_path / "legacy-env-root"))
+    monkeypatch.setenv("OMNIRT_QUICKTALK_MODEL_ROOT", str(tmp_path / "omnirt-env-root"))
+    monkeypatch.setenv("OMNIRT_MODEL_ROOT", str(tmp_path / "shared-models"))
+
+    settings = SimpleNamespace(
+        models_dir=str(tmp_path / "repo-models"),
+        quicktalk_asset_root=str(setting_asset_root),
+        quicktalk_model_root=str(tmp_path / "legacy-settings-root"),
+    )
+
+    assert avatars._settings_quicktalk_model_root(settings) == setting_asset_root.resolve()
+
+    settings.quicktalk_asset_root = ""
+    assert avatars._settings_quicktalk_model_root(settings) == env_asset_root.resolve()
+
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_ASSET_ROOT")
+    assert avatars._settings_quicktalk_model_root(settings) == (
+        tmp_path / "legacy-settings-root"
+    ).resolve()
+    settings.quicktalk_model_root = ""
+    assert avatars._settings_quicktalk_model_root(settings) == (
+        tmp_path / "legacy-env-root"
     ).resolve()
 
 
@@ -889,6 +919,91 @@ def test_quicktalk_avatar_prewarm_uses_local_adapter_when_backend_is_local(tmp_p
     assert [name for name, _ in calls] == ["load_model", "load_avatar", "warmup"]
     assert calls[0][1] == "cuda:1"
     assert calls[1][1] == str(avatar)
+
+
+def test_wav2lip_avatar_can_prewarm_quicktalk_with_asset_root_setting(tmp_path, monkeypatch):
+    quicktalk_asset_root = tmp_path / "quicktalk-assets"
+    avatar = tmp_path / "wav-avatar"
+    avatar.mkdir()
+    (avatar / "reference.png").write_bytes(_png_bytes((16, 24)))
+    (avatar / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "wav-avatar",
+                "name": "Wav Avatar",
+                "model_type": "wav2lip",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 16,
+                "height": 24,
+                "version": "1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    prepared_asset_roots: list[Path] = []
+
+    def fake_prepare_quicktalk_asset(**kwargs):
+        rebuild = kwargs["rebuild"]
+        prepared_asset_roots.append(rebuild.asset_root)
+        return avatars.PreparedAssetResult(
+            avatar_id="wav-avatar",
+            status="generated",
+            source_mode="image",
+            template_path=avatar / "quicktalk" / "template_16x24.mp4",
+            cache_path=avatar / "quicktalk" / "face_cache_v3_16x24.npz",
+            frames=1,
+        )
+
+    class FakeAdapter:
+        def load_model(self, device="cuda"):
+            del device
+
+        def load_avatar(self, avatar_path):
+            return {"avatar_path": avatar_path}
+
+        def warmup(self, avatar_state):
+            del avatar_state
+
+    async def fail_omnirt(settings, path, payload):
+        del settings, path, payload
+        raise AssertionError("local prewarm must not call OmniRT")
+
+    monkeypatch.setattr(avatars, "_prepare_quicktalk_asset", fake_prepare_quicktalk_asset)
+    monkeypatch.setattr(
+        avatars,
+        "_quicktalk_cache_builder",
+        lambda settings: SimpleNamespace(
+            asset_root=avatars._settings_quicktalk_model_root(settings)
+        ),
+    )
+    monkeypatch.setattr(avatars, "_quicktalk_cache_hit_result", lambda *args, **kwargs: None)
+    monkeypatch.setattr(avatars, "_post_omnirt_json", fail_omnirt)
+    monkeypatch.setattr(avatars, "resolve_model_backend", lambda model, settings: SimpleNamespace(backend="local"))
+    monkeypatch.setattr(avatars, "get_adapter", lambda model: FakeAdapter())
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_MODEL_ROOT", str(tmp_path / "wrong-legacy-root"))
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(
+        avatars_dir=str(tmp_path),
+        models_dir=str(tmp_path / "wrong-models-dir"),
+        quicktalk_asset_root=str(quicktalk_asset_root),
+        quicktalk_model_root="",
+        quicktalk_device="cpu",
+        device="cpu",
+    )
+    app.include_router(avatars.router)
+    client = TestClient(app)
+
+    response = client.post("/avatars/wav-avatar/prewarm", json={"model": "quicktalk"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["cache"]["model"] == "quicktalk"
+    assert payload["runtime"]["type"] == "local_prewarm_result"
+    assert prepared_asset_roots == [quicktalk_asset_root.resolve()]
 
 
 def test_video_avatar_exposes_preview_video(tmp_path):

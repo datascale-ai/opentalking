@@ -35,7 +35,7 @@ $OMNIRT_MODEL_ROOT/quicktalk/          # OmniRT 默认读取
 ```text
 $OPENTALKING_QUICKTALK_ASSET_ROOT/    # local adapter 默认读取
   checkpoints/
-    quicktalk.pth 或 256.onnx
+    quicktalk.pth
     repair.npy
     chinese-hubert-large/
       pytorch_model.bin

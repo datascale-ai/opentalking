@@ -90,15 +90,15 @@ def _log_task_exception(task: asyncio.Task, sid: str) -> None:
 def _local_runner_device(model: str, settings: Any, default_device: str) -> str:
     model = model.strip().lower()
     if model == "quicktalk":
-        return str(
-            os.environ.get("OPENTALKING_QUICKTALK_DEVICE")
-            or getattr(settings, "quicktalk_device", "")
-            or os.environ.get("OPENTALKING_TORCH_DEVICE")
-            or getattr(settings, "torch_device", "")
-            or os.environ.get("OPENTALKING_DEVICE")
-            or getattr(settings, "device", "")
-            or os.environ.get("DEVICE")
-            or default_device
+        from opentalking.models.quicktalk.adapter import _configured_quicktalk_device
+
+        return _configured_quicktalk_device(
+            getattr(settings, "quicktalk_device", ""),
+            os.environ.get("OPENTALKING_DEVICE"),
+            os.environ.get("DEVICE"),
+            getattr(settings, "torch_device", ""),
+            getattr(settings, "device", ""),
+            default_device,
         )
     if model == "wav2lip":
         return str(

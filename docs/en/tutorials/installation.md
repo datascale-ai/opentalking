@@ -24,7 +24,7 @@ streamlined first-run procedure, see the [Quickstart](quickstart.md).
 
 | Platform | Synthesis backends | Notes |
 |----------|-------------------|-------|
-| macOS (Apple Silicon and Intel) | `mock` | Suitable for orchestration and frontend development. Real talking-head models are not supported on macOS. |
+| macOS (Apple Silicon and Intel) | `mock`, experimental `quicktalk` local on Apple Silicon | Suitable for orchestration and frontend development. QuickTalk local can be tested on Apple Silicon with `quicktalk-cpu`; see [QuickTalk on Apple Silicon](../model-deployment/quicktalk/apple-silicon.md) for the full path. Realtime production paths still target Linux GPU/NPU or OmniRT. |
 | Linux x86_64 + CUDA 12 | `mock`, `wav2lip`, `musetalk`, `flashtalk`, `flashhead`, `quicktalk` | Primary deployment target. |
 | Linux aarch64 + Ascend 910B (CANN 8.0+) | `mock`, `wav2lip`, `flashtalk` | NPU production deployment path. |
 | Windows | `mock` (WSL2 recommended) | Not part of the continuous integration matrix. |

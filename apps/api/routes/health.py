@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 
 from opentalking.core.queue_status import get_flashtalk_queue_status
+from opentalking.models.quicktalk.paths import resolve_quicktalk_asset_root
 from opentalking.providers.stt.factory import stt_enabled_providers, stt_provider_config, stt_status
 from opentalking.providers.tts.factory import tts_enabled_providers, tts_provider_config, tts_status
 
@@ -66,8 +67,14 @@ def _runtime_status_payload(request: Request) -> dict[str, Any]:
         getattr(settings, "llm_api_key", "") or ""
     ).strip()
     ignored_legacy_env = [name for name in _IGNORED_LEGACY_ENV if os.environ.get(name)]
-    quicktalk_backend = os.environ.get("OPENTALKING_QUICKTALK_BACKEND", "").strip()
-    quicktalk_device = os.environ.get("OPENTALKING_TORCH_DEVICE", "").strip()
+    quicktalk_backend = os.environ.get("OPENTALKING_QUICKTALK_BACKEND", "").strip() or str(
+        getattr(settings, "quicktalk_backend", "") or ""
+    ).strip()
+    quicktalk_device = os.environ.get("OPENTALKING_QUICKTALK_DEVICE", "").strip() or str(
+        getattr(settings, "quicktalk_device", "") or ""
+    ).strip()
+    quicktalk_asset_root_path = resolve_quicktalk_asset_root(settings)
+    quicktalk_asset_root = str(quicktalk_asset_root_path) if quicktalk_asset_root_path else ""
     return {
         "status": "ok",
         "llm_provider": os.environ.get("OPENTALKING_LLM_PROVIDER", "").strip()
@@ -97,7 +104,7 @@ def _runtime_status_payload(request: Request) -> dict[str, Any]:
         "default_model": str(getattr(settings, "default_model", "") or ""),
         "quicktalk_backend": quicktalk_backend,
         "quicktalk_device": quicktalk_device,
-        "quicktalk_asset_root": os.environ.get("OPENTALKING_QUICKTALK_ASSET_ROOT", "").strip(),
+        "quicktalk_asset_root": quicktalk_asset_root,
         "ignored_legacy_env": ignored_legacy_env,
     }
 

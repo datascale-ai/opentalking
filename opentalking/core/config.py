@@ -367,6 +367,15 @@ class Settings(BaseSettings):
     flashhead_frame_num: int = 29
     flashhead_chunk_samples: int = 17920
 
+    quicktalk_asset_root: str = ""
+    quicktalk_model_root: str = ""
+    quicktalk_backend: str = ""
+    quicktalk_model_backend: str = "auto"
+    quicktalk_device: str = ""
+    quicktalk_hubert_device: str = ""
+    quicktalk_worker_cache: bool = True
+    quicktalk_slice_len: int = 0
+
     llm_provider: str = "openai_compatible"
     llm_base_url: str = ""
     llm_api_key: str = ""

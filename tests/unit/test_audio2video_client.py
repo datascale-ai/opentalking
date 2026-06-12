@@ -321,3 +321,61 @@ async def test_local_quicktalk_uses_omnirt_chunk_defaults(tmp_path: Path) -> Non
     assert init["slice_len"] == 28
     assert init["chunk_samples"] == 17920
     assert client.audio_chunk_samples == 17920
+
+
+@pytest.mark.asyncio
+async def test_local_quicktalk_uses_smaller_chunks_on_mps_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_SLICE_LEN", raising=False)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_CHUNK_FRAMES", raising=False)
+    adapter = FakeQuickTalkLocalAdapter()
+    client = LocalAudio2VideoClient(adapter, device="mps")
+    avatar = tmp_path / "avatar"
+    avatar.mkdir()
+
+    init = await client.init_session(avatar_path=avatar)
+
+    assert init["fps"] == 25
+    assert init["slice_len"] == 12
+    assert init["chunk_samples"] == 7680
+    assert client.audio_chunk_samples == 7680
+
+
+@pytest.mark.asyncio
+async def test_local_quicktalk_slice_len_env_overrides_mps_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_SLICE_LEN", "16")
+    adapter = FakeQuickTalkLocalAdapter()
+    client = LocalAudio2VideoClient(adapter, device="mps")
+    avatar = tmp_path / "avatar"
+    avatar.mkdir()
+
+    init = await client.init_session(avatar_path=avatar)
+
+    assert init["slice_len"] == 16
+    assert init["chunk_samples"] == 10240
+
+
+@pytest.mark.asyncio
+async def test_local_quicktalk_fps_env_can_lower_mps_playback_rate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_FPS", "14")
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_SLICE_LEN", raising=False)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_CHUNK_FRAMES", raising=False)
+    adapter = FakeQuickTalkLocalAdapter()
+    client = LocalAudio2VideoClient(adapter, device="mps")
+    avatar = tmp_path / "avatar"
+    avatar.mkdir()
+
+    init = await client.init_session(avatar_path=avatar)
+
+    assert init["fps"] == 14
+    assert init["slice_len"] == 12
+    assert init["chunk_samples"] == 13714
+    assert client.audio_chunk_samples == 13714

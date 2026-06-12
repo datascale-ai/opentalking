@@ -134,3 +134,55 @@ quickstart_describe_port() {
 
   return 1
 }
+
+quickstart_resolve_ffmpeg() {
+  local py_bin="${repo_root:-}/.venv/bin/python"
+
+  if [[ -n "${OPENTALKING_FFMPEG_BIN:-}" ]]; then
+    printf '%s\n' "$OPENTALKING_FFMPEG_BIN"
+    return 0
+  fi
+
+  if command -v ffmpeg >/dev/null 2>&1; then
+    command -v ffmpeg
+    return 0
+  fi
+
+  if [[ ! -x "$py_bin" ]]; then
+    py_bin="python3"
+  fi
+  "$py_bin" - <<'PY'
+import imageio_ffmpeg
+
+print(imageio_ffmpeg.get_ffmpeg_exe())
+PY
+}
+
+quickstart_detach() {
+  local log_file="$1"
+  shift
+
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$@" >"$log_file" 2>&1 < /dev/null &
+    printf '%s\n' "$!"
+    return 0
+  fi
+
+  python3 - "$log_file" "$@" <<'PY'
+import subprocess
+import sys
+
+log_file = sys.argv[1]
+argv = sys.argv[2:]
+with open(log_file, "ab", buffering=0) as log:
+    process = subprocess.Popen(
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        close_fds=True,
+        start_new_session=True,
+    )
+print(process.pid)
+PY
+}

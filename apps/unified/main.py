@@ -107,11 +107,9 @@ def _adapter_device(model_type: str, default_device: str) -> str:
     if model_type == "wav2lip":
         return os.environ.get("OPENTALKING_WAV2LIP_DEVICE") or default_device
     if model_type == "quicktalk":
-        return (
-            os.environ.get("OPENTALKING_QUICKTALK_DEVICE")
-            or os.environ.get("OPENTALKING_TORCH_DEVICE")
-            or default_device
-        )
+        from opentalking.models.quicktalk.adapter import _configured_quicktalk_device
+
+        return _configured_quicktalk_device(default_device)
     return default_device
 
 

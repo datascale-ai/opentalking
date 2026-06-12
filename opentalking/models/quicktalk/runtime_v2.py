@@ -47,10 +47,22 @@ def run_cmd(cmd: Sequence[str]) -> None:
 
 
 def ensure_ffmpeg() -> str:
+    configured = os.environ.get("OPENTALKING_FFMPEG_BIN", "").strip()
+    if configured:
+        return configured
     ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
-        raise RuntimeError("ffmpeg not found in PATH")
-    return ffmpeg
+    if ffmpeg:
+        return ffmpeg
+    try:
+        import imageio_ffmpeg
+
+        return str(imageio_ffmpeg.get_ffmpeg_exe())
+    except Exception as exc:
+        raise RuntimeError(
+            "ffmpeg not found. Install ffmpeg or install imageio-ffmpeg; "
+            "on macOS, `uv sync --extra models --extra quicktalk-cpu --python 3.11` "
+            "includes the fallback binary."
+        ) from exc
 
 
 def maybe_mkdir(path: Path) -> None:
@@ -142,14 +154,7 @@ class QuickTalkModelBackend(Protocol):
 
 class OnnxQuickTalkModel:
     def __init__(self, onnx_path: Path, device: torch.device) -> None:
-        if device.type == "cuda":
-            device_id = device.index if device.index is not None else 0
-            providers = [
-                ("CUDAExecutionProvider", {"device_id": device_id}),
-                "CPUExecutionProvider",
-            ]
-        else:
-            providers = ["CPUExecutionProvider"]
+        providers = _onnx_providers_for_device(device)
         self.session = ort.InferenceSession(str(onnx_path), providers=providers)
         self.input_names = [x.name for x in self.session.get_inputs()]
 
@@ -170,6 +175,20 @@ class OnnxQuickTalkModel:
             },
         )
         return cast(np.ndarray, g), cast(np.ndarray, hn_out), cast(np.ndarray, cn_out)
+
+
+def _onnx_providers_for_device(device: torch.device) -> list[str | tuple[str, dict[str, int]]]:
+    available = set(ort.get_available_providers())
+    if device.type == "cuda":
+        device_id = device.index if device.index is not None else 0
+        providers: list[str | tuple[str, dict[str, int]]] = []
+        if "CUDAExecutionProvider" in available:
+            providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
+        providers.append("CPUExecutionProvider")
+        return providers
+    if device.type == "mps" and "CoreMLExecutionProvider" in available:
+        return ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+    return ["CPUExecutionProvider"]
 
 
 class TorchQuickTalkModel:

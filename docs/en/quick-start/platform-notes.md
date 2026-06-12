@@ -6,7 +6,7 @@ This page explains the recommended ways to run OpenTalking on different system e
 
 | Platform | Recommended Use | Available Paths | Notes |
 | --- | --- | --- | --- |
-| macOS | Docs, frontend, API, Mock validation | `mock` | Good for quick trials, not recommended as a real model inference environment. |
+| macOS | Docs, frontend, API, Mock validation; experimental QuickTalk local on Apple Silicon | `mock`, experimental `quicktalk` local | Good for quick trials. See [QuickTalk on Apple Silicon](../model-deployment/quicktalk/apple-silicon.md). Stable realtime output is still recommended on Linux GPU. |
 | Linux + CUDA | Real model validation and deployment | `mock`, `quicktalk`, `wav2lip`, `musetalk`, `omnirt` | Primary recommended environment. |
 | Linux + Ascend NPU | Private deployment and NPU evaluation | `mock`, selected OmniRT / FlashTalk paths | Requires CANN, driver, and `torch_npu`. |
 
@@ -21,9 +21,15 @@ brew install python@3.11 node ffmpeg
 uv sync --extra dev --python 3.11
 ```
 
-### Not suitable for real digital-human models
+### Experimental QuickTalk local on Apple Silicon
 
-QuickTalk, MuseTalk, FlashTalk, and similar models mainly target CUDA GPUs or dedicated inference services. Even if some Python dependencies can be installed on macOS, it is not recommended as the real video-generation path. Deploy models on a Linux GPU machine and connect OpenTalking to the remote inference service instead.
+Apple Silicon can run QuickTalk local with `quicktalk-cpu` for development, demos, and integration checks. The full path is documented in [QuickTalk on Apple Silicon](../model-deployment/quicktalk/apple-silicon.md).
+
+This path uses PyTorch MPS when available and falls back to CPU. It is not the recommended production realtime path; use Linux CUDA or OmniRT when stable 25fps output matters.
+
+### Other real digital-human models
+
+MuseTalk, FlashTalk, and similar production paths mainly target CUDA GPUs, Ascend NPUs, or dedicated inference services. Deploy those models on a Linux GPU/NPU machine and connect OpenTalking to the remote inference service.
 
 ### ffmpeg Installation
 

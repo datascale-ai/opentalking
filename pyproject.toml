@@ -97,9 +97,11 @@ local-qwen3-tts-service = [
   "uvicorn[standard]>=0.27",
 ]
 quicktalk-cpu = [
+  "imageio-ffmpeg>=0.5",
   "onnxruntime>=1.24.3",
 ]
 quicktalk-cuda = [
+  "imageio-ffmpeg>=0.5",
   "onnxruntime-gpu>=1.24.0",
 ]
 local-cosyvoice-service = [

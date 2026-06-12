@@ -26,7 +26,7 @@ local adapter 的资产根必须包含 `checkpoints/` 目录。推荐放在仓�
 ```text
 models/quicktalk/
   checkpoints/
-    quicktalk.pth 或 256.onnx
+    quicktalk.pth
     repair.npy
     chinese-hubert-large/
       pytorch_model.bin
@@ -93,7 +93,7 @@ cd "$OPENTALKING_HOME"
 opentalking-prepare-cache \
   --model quicktalk \
   --avatars-root examples/avatars \
-  --quicktalk-model-root models/quicktalk \
+  --quicktalk-asset-root models/quicktalk \
   --device cuda:0 \
   --model-backend pth \
   --verify

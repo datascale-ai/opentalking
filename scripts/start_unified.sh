@@ -189,6 +189,31 @@ if [[ "$backend" == "local" && "$model" == "musetalk" ]]; then
   bash "$quickstart_dir/prepare_local_musetalk.sh"
 fi
 
+if [[ "$backend" == "local" && "$model" == "quicktalk" ]]; then
+  export OMNIRT_ENDPOINT=""
+  export OPENTALKING_OMNIRT_ENDPOINT=""
+  if [[ "$(uname -s)" == "Darwin" && -z "${OPENTALKING_QUICKTALK_DEVICE:-}" && -z "${OPENTALKING_TORCH_DEVICE:-}" ]]; then
+    quicktalk_mac_device="$("$script_dir/../.venv/bin/python" - <<'PY' 2>/dev/null || true
+import platform
+import sys
+
+if sys.platform == 'darwin' and platform.machine().lower() in {'arm64', 'aarch64'}:
+    try:
+        import torch
+
+        print('mps' if torch.backends.mps.is_available() else 'cpu')
+    except Exception:
+        print('cpu')
+PY
+)"
+    quicktalk_mac_device="${quicktalk_mac_device:-cpu}"
+    export OPENTALKING_QUICKTALK_DEVICE="$quicktalk_mac_device"
+    export OPENTALKING_TORCH_DEVICE="$quicktalk_mac_device"
+    echo "Apple Silicon QuickTalk local defaults: OPENTALKING_QUICKTALK_DEVICE=$quicktalk_mac_device"
+    echo "Install macOS QuickTalk dependencies with: uv sync --extra dev --extra models --extra quicktalk-cpu --python 3.11"
+  fi
+fi
+
 bash "$quickstart_dir/start_opentalking.sh" "${start_args[@]}"
 bash "$quickstart_dir/start_frontend.sh" "${web_args[@]}"
 

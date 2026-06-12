@@ -1221,6 +1221,7 @@ def test_quicktalk_cuda_extra_declares_gpu_onnxruntime():
     assert "quicktalk-cuda" in pyproject
     assert "onnxruntime>=1.24.3" in pyproject
     assert "onnxruntime-gpu>=1.24.0" in pyproject
+    assert "imageio-ffmpeg>=0.5" in pyproject
 
     base_deps = pyproject.split("dependencies = [", 1)[1].split("]", 1)[0]
     models_extra = pyproject.split("models = [", 1)[1].split("]", 1)[0]
@@ -1236,6 +1237,50 @@ def test_onnxruntime_extras_declare_uv_conflicts():
     assert '{ extra = "quicktalk-cuda" }' in pyproject
     assert '{ extra = "local-cosyvoice-service" }' in pyproject
     assert '{ extra = "demo" }' in pyproject
+
+
+def test_quicktalk_onnx_provider_prefers_coreml_for_mps(monkeypatch):
+    from opentalking.models.quicktalk import runtime_v2
+
+    monkeypatch.setattr(
+        runtime_v2.ort,
+        "get_available_providers",
+        lambda: ["CoreMLExecutionProvider", "CPUExecutionProvider"],
+    )
+
+    assert runtime_v2._onnx_providers_for_device(runtime_v2.torch.device("mps")) == [
+        "CoreMLExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+
+
+def test_quicktalk_onnx_provider_keeps_cuda_for_cuda_device(monkeypatch):
+    from opentalking.models.quicktalk import runtime_v2
+
+    monkeypatch.setattr(
+        runtime_v2.ort,
+        "get_available_providers",
+        lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
+
+    assert runtime_v2._onnx_providers_for_device(runtime_v2.torch.device("cuda:2")) == [
+        ("CUDAExecutionProvider", {"device_id": 2}),
+        "CPUExecutionProvider",
+    ]
+
+
+def test_quicktalk_runtime_uses_imageio_ffmpeg_fallback(monkeypatch):
+    import types
+
+    from opentalking.models.quicktalk import runtime_v2
+
+    monkeypatch.delenv("OPENTALKING_FFMPEG_BIN", raising=False)
+    monkeypatch.setattr(runtime_v2.shutil, "which", lambda _: None)
+
+    fake_imageio = types.SimpleNamespace(get_ffmpeg_exe=lambda: "/tmp/ffmpeg-imageio")
+    monkeypatch.setitem(runtime_v2.sys.modules, "imageio_ffmpeg", fake_imageio)
+
+    assert runtime_v2.ensure_ffmpeg() == "/tmp/ffmpeg-imageio"
 
 
 def test_download_script_excludes_experimental_model_candidates():

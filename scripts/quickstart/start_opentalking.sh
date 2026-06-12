@@ -139,14 +139,13 @@ fi
   export OPENTALKING_FLASHTALK_TTS_TRAILING_SILENCE_MS="${OPENTALKING_FLASHTALK_TTS_TRAILING_SILENCE_MS:-320}"
 
   # 其它运行时参数
-  export OPENTALKING_FFMPEG_BIN="${OPENTALKING_FFMPEG_BIN:-ffmpeg}"
+  export OPENTALKING_FFMPEG_BIN="$(quickstart_resolve_ffmpeg)"
   export OPENTALKING_TTS_STREAMING_DECODE="${OPENTALKING_TTS_STREAMING_DECODE:-1}"
   export OPENTALKING_TTS_SAMPLE_RATE="${OPENTALKING_TTS_SAMPLE_RATE:-16000}"
   export OMNIRT_AUDIO2VIDEO_PATH_TEMPLATE="${OMNIRT_AUDIO2VIDEO_PATH_TEMPLATE:-/v1/audio2video/{model}}"
   export FLASHTALK_PREBUFFER_CHUNKS="${FLASHTALK_PREBUFFER_CHUNKS:-2}"
 
-  setsid opentalking-unified >"$log_file" 2>&1 < /dev/null &
-  echo "$!" >"$pid_file"
+  quickstart_detach "$log_file" opentalking-unified >"$pid_file"
 )
 
 pid="$(cat "$pid_file" 2>/dev/null || true)"

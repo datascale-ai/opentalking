@@ -252,6 +252,7 @@ nav:
               - QuickTalk:
                   - Overview: model-deployment/quicktalk.md
                   - Local: model-deployment/quicktalk/local.md
+                  - Apple Silicon: model-deployment/quicktalk/apple-silicon.md
                   - OmniRT: model-deployment/quicktalk/omnirt.md
               - Wav2Lip:
                   - Overview: model-deployment/wav2lip.md
@@ -329,6 +330,7 @@ nav:
           - QuickTalk:
               - Overview: model-deployment/quicktalk.md
               - Local: model-deployment/quicktalk/local.md
+              - Apple Silicon: model-deployment/quicktalk/apple-silicon.md
               - OmniRT: model-deployment/quicktalk/omnirt.md
           - Wav2Lip:
               - Overview: model-deployment/wav2lip.md

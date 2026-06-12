@@ -45,7 +45,9 @@ def direct_ws_url(model: str, settings: Any) -> str:
 
 def resolve_model_backend(model: str, settings: Any) -> ModelBackend:
     model = model.strip().lower()
-    backend = get_model_backend(model)
+    backend = str(getattr(settings, f"{model}_backend", "") or "").strip().lower()
+    if backend not in {"mock", "local", "omnirt", "direct_ws"}:
+        backend = get_model_backend(model)
     if backend == "direct_ws":
         return ModelBackend(model=model, backend=backend, ws_url=direct_ws_url(model, settings))
     return ModelBackend(model=model, backend=backend)

@@ -29,6 +29,38 @@ def make_audio_chunk(audio_pcm: np.ndarray, *, sample_rate: int = 16000) -> Audi
     return AudioChunk(data=pcm, sample_rate=int(sample_rate), duration_ms=duration_ms)
 
 
+def _positive_int_env(*names: str) -> int | None:
+    for name in names:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            continue
+        try:
+            value = int(raw)
+        except ValueError:
+            logger.warning("Ignoring invalid positive integer env %s=%r", name, raw)
+            continue
+        if value > 0:
+            return value
+        logger.warning("Ignoring non-positive integer env %s=%r", name, raw)
+    return None
+
+
+def _quicktalk_slice_len_for_device(device: str) -> int:
+    configured = _positive_int_env(
+        "OPENTALKING_QUICKTALK_SLICE_LEN",
+        "OPENTALKING_QUICKTALK_CHUNK_FRAMES",
+    )
+    if configured is not None:
+        return configured
+    if str(device or "").strip().lower().startswith("mps"):
+        return 12
+    return 28
+
+
+def _quicktalk_fps() -> int:
+    return _positive_int_env("OPENTALKING_QUICKTALK_FPS") or 25
+
+
 @runtime_checkable
 class Audio2VideoClient(Protocol):
     """Common realtime audio-to-video client contract for local and OmniRT backends."""
@@ -359,9 +391,8 @@ class LocalAudio2VideoClient:
             frames = getattr(state, "frames", None)
             self.frame_num = len(frames) if frames is not None else 1
         if self._is_quicktalk_adapter():
-            self.fps = 25
-            if self.slice_len <= 0:
-                self.slice_len = 28
+            self.fps = _quicktalk_fps()
+            self.slice_len = _quicktalk_slice_len_for_device(self.device)
             self.audio_chunk_samples = max(
                 1,
                 int(round(float(self.sample_rate) * float(self.slice_len) / max(1, self.fps))),

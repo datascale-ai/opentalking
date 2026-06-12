@@ -22,6 +22,7 @@ from PIL import Image
 from opentalking.avatar import mouth_metadata
 from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.avatar.validator import list_avatar_dirs
+from opentalking.models.quicktalk.paths import resolve_quicktalk_asset_root
 from opentalking.models.registry import get_adapter
 from opentalking.providers.synthesis.backends import resolve_model_backend
 from opentalking.providers.synthesis.omnirt import auth_headers
@@ -333,17 +334,10 @@ async def _post_omnirt_json(settings: Any, path: str, payload: dict[str, Any]) -
 
 
 def _settings_quicktalk_model_root(settings: Any) -> Path:
-    raw = (
-        getattr(settings, "quicktalk_model_root", "")
-        or os.environ.get("OPENTALKING_QUICKTALK_MODEL_ROOT", "")
-        or os.environ.get("OMNIRT_QUICKTALK_MODEL_ROOT", "")
-    )
-    if raw:
-        return Path(str(raw)).expanduser().resolve()
-    omnirt_model_root = os.environ.get("OMNIRT_MODEL_ROOT", "").strip()
-    if omnirt_model_root:
-        return (Path(omnirt_model_root).expanduser().resolve() / "quicktalk").resolve()
-    return (Path(getattr(settings, "models_dir", "./models")) / "quicktalk").expanduser().resolve()
+    resolved = resolve_quicktalk_asset_root(settings)
+    if resolved is not None:
+        return resolved
+    return (Path("./models") / "quicktalk").expanduser().resolve()
 
 
 def _settings_int(settings: Any, name: str, env_name: str, default: int) -> int:
@@ -381,15 +375,16 @@ def _settings_optional_float(
 
 
 def _quicktalk_rebuild(settings: Any):
+    from opentalking.models.quicktalk.adapter import _configured_quicktalk_device
     from opentalking.models.quicktalk.runtime_v2 import QuickTalkRebuild
 
     return QuickTalkRebuild(
         asset_root=_settings_quicktalk_model_root(settings),
-        device=str(
+        device=_configured_quicktalk_device(
             getattr(settings, "quicktalk_device", None)
-            or os.environ.get("OPENTALKING_QUICKTALK_DEVICE")
-            or os.environ.get("OMNIRT_QUICKTALK_DEVICE")
-            or "cuda:0"
+            or os.environ.get("OMNIRT_QUICKTALK_DEVICE"),
+            getattr(settings, "torch_device", ""),
+            getattr(settings, "device", ""),
         ),
         hubert_device=(
             getattr(settings, "quicktalk_hubert_device", None)
@@ -409,19 +404,20 @@ def _quicktalk_rebuild(settings: Any):
 class _QuickTalkCacheBuilder:
     def __init__(self, settings: Any) -> None:
         import torch
+        from opentalking.models.quicktalk.adapter import _configured_quicktalk_device
         from opentalking.models.quicktalk.runtime_v2 import ImageProcessor
 
         asset_root = _settings_quicktalk_model_root(settings)
         checkpoints = asset_root / "checkpoints"
         aux_min = checkpoints / "auxiliary_min"
         aux_root = aux_min if aux_min.exists() else (checkpoints / "auxiliary")
-        device = str(
+        device = _configured_quicktalk_device(
             getattr(settings, "quicktalk_face_cache_device", None)
             or getattr(settings, "quicktalk_device", None)
             or os.environ.get("OPENTALKING_QUICKTALK_FACE_CACHE_DEVICE")
-            or os.environ.get("OPENTALKING_QUICKTALK_DEVICE")
-            or os.environ.get("OMNIRT_QUICKTALK_DEVICE")
-            or "cuda:0"
+            or os.environ.get("OMNIRT_QUICKTALK_DEVICE"),
+            getattr(settings, "torch_device", ""),
+            getattr(settings, "device", ""),
         )
         torch_device = torch.device(device)
         dtype = torch.float32
@@ -568,15 +564,14 @@ def _local_adapter_device(model: str, settings: Any) -> str:
             or "cuda"
         )
     if model == "quicktalk":
-        return str(
-            getattr(settings, "quicktalk_device", "")
-            or os.environ.get("OPENTALKING_QUICKTALK_DEVICE")
-            or os.environ.get("OPENTALKING_TORCH_DEVICE")
-            or getattr(settings, "torch_device", "")
-            or getattr(settings, "device", "")
-            or os.environ.get("OPENTALKING_DEVICE")
-            or os.environ.get("DEVICE")
-            or "cuda:0"
+        from opentalking.models.quicktalk.adapter import _configured_quicktalk_device
+
+        return _configured_quicktalk_device(
+            getattr(settings, "quicktalk_device", ""),
+            os.environ.get("OPENTALKING_DEVICE"),
+            os.environ.get("DEVICE"),
+            getattr(settings, "torch_device", ""),
+            getattr(settings, "device", ""),
         )
     return str(
         getattr(settings, "device", "")

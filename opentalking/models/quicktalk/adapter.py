@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import platform
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.core.interfaces.avatar_asset import AvatarManifest
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.media.frame_avatar import numpy_bgr_to_videoframe
+from opentalking.models.quicktalk.paths import resolve_quicktalk_asset_root
 from opentalking.models.registry import register_model
 
 if TYPE_CHECKING:  # pragma: no cover — avoids importing torch/onnx at module load
@@ -26,6 +28,8 @@ log = logging.getLogger(__name__)
 class QuickTalkFeatures:
     reps: list[np.ndarray]
     audio_feature_seconds: float
+    render_reps: list[np.ndarray] | None = None
+    output_fps: float | None = None
 
 
 @dataclass
@@ -87,12 +91,78 @@ def _env_value(name: str, default: str = "") -> str:
     return os.environ.get(name, "").strip() or default
 
 
+def _default_quicktalk_device() -> str:
+    if platform.system() == "Darwin" and platform.machine().lower() in {"arm64", "aarch64"}:
+        try:
+            import torch
+
+            mps = getattr(getattr(torch, "backends", None), "mps", None)
+            if mps is not None and bool(mps.is_available()):
+                return "mps"
+        except Exception:
+            pass
+        return "cpu"
+    return "cuda:0"
+
+
+def _first_configured_device(*values: str | None) -> str:
+    for value in values:
+        device = (value or "").strip()
+        if device and device.lower() != "auto":
+            return device
+    return ""
+
+
+def _configured_quicktalk_device(*extra_values: str | None) -> str:
+    return (
+        _first_configured_device(
+            _env_value("OPENTALKING_QUICKTALK_DEVICE"),
+            _env_value("OPENTALKING_TORCH_DEVICE"),
+            *extra_values,
+        )
+        or _default_quicktalk_device()
+    )
+
+
 def _positive_int_env(name: str, default: int) -> int:
     try:
         value = int(_env_value(name, str(default)))
     except ValueError:
         return default
     return max(1, value)
+
+
+def _optional_positive_int_env(name: str) -> int | None:
+    raw = _env_value(name)
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _downsample_sequence(items: list[np.ndarray], target_count: int) -> list[np.ndarray]:
+    if target_count >= len(items):
+        return items
+    if target_count <= 1:
+        return [items[0]]
+    last = len(items) - 1
+    return [items[int(round(i * last / float(target_count - 1)))] for i in range(target_count)]
+
+
+def _quicktalk_render_plan(
+    reps: list[np.ndarray],
+    *,
+    worker_fps: float,
+) -> tuple[list[np.ndarray], float]:
+    target_fps = _optional_positive_int_env("OPENTALKING_QUICKTALK_FPS")
+    output_fps = worker_fps
+    if target_fps is None or target_fps >= worker_fps or not reps:
+        return reps, output_fps
+    target_count = max(1, int(round(float(len(reps)) * float(target_fps) / worker_fps)))
+    return _downsample_sequence(list(reps), target_count), float(target_fps)
 
 
 def _close_worker(worker: Any) -> None:
@@ -171,18 +241,22 @@ def _quicktalk_template_from_bundle(bundle_path: Path) -> Path | None:
     return None
 
 
-def _optional_env_path(name: str) -> Path | None:
-    raw = _env_value(name)
-    if not raw:
+def _quicktalk_settings() -> Any | None:
+    try:
+        from opentalking.core.config import get_settings
+
+        return get_settings()
+    except Exception:
         return None
-    return Path(raw).expanduser().resolve()
 
 
 def _quicktalk_asset_root_env() -> Path | None:
-    return (
-        _optional_env_path("OPENTALKING_QUICKTALK_ASSET_ROOT")
-        or _optional_env_path("OPENTALKING_QUICKTALK_MODEL_ROOT")
-        or _optional_env_path("OMNIRT_QUICKTALK_MODEL_ROOT")
+    return resolve_quicktalk_asset_root(None, include_default=False)
+
+
+def _quicktalk_asset_root_config(settings: Any | None = None) -> Path | None:
+    return resolve_quicktalk_asset_root(
+        settings if settings is not None else _quicktalk_settings()
     )
 
 
@@ -284,7 +358,7 @@ def _validate_asset_root(asset_root: Path) -> None:
         formatted = "\n  - ".join(str(path) for path in missing)
         raise FileNotFoundError(
             "QuickTalk local assets are incomplete. "
-            "OPENTALKING_QUICKTALK_ASSET_ROOT or OPENTALKING_QUICKTALK_MODEL_ROOT must point to a QuickTalk local "
+            "OPENTALKING_QUICKTALK_ASSET_ROOT must point to a QuickTalk local "
             "asset directory containing checkpoints/quicktalk.pth or checkpoints/256.onnx, checkpoints/repair.npy, "
             "checkpoints/chinese-hubert-large/ and checkpoints/auxiliary/.\n"
             f"Current asset root: {asset_root}\n"
@@ -311,11 +385,21 @@ class QuickTalkAdapter:
     model_type = "quicktalk"
 
     def __init__(self) -> None:
-        self._device = os.environ.get("OPENTALKING_TORCH_DEVICE", "cuda:0")
+        settings = _quicktalk_settings()
+        self._device = _configured_quicktalk_device(
+            getattr(settings, "quicktalk_device", None) if settings is not None else None,
+            getattr(settings, "torch_device", None) if settings is not None else None,
+            getattr(settings, "device", None) if settings is not None else None,
+        )
         # 多卡部署：让 HuBERT 跑在另一张卡，避免与 ONNX 在同一 GPU default
         # stream 上排队。空字符串表示与主 device 同卡（默认行为）。
         self._hubert_device = (
             _env_value("OPENTALKING_QUICKTALK_HUBERT_DEVICE") or None
+            or (
+                str(getattr(settings, "quicktalk_hubert_device", "") or "").strip()
+                if settings is not None
+                else None
+            )
         )
         self._asset_root = _quicktalk_asset_root_env()
         self._output_transform = _env_value(
@@ -328,7 +412,12 @@ class QuickTalkAdapter:
         self._neck_fade_start = float(_env_value("OPENTALKING_QUICKTALK_NECK_FADE_START", "0.72"))
         self._neck_fade_end = float(_env_value("OPENTALKING_QUICKTALK_NECK_FADE_END", "0.88"))
         self._max_template_seconds_env = _env_value("OPENTALKING_QUICKTALK_MAX_TEMPLATE_SECONDS")
-        self._model_backend = _env_value("OPENTALKING_QUICKTALK_MODEL_BACKEND", "auto")
+        self._model_backend = _env_value(
+            "OPENTALKING_QUICKTALK_MODEL_BACKEND",
+            str(getattr(settings, "quicktalk_model_backend", "") or "").strip()
+            if settings is not None
+            else "auto",
+        )
         # Idle frame selection. The template video typically contains the source
         # speaker talking, so cycling all frames during idle makes the avatar
         # appear to keep speaking. We restrict idle to a configurable still
@@ -369,14 +458,25 @@ class QuickTalkAdapter:
         return None
 
     @staticmethod
-    def runtime_available() -> bool:
+    def runtime_available(settings: Any | None = None) -> bool:
         try:
-            asset_root = _quicktalk_asset_root_env()
+            asset_root = _quicktalk_asset_root_config(settings)
             if asset_root is None:
                 return False
             _validate_asset_root(_normalize_asset_root(asset_root))
-            device = _env_value("OPENTALKING_QUICKTALK_DEVICE") or _env_value("OPENTALKING_TORCH_DEVICE", "cuda:0")
-            hubert_device = _env_value("OPENTALKING_QUICKTALK_HUBERT_DEVICE")
+            device = _configured_quicktalk_device(
+                getattr(settings, "quicktalk_device", None) if settings is not None else None,
+                getattr(settings, "torch_device", None) if settings is not None else None,
+                getattr(settings, "device", None) if settings is not None else None,
+            )
+            hubert_device = (
+                _env_value("OPENTALKING_QUICKTALK_HUBERT_DEVICE")
+                or (
+                    str(getattr(settings, "quicktalk_hubert_device", "") or "").strip()
+                    if settings is not None
+                    else ""
+                )
+            )
             return _explicit_cuda_available(device) and _explicit_cuda_available(hubert_device)
         except Exception:
             return False
@@ -404,14 +504,23 @@ class QuickTalkAdapter:
     def load_avatar(self, avatar_path: str) -> QuickTalkState:
         bundle = load_avatar_bundle(Path(avatar_path), strict=False)
         metadata = bundle.manifest.metadata or {}
-        asset_root = self._asset_root if self._asset_root is not None else _path_from_env_or_metadata(
-            "OPENTALKING_QUICKTALK_ASSET_ROOT",
-            metadata,
-            "asset_root",
-            "quicktalk_asset_root",
-            base_dir=bundle.path,
-            sections=("quicktalk",),
-        )
+        asset_root = self._asset_root
+        if asset_root is None:
+            try:
+                asset_root = _path_from_env_or_metadata(
+                    "OPENTALKING_QUICKTALK_ASSET_ROOT",
+                    metadata,
+                    "asset_root",
+                    "quicktalk_asset_root",
+                    base_dir=bundle.path,
+                    sections=("quicktalk",),
+                )
+            except ValueError:
+                asset_root = _quicktalk_asset_root_config()
+                if asset_root is None:
+                    raise
+        if asset_root is None:
+            raise ValueError("Missing OPENTALKING_QUICKTALK_ASSET_ROOT or QuickTalk settings asset root")
         asset_root = _normalize_asset_root(asset_root)
         _validate_asset_root(asset_root)
         prepared_template, face_cache_file = _prepared_quicktalk_template_and_cache(
@@ -561,11 +670,24 @@ class QuickTalkAdapter:
             np.asarray(audio_chunk.data, dtype=np.int16).reshape(-1),
             int(audio_chunk.sample_rate),
         )
-        return QuickTalkFeatures(reps=reps, audio_feature_seconds=feature_seconds)
+        render_reps, output_fps = _quicktalk_render_plan(
+            reps,
+            worker_fps=float(getattr(avatar_state.worker, "fps", 25) or 25),
+        )
+        avatar_state.fps = output_fps
+        return QuickTalkFeatures(
+            reps=reps,
+            audio_feature_seconds=feature_seconds,
+            render_reps=render_reps,
+            output_fps=output_fps,
+        )
 
     def infer(self, features: QuickTalkFeatures, avatar_state: QuickTalkState) -> Iterator[np.ndarray]:
+        render_reps = features.render_reps if features.render_reps is not None else features.reps
+        if features.output_fps is not None:
+            avatar_state.fps = features.output_fps
         return avatar_state.worker.generate_frames_from_reps(
-            features.reps, state=avatar_state.session_state
+            render_reps, state=avatar_state.session_state
         )
 
     def compose_frame(
@@ -593,11 +715,27 @@ class QuickTalkAdapter:
             np.asarray(audio_chunk.data, dtype=np.int16).reshape(-1),
             int(audio_chunk.sample_rate),
         )
-        features = QuickTalkFeatures(reps=reps, audio_feature_seconds=feature_seconds)
+        render_reps, output_fps = _quicktalk_render_plan(
+            reps,
+            worker_fps=float(getattr(avatar_state.worker, "fps", 25) or 25),
+        )
+        features = QuickTalkFeatures(
+            reps=reps,
+            audio_feature_seconds=feature_seconds,
+            render_reps=render_reps,
+            output_fps=output_fps,
+        )
         frames = []
-        for prediction in avatar_state.worker.generate_frames_from_reps(
-            reps, state=avatar_state.session_state
-        ):
-            frames.append(self.compose_frame(avatar_state, avatar_state.frame_index, prediction))
-            avatar_state.frame_index += 1
+        previous_fps = getattr(avatar_state, "fps", None)
+        avatar_state.fps = output_fps
+        try:
+            predictions = avatar_state.worker.generate_frames_from_reps(
+                render_reps, state=avatar_state.session_state
+            )
+            for prediction in predictions:
+                frames.append(self.compose_frame(avatar_state, avatar_state.frame_index, prediction))
+                avatar_state.frame_index += 1
+        finally:
+            if previous_fps is not None:
+                avatar_state.fps = previous_fps
         return features, frames

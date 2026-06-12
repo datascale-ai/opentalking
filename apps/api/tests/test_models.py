@@ -15,6 +15,16 @@ from opentalking.providers.synthesis.availability import (
 )
 
 
+def _write_quicktalk_local_assets(asset_root) -> None:
+    checkpoints = asset_root / "checkpoints"
+    (checkpoints / "chinese-hubert-large").mkdir(parents=True)
+    (checkpoints / "auxiliary" / "models" / "buffalo_l").mkdir(parents=True)
+    (checkpoints / "quicktalk.pth").write_bytes(b"pth")
+    (checkpoints / "repair.npy").write_bytes(b"repair")
+    (checkpoints / "chinese-hubert-large" / "pytorch_model.bin").write_bytes(b"hubert")
+    (checkpoints / "auxiliary" / "models" / "buffalo_l" / "det_10g.onnx").write_bytes(b"onnx")
+
+
 def test_models_route_lists_all_models_with_connection_status_without_omnirt(monkeypatch) -> None:
     monkeypatch.delenv("OPENTALKING_QUICKTALK_BACKEND", raising=False)
     monkeypatch.delenv("OPENTALKING_CONFIG_FILE", raising=False)
@@ -98,6 +108,25 @@ def test_settings_loads_default_model_from_environment(monkeypatch, tmp_path) ->
     assert settings.default_model == "quicktalk"
 
 
+def test_settings_loads_quicktalk_local_fields_from_environment(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_ASSET_ROOT", str(tmp_path / "models" / "quicktalk"))
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_BACKEND", "local")
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_MODEL_BACKEND", "auto")
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_DEVICE", "mps")
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_SLICE_LEN", "12")
+    monkeypatch.delenv("OPENTALKING_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("CONFIG_FILE", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.quicktalk_asset_root == str(tmp_path / "models" / "quicktalk")
+    assert settings.quicktalk_backend == "local"
+    assert settings.quicktalk_model_backend == "auto"
+    assert settings.quicktalk_device == "mps"
+    assert settings.quicktalk_slice_len == 12
+
+
 def test_settings_loads_default_model_from_yaml_model_section(monkeypatch, tmp_path) -> None:
     config_file = tmp_path / "opentalking.yaml"
     config_file.write_text(
@@ -169,7 +198,12 @@ def test_omnirt_endpoint_defaults_to_audio2video_routes() -> None:
     assert resolve_synthesis_ws_url("flashtalk", settings) == "ws://127.0.0.1:9000/v1/audio2video/flashtalk"
 
 
-async def test_omnirt_status_keeps_local_backend_local(monkeypatch) -> None:
+async def test_omnirt_status_keeps_local_backend_local(monkeypatch, tmp_path) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OPENTALKING_CONFIG_FILE", raising=False)
+    monkeypatch.delenv("CONFIG_FILE", raising=False)
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_BACKEND", "omnirt")
+    clear_model_config_cache()
     monkeypatch.setattr(
         "opentalking.models.wav2lip.adapter.Wav2LipAdapter.runtime_available",
         staticmethod(lambda: True),
@@ -200,6 +234,36 @@ async def test_omnirt_status_keeps_local_backend_local(monkeypatch) -> None:
     assert statuses["quicktalk"].backend == "omnirt"
     assert statuses["quicktalk"].connected is True
     assert statuses["quicktalk"].reason == "omnirt"
+    clear_model_config_cache()
+
+
+async def test_models_status_uses_settings_for_local_quicktalk_assets(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_ASSET_ROOT", raising=False)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_MODEL_ROOT", raising=False)
+    monkeypatch.setenv("OPENTALKING_QUICKTALK_BACKEND", "local")
+    asset_root = tmp_path / "models" / "quicktalk"
+    _write_quicktalk_local_assets(asset_root)
+
+    settings = SimpleNamespace(
+        omnirt_endpoint="",
+        flashtalk_ws_url="",
+        flashhead_ws_url="",
+        quicktalk_asset_root=str(asset_root),
+        quicktalk_model_root="",
+        quicktalk_device="mps",
+        quicktalk_hubert_device="",
+        torch_device="auto",
+        device="",
+    )
+
+    statuses = {status.id: status for status in await resolve_model_statuses(settings)}
+
+    assert statuses["quicktalk"].backend == "local"
+    assert statuses["quicktalk"].connected is True
+    assert statuses["quicktalk"].reason == "local_runtime"
 
 
 async def test_omnirt_endpoint_only_affects_omnirt_backend(tmp_path, monkeypatch) -> None:

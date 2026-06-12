@@ -69,7 +69,7 @@ def test_quickstart_source_env_keeps_new_env_file_assignments(tmp_path: Path) ->
         pytest.skip("bash is not available")
     env_file = tmp_path / "quickstart.env"
     env_file.write_text(
-        "OPENTALKING_QUICKTALK_MODEL_ROOT=/models/quicktalk\n"
+        "OPENTALKING_QUICKTALK_ASSET_ROOT=/models/quicktalk\n"
         "OPENTALKING_WAV2LIP_DEVICE=cuda:6\n",
         encoding="utf-8",
     )
@@ -77,16 +77,50 @@ def test_quickstart_source_env_keeps_new_env_file_assignments(tmp_path: Path) ->
     script = f"""
 set -euo pipefail
 export OPENTALKING_TORCH_DEVICE=cuda:6
-unset OPENTALKING_QUICKTALK_MODEL_ROOT
+unset OPENTALKING_QUICKTALK_ASSET_ROOT
 unset OPENTALKING_WAV2LIP_DEVICE
 source scripts/quickstart/_helpers.sh
 quickstart_source_env {env_file}
 bash -c 'test "$OPENTALKING_TORCH_DEVICE" = cuda:6'
-bash -c 'test "$OPENTALKING_QUICKTALK_MODEL_ROOT" = /models/quicktalk'
+bash -c 'test "$OPENTALKING_QUICKTALK_ASSET_ROOT" = /models/quicktalk'
 bash -c 'test "$OPENTALKING_WAV2LIP_DEVICE" = cuda:6'
 """
 
     subprocess.run(["bash", "-lc", script], cwd=REPO_ROOT, check=True)
+
+
+def test_start_unified_sets_apple_silicon_quicktalk_defaults() -> None:
+    source = (REPO_ROOT / "scripts/start_unified.sh").read_text(encoding="utf-8")
+
+    assert 'if [[ "$backend" == "local" && "$model" == "quicktalk" ]]' in source
+    assert "quicktalk-cpu" in source
+    assert "OPENTALKING_QUICKTALK_DEVICE" in source
+    assert "sys.platform == 'darwin'" in source
+
+
+@pytest.mark.parametrize(
+    "relpath",
+    [
+        "scripts/quickstart/start_opentalking.sh",
+        "scripts/quickstart/start_frontend.sh",
+    ],
+)
+def test_quickstart_process_launch_does_not_require_setsid_on_macos(relpath: str) -> None:
+    source = (REPO_ROOT / relpath).read_text(encoding="utf-8")
+    helpers = (REPO_ROOT / "scripts/quickstart/_helpers.sh").read_text(encoding="utf-8")
+
+    assert "quickstart_detach" in source
+    assert "command -v setsid" in helpers
+    assert "start_new_session=True" in helpers
+
+
+def test_start_opentalking_resolves_ffmpeg_fallback() -> None:
+    source = (REPO_ROOT / "scripts/quickstart/start_opentalking.sh").read_text(encoding="utf-8")
+    helpers = (REPO_ROOT / "scripts/quickstart/_helpers.sh").read_text(encoding="utf-8")
+
+    assert "quickstart_resolve_ffmpeg" in source
+    assert 'OPENTALKING_FFMPEG_BIN="${OPENTALKING_FFMPEG_BIN:-ffmpeg}"' not in source
+    assert "imageio_ffmpeg.get_ffmpeg_exe()" in helpers
 
 
 def test_quickstart_source_ascend_env_tolerates_unset_ld_library_path(tmp_path: Path) -> None:

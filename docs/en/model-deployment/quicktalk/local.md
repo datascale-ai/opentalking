@@ -17,7 +17,7 @@ uv sync --extra dev --extra models --extra quicktalk-cuda --python 3.11
 source .venv/bin/activate
 ```
 
-Prepare a QuickTalk local asset root that contains `checkpoints/quicktalk.pth` or `checkpoints/256.onnx`, `checkpoints/repair.npy`, HuBERT files, and InsightFace assets.
+Prepare a QuickTalk local asset root that contains `checkpoints/quicktalk.pth`, `checkpoints/repair.npy`, HuBERT files, and InsightFace assets.
 
 The avatar does not need to start as `model_type=quicktalk`. OpenTalking decouples avatar selection from model selection: if an avatar has `metadata.source_video`, `metadata.source_image`, `reference.png`, or `preview.png`, QuickTalk prewarm can generate the template video and face cache it needs. Dedicated QuickTalk avatars can still declare `metadata.quicktalk.template_video` explicitly.
 

@@ -75,7 +75,11 @@ def test_tts_openai_compatible_posts_audio_speech(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("OPENTALKING_TTS_OPENAI_VOICE", "neutral-test")
     monkeypatch.setenv("OPENTALKING_TTS_OPENAI_PROTOCOL", "audio_speech")
 
-    tts = build_tts_adapter(sample_rate=16000, chunk_ms=20.0)
+    tts = build_tts_adapter(
+        sample_rate=16000,
+        chunk_ms=20.0,
+        tts_provider="openai_compatible",
+    )
     chunks = asyncio.run(_collect_tts_chunks(tts, "你好，开始测试。"))
 
     assert chunks

@@ -87,7 +87,7 @@ def _explicit_env_enabled(name: str) -> bool:
     return raw is not None and raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _local_adapter_available(model: str) -> bool:
+def _local_adapter_available(model: str, settings=None) -> bool:
     try:
         adapter = get_adapter(model)
     except Exception:
@@ -95,7 +95,12 @@ def _local_adapter_available(model: str) -> bool:
     runtime_available = getattr(adapter, "runtime_available", None)
     if callable(runtime_available):
         try:
-            return bool(runtime_available())
+            return bool(runtime_available(settings=settings))
+        except TypeError:
+            try:
+                return bool(runtime_available())
+            except Exception:
+                return False
         except Exception:
             return False
     return True
@@ -131,7 +136,7 @@ async def resolve_model_statuses(settings) -> list[ModelStatus]:
             connected = True
             reason = "local_self_test"
         elif resolved.backend == "local":
-            connected = _local_adapter_available(model)
+            connected = _local_adapter_available(model, settings=settings)
             reason = "local_runtime" if connected else "local_adapter_missing"
         elif resolved.backend == "omnirt":
             if has_omnirt:

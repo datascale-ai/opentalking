@@ -515,7 +515,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--avatars-root", type=Path, required=True)
     parser.add_argument("--avatar", action="append", default=[], help="Avatar id to process.")
-    parser.add_argument("--quicktalk-model-root", type=Path)
+    parser.add_argument("--quicktalk-asset-root", type=Path)
+    parser.add_argument("--quicktalk-model-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--wav2lip-model-root", type=Path)
     parser.add_argument("--wav2lip-face-det-device")
     parser.add_argument("--wav2lip-max-reference-frames", type=int, default=125)
@@ -537,13 +538,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     avatars_root = args.avatars_root.expanduser().resolve()
-    if "quicktalk" in args.model and args.quicktalk_model_root is None:
-        raise SystemExit("--quicktalk-model-root is required when --model quicktalk is selected")
+    quicktalk_asset_root = args.quicktalk_asset_root or args.quicktalk_model_root
+    if "quicktalk" in args.model and quicktalk_asset_root is None:
+        raise SystemExit("--quicktalk-asset-root is required when --model quicktalk is selected")
     rebuild = None
     if "quicktalk" in args.model:
         from opentalking.models.quicktalk.runtime_v2 import QuickTalkRebuild
 
-        quicktalk_root = args.quicktalk_model_root.expanduser().resolve()
+        quicktalk_root = quicktalk_asset_root.expanduser().resolve()
         rebuild = QuickTalkRebuild(
             asset_root=quicktalk_root,
             device=args.device,

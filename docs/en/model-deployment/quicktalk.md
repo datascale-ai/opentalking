@@ -30,7 +30,7 @@ The local adapter reads an asset root that contains `checkpoints/`:
 ```text
 $OPENTALKING_QUICKTALK_ASSET_ROOT/
   checkpoints/
-    quicktalk.pth or 256.onnx
+    quicktalk.pth
     repair.npy
     chinese-hubert-large/
       pytorch_model.bin

@@ -96,8 +96,7 @@ echo "  api:  http://127.0.0.1:$backend_port"
 (
   cd "$web_dir"
   export VITE_BACKEND_PORT="$backend_port"
-  setsid ./node_modules/.bin/vite --host "$web_host" --port "$web_port" >"$log_file" 2>&1 < /dev/null &
-  echo "$!" >"$pid_file"
+  quickstart_detach "$log_file" ./node_modules/.bin/vite --host "$web_host" --port "$web_port" >"$pid_file"
 )
 
 pid="$(cat "$pid_file" 2>/dev/null || true)"
