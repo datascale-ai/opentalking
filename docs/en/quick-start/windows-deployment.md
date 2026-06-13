@@ -99,6 +99,47 @@ If WSL2 can see the RTX 3050, the CUDA inference prerequisites are met.
 
 ---
 
+### 1.3 WSL2 Network Mode Selection
+
+WSL2 supports two network modes that directly impact OpenTalking's WebRTC real-time audio/video streaming and browser microphone access.
+
+**.wslconfig** (located at `%USERPROFILE%\.wslconfig` on Windows):
+
+```ini
+[wsl2]
+networkingMode=NAT        # default mode
+# networkingMode=Mirrored
+```
+
+After making changes, run `wsl --shutdown` and reopen the WSL2 terminal for changes to take effect.
+
+**Comparison**:
+
+| | NAT (default) | Mirrored |
+|---|---|---|
+| WebRTC ICE connectivity | ✅ Working (when accessed via WSL2 IP) | ⚠️ ICE candidates may fail |
+| Browser access | `http://<WSL2-IP>:5280` | `http://localhost:5280` |
+| Microphone permission | Requires adding insecure origin whitelist in browser | localhost works directly |
+| Service startup compatibility | ✅ Normal | ⚠️ May fail in some scenarios |
+
+**Recommendation**:
+
+- Use **NAT mode** for daily development and debugging. Get the WSL2 IP with `hostname -I` and access via that address.
+- If the WSL2 IP changes after a restart, run `hostname -I` again.
+- For one-click install scripts or first-time setup, prefer **NAT mode**.
+
+**Enabling microphone in NAT mode**:
+
+Non-localhost HTTP origins are not treated as secure contexts by browsers, so `getUserMedia` access is blocked. Choose one of these workarounds:
+
+- **Edge**: Navigate to `edge://flags/#unsafely-treat-insecure-origin-as-secure`, enter `http://<WSL2-IP>:5280`, set to Enabled, and restart.
+- **Chrome**: Close all Chrome windows, then run in PowerShell:
+  ```powershell
+  & "C:\Program Files\Google\Chrome\Application\chrome.exe" --unsafely-treat-insecure-origin-as-secure="http://<WSL2-IP>:5280" --user-data-dir="%TEMP%\chrome-opentalking"
+  ```
+
+---
+
 ## 2. WSL2 Base Dependencies
 
 The following commands run inside WSL2 Ubuntu. If running as root, `sudo` is not needed; otherwise prepend `sudo` to `apt` commands.

@@ -99,6 +99,47 @@ nvidia-smi
 
 ---
 
+### 1.3 WSL2 网络模式选择
+
+WSL2 支持两种网络模式，对 OpenTalking 的 WebRTC 实时音视频推流和浏览器麦克风访问有直接影响。
+
+**.wslconfig 配置**（位于 Windows 用户目录 `%USERPROFILE%\.wslconfig`）：
+
+```ini
+[wsl2]
+networkingMode=NAT        # 默认模式
+# networkingMode=Mirrored # 镜像模式
+```
+
+修改后需要执行 `wsl --shutdown` 并重新打开 WSL2 终端才能生效。
+
+**两种模式对比**：
+
+| | NAT（默认） | Mirrored |
+|---|---|---|
+| WebRTC ICE 连通性 | ✅ 正常（使用 WSL2 IP 访问时） | ⚠️ 实测 ICE 候选地址可能失败 |
+| 浏览器访问方式 | `http://<WSL2-IP>:5280` | `http://localhost:5280` |
+| 麦克风权限 | 需在浏览器添加不安全源白名单（非 localhost 的 HTTP 被限制） | localhost 可直接使用 |
+| 服务启动兼容性 | ✅ 正常 | ⚠️ 部分场景下服务启动异常 |
+
+**推荐**：
+
+- 日常开发和调试使用 **NAT 模式**，通过 `hostname -I` 获取 WSL2 IP 后在浏览器访问。
+- 首次体验或使用一键安装脚本时，优先使用 **NAT 模式**。
+- 如果 WSL2 重启后 IP 地址变化，重新用 `hostname -I` 确认即可。
+
+**NAT 模式下浏览器麦克风启用**：
+
+由于非 localhost 的 HTTP 地址不被浏览器视为安全上下文，`getUserMedia`（麦克风）会被阻止。任选一种方式解决：
+
+- **Edge**：地址栏输入 `edge://flags/#unsafely-treat-insecure-origin-as-secure`，填入 `http://<WSL2-IP>:5280`，设为 Enabled 并重启。
+- **Chrome**：关闭所有窗口后，PowerShell 中执行：
+  ```powershell
+  & "C:\Program Files\Google\Chrome\Application\chrome.exe" --unsafely-treat-insecure-origin-as-secure="http://<WSL2-IP>:5280" --user-data-dir="%TEMP%\chrome-opentalking"
+  ```
+
+---
+
 ## 2. WSL2 基础依赖
 
 以下命令在 WSL2 Ubuntu 中执行。如果当前是 root 用户，不需要 `sudo`；如果是普通用户，请在 `apt` 前加 `sudo`。
