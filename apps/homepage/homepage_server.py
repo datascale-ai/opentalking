@@ -185,7 +185,7 @@ TRAFFIC_COPY = {
         "title": "OpenTalking 流量统计",
         "description": "轻量站内统计。IP 仅以 hash 形式保存，不记录明文地址。",
         "updated": "更新时间",
-        "timezone": "UTC+8",
+        "timezone": "北京时间",
         "language_switch": "EN",
         "language_href": "/en/traffic",
         "empty": "暂无数据。",
@@ -237,7 +237,7 @@ TRAFFIC_COPY = {
         "title": "OpenTalking Traffic",
         "description": "Lightweight first-party analytics. IP addresses are stored as hashes only.",
         "updated": "Updated",
-        "timezone": "UTC+8",
+        "timezone": "Beijing Time",
         "language_switch": "中",
         "language_href": "/traffic",
         "empty": "No data yet.",
@@ -337,11 +337,20 @@ def build_seven_day_traffic(beijing_now):
 
     return [
         {
+            "date": day,
             "label": value["label"],
             "views": value["views"],
             "uniques": len(value["visitors"]),
         }
-        for value in day_keys.values()
+        for day, value in day_keys.items()
+    ]
+
+
+def build_daily_views(beijing_now):
+    return [
+        {"day": point["date"], "count": point["views"]}
+        for point in reversed(build_seven_day_traffic(beijing_now))
+        if point["views"] > 0
     ]
 
 
@@ -371,8 +380,19 @@ def render_traffic_dashboard(language):
     copy = TRAFFIC_COPY[language]
     now = datetime.now(timezone.utc)
     beijing_now = now.astimezone(BEIJING_TZ)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
-    seven_days_ago = (now - timedelta(days=7)).isoformat()
+    today_start = datetime(
+        beijing_now.year,
+        beijing_now.month,
+        beijing_now.day,
+        tzinfo=BEIJING_TZ,
+    ).astimezone(timezone.utc).isoformat()
+    seven_day_start_date = beijing_now.date() - timedelta(days=6)
+    seven_day_start = datetime(
+        seven_day_start_date.year,
+        seven_day_start_date.month,
+        seven_day_start_date.day,
+        tzinfo=BEIJING_TZ,
+    ).astimezone(timezone.utc).isoformat()
 
     total_page_views = query_value("SELECT COUNT(*) AS count FROM analytics_events WHERE event_name = 'page_view'")
     today_page_views = query_value(
@@ -381,10 +401,20 @@ def render_traffic_dashboard(language):
     )
     seven_day_page_views = query_value(
         "SELECT COUNT(*) AS count FROM analytics_events WHERE event_name = 'page_view' AND created_at >= ?",
-        (seven_days_ago,),
+        (seven_day_start,),
     )
     video_plays = query_value("SELECT COUNT(*) AS count FROM analytics_events WHERE event_name = 'video_play'")
-    unique_visitors = query_value("SELECT COUNT(DISTINCT ip_hash) AS count FROM analytics_events WHERE ip_hash != ''")
+    unique_visitors = query_value(
+        "SELECT COUNT(DISTINCT ip_hash) AS count FROM analytics_events WHERE event_name = 'page_view' AND ip_hash != ''"
+    )
+    seven_day_unique_visitors = query_value(
+        """
+        SELECT COUNT(DISTINCT ip_hash) AS count
+        FROM analytics_events
+        WHERE event_name = 'page_view' AND ip_hash != '' AND created_at >= ?
+        """,
+        (seven_day_start,),
+    )
 
     top_paths = query_rows(
         """
@@ -429,18 +459,8 @@ def render_traffic_dashboard(language):
         }
         for row in top_videos
     ]
-    daily_views = query_rows(
-        """
-        SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS count
-        FROM analytics_events
-        WHERE event_name = 'page_view' AND created_at >= ?
-        GROUP BY day
-        ORDER BY day DESC
-        LIMIT 7
-        """,
-        (seven_days_ago,),
-    )
     seven_day_traffic = build_seven_day_traffic(beijing_now)
+    daily_views = build_daily_views(beijing_now)
 
     def render_table(rows, columns):
         if not rows:
@@ -463,9 +483,9 @@ def render_traffic_dashboard(language):
 
         return f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
-    def render_line_chart(title, total_label, points, metric_key, chart_id):
+    def render_line_chart(title, total_label, points, metric_key, chart_id, total_value=None):
         values = [point[metric_key] for point in points]
-        total = sum(values)
+        total = sum(values) if total_value is None else total_value
         width = 520
         height = 260
         left = 52
@@ -667,7 +687,7 @@ def render_traffic_dashboard(language):
           </div>
           <div class="chart-grid">
             {render_line_chart(copy["charts"]["views_title"], copy["charts"]["views_total"], seven_day_traffic, "views", "seven-day-views")}
-            {render_line_chart(copy["charts"]["unique_title"], copy["charts"]["unique_total"], seven_day_traffic, "uniques", "seven-day-uniques")}
+            {render_line_chart(copy["charts"]["unique_title"], copy["charts"]["unique_total"], seven_day_traffic, "uniques", "seven-day-uniques", seven_day_unique_visitors)}
           </div>
         </main>
         <script>
