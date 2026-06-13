@@ -194,7 +194,7 @@ TRAFFIC_COPY = {
             "seven_day": "7 天访问",
             "total": "累计访问",
             "video": "视频播放",
-            "visitors": "访客",
+            "visitors": "累计访客",
         },
         "sections": {
             "top_pages": "热门页面",
@@ -207,6 +207,11 @@ TRAFFIC_COPY = {
             "unique_title": "过去 7 天独立访客",
             "views_total": "Views",
             "unique_total": "Unique Visitors",
+            "view_table": "View as table",
+            "download_csv": "Download CSV",
+            "show_labels": "Show data labels",
+            "date": "Date",
+            "value": "Value",
         },
         "video_names": {
             "hero-companion-character": "首页主视觉：陪伴类角色",
@@ -241,7 +246,7 @@ TRAFFIC_COPY = {
             "seven_day": "7-day views",
             "total": "Total views",
             "video": "Video plays",
-            "visitors": "Visitors",
+            "visitors": "Total visitors",
         },
         "sections": {
             "top_pages": "Top Pages",
@@ -254,6 +259,11 @@ TRAFFIC_COPY = {
             "unique_title": "Unique visitors in last 7 days",
             "views_total": "Views",
             "unique_total": "Unique Visitors",
+            "view_table": "View as table",
+            "download_csv": "Download CSV",
+            "show_labels": "Show data labels",
+            "date": "Date",
+            "value": "Value",
         },
         "video_names": {
             "hero-companion-character": "Hero: Companion Character",
@@ -453,7 +463,7 @@ def render_traffic_dashboard(language):
 
         return f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
-    def render_line_chart(title, total_label, points, metric_key):
+    def render_line_chart(title, total_label, points, metric_key, chart_id):
         values = [point[metric_key] for point in points]
         total = sum(values)
         width = 520
@@ -493,26 +503,54 @@ def render_traffic_dashboard(language):
             for x, _, point in coords
         ]
         dots = [
-            f'<circle class="chart-dot" cx="{x:.1f}" cy="{y:.1f}" r="4">'
-            f'<title>{escape(point["label"])}: {point[metric_key]}</title>'
-            f'</circle>'
+            f'<g class="chart-point" tabindex="0" data-label="{escape(point["label"])}" '
+            f'data-value="{point[metric_key]}" data-metric="{escape(total_label)}">'
+            f'<circle class="chart-hit-area" cx="{x:.1f}" cy="{y:.1f}" r="12"></circle>'
+            f'<circle class="chart-dot" cx="{x:.1f}" cy="{y:.1f}" r="4"></circle>'
+            f'</g>'
             for x, y, point in coords
         ]
+        value_labels = [
+            f'<text class="chart-value-label" x="{x:.1f}" y="{y - 11:.1f}" text-anchor="middle">{point[metric_key]}</text>'
+            for x, y, point in coords
+        ]
+        chart_data = json.dumps(
+            {
+                "title": title,
+                "metric": total_label,
+                "dateLabel": copy["charts"]["date"],
+                "valueLabel": copy["charts"]["value"],
+                "rows": [{"date": point["label"], "value": point[metric_key]} for point in points],
+            },
+            ensure_ascii=False,
+        )
 
         return f"""
-          <section class="chart-card">
+          <section class="chart-card" data-chart-id="{escape(chart_id)}" data-chart="{escape(chart_data)}">
             <div class="chart-head">
               <div>
                 <h2>{escape(title)}</h2>
                 <p class="chart-summary">{escape(format_number(total))} {escape(total_label)}</p>
               </div>
-              <span class="chart-menu" aria-hidden="true">...</span>
+              <div class="chart-actions">
+                <button class="chart-icon-button chart-menu-button" type="button" aria-label="Chart menu">...</button>
+                <button class="chart-icon-button chart-settings-button" type="button" aria-label="Chart settings">⚙</button>
+                <div class="chart-popover chart-menu-popover" hidden>
+                  <button type="button" data-action="view-table">{escape(copy["charts"]["view_table"])}</button>
+                  <button type="button" data-action="download-csv">{escape(copy["charts"]["download_csv"])}</button>
+                </div>
+                <div class="chart-popover chart-settings-popover" hidden>
+                  <label><input type="checkbox" data-action="toggle-labels" /> {escape(copy["charts"]["show_labels"])}</label>
+                </div>
+                <div class="chart-popover chart-table-popover" hidden></div>
+              </div>
             </div>
             <svg class="traffic-chart" viewBox="0 0 {width} {height}" role="img" aria-label="{escape(title)}">
               <g>{''.join(horizontal_lines)}</g>
               <g>{''.join(vertical_lines)}</g>
               <polyline class="chart-line" points="{polyline}" />
               <g>{''.join(dots)}</g>
+              <g class="chart-value-labels">{''.join(value_labels)}</g>
               <g>{''.join(x_labels)}</g>
             </svg>
           </section>
@@ -557,12 +595,32 @@ def render_traffic_dashboard(language):
           .chart-head {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 8px; }}
           .chart-head h2 {{ margin-bottom: 8px; font-size: 20px; line-height: 1.25; }}
           .chart-summary {{ margin: 0; color: #64748b; font-size: 14px; font-weight: 650; }}
-          .chart-menu {{ color: #64748b; font-size: 22px; font-weight: 800; letter-spacing: 3px; line-height: 1; }}
+          .chart-actions {{ position: relative; display: flex; gap: 6px; }}
+          .chart-icon-button {{ display: inline-flex; height: 30px; min-width: 30px; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #64748b; cursor: pointer; font-size: 15px; font-weight: 800; line-height: 1; transition: background .16s ease, border-color .16s ease, color .16s ease; }}
+          .chart-icon-button:hover, .chart-icon-button:focus-visible {{ border-color: #dbe3ec; background: #f8fafc; color: #0f172a; outline: none; }}
+          .chart-menu-button {{ letter-spacing: 2px; padding-bottom: 5px; }}
+          .chart-popover {{ position: absolute; right: 0; top: 36px; z-index: 5; min-width: 172px; border: 1px solid #dbe3ec; border-radius: 10px; background: rgba(255,255,255,.98); box-shadow: 0 18px 50px rgba(15,23,42,.14); padding: 6px; }}
+          .chart-popover button, .chart-popover label {{ display: flex; width: 100%; align-items: center; gap: 8px; border: 0; border-radius: 8px; background: transparent; color: #334155; cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; padding: 9px 10px; text-align: left; }}
+          .chart-popover button:hover {{ background: #f1f5f9; color: #0f172a; }}
+          .chart-settings-popover {{ min-width: 188px; }}
+          .chart-table-popover {{ min-width: 240px; max-height: 278px; overflow: auto; padding: 8px; }}
+          .chart-table-popover table {{ font-size: 12px; }}
+          .chart-table-popover th, .chart-table-popover td {{ padding: 8px 7px; }}
           .traffic-chart {{ display: block; width: 100%; height: 260px; overflow: visible; }}
           .chart-grid-line {{ stroke: #dbe3ec; stroke-width: 1; }}
           .chart-line {{ fill: none; stroke: #2da44e; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }}
-          .chart-dot {{ fill: #2da44e; stroke: #fff; stroke-width: 2; }}
+          .chart-hit-area {{ fill: transparent; cursor: pointer; }}
+          .chart-dot {{ fill: #2da44e; stroke: #fff; stroke-width: 2; pointer-events: none; transition: r .16s ease, stroke-width .16s ease; }}
+          .chart-point:hover .chart-dot, .chart-point:focus .chart-dot, .chart-point:focus-within .chart-dot {{ r: 6; stroke-width: 3; outline: none; }}
           .chart-y-label, .chart-x-label {{ fill: #64748b; font-size: 12px; font-weight: 650; }}
+          .chart-value-labels {{ display: none; }}
+          .chart-card.show-labels .chart-value-labels {{ display: block; }}
+          .chart-value-label {{ fill: #0f172a; font-size: 11px; font-weight: 750; paint-order: stroke; stroke: #fff; stroke-width: 4px; }}
+          .chart-tooltip {{ position: fixed; z-index: 50; pointer-events: none; min-width: 132px; border: 1px solid #dbe3ec; border-radius: 10px; background: rgba(255,255,255,.98); box-shadow: 0 18px 44px rgba(15,23,42,.16); padding: 10px 12px; color: #0f172a; transform: translate(-50%, calc(-100% - 14px)); }}
+          .chart-tooltip-date {{ color: #64748b; font-size: 13px; font-weight: 800; }}
+          .chart-tooltip-value {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 7px; font-size: 13px; }}
+          .chart-tooltip-dot {{ display: inline-flex; height: 10px; width: 10px; border-radius: 999px; background: #2da44e; }}
+          .chart-tooltip-number {{ font-size: 16px; font-weight: 800; }}
           @media (max-width: 900px) {{
             .cards, .grid, .chart-grid {{ grid-template-columns: 1fr; }}
             .topbar {{ align-items: flex-start; flex-direction: column; }}
@@ -608,10 +666,150 @@ def render_traffic_dashboard(language):
             </section>
           </div>
           <div class="chart-grid">
-            {render_line_chart(copy["charts"]["views_title"], copy["charts"]["views_total"], seven_day_traffic, "views")}
-            {render_line_chart(copy["charts"]["unique_title"], copy["charts"]["unique_total"], seven_day_traffic, "uniques")}
+            {render_line_chart(copy["charts"]["views_title"], copy["charts"]["views_total"], seven_day_traffic, "views", "seven-day-views")}
+            {render_line_chart(copy["charts"]["unique_title"], copy["charts"]["unique_total"], seven_day_traffic, "uniques", "seven-day-uniques")}
           </div>
         </main>
+        <script>
+          (() => {{
+            const tooltip = document.createElement("div");
+            tooltip.className = "chart-tooltip";
+            tooltip.hidden = true;
+            document.body.appendChild(tooltip);
+
+            const closePopovers = (except) => {{
+              document.querySelectorAll(".chart-popover").forEach((popover) => {{
+                if (popover !== except) popover.hidden = true;
+              }});
+            }};
+
+            const getChartData = (card) => JSON.parse(card.dataset.chart || "{{}}");
+
+            const renderTooltip = (point) => {{
+              const rect = point.getBoundingClientRect();
+              tooltip.innerHTML = `
+                <div class="chart-tooltip-date">${{point.dataset.label}}</div>
+                <div class="chart-tooltip-value">
+                  <span><span class="chart-tooltip-dot"></span> ${{point.dataset.metric}}</span>
+                  <span class="chart-tooltip-number">${{point.dataset.value}}</span>
+                </div>
+              `;
+              tooltip.style.left = `${{rect.left + rect.width / 2}}px`;
+              tooltip.style.top = `${{rect.top}}px`;
+              tooltip.hidden = false;
+            }};
+
+            const hideTooltip = () => {{
+              tooltip.hidden = true;
+            }};
+
+            const renderDataTable = (card) => {{
+              const data = getChartData(card);
+              const container = card.querySelector(".chart-table-popover");
+              if (!container) return;
+
+              if (!container.hidden) {{
+                container.hidden = true;
+                container.innerHTML = "";
+                return;
+              }}
+
+              const rows = (data.rows || [])
+                .map((row) => `<tr><td>${{row.date}}</td><td>${{row.value}}</td></tr>`)
+                .join("");
+              container.innerHTML = `
+                <table>
+                  <thead><tr><th>${{data.dateLabel}}</th><th>${{data.metric}}</th></tr></thead>
+                  <tbody>${{rows}}</tbody>
+                </table>
+              `;
+              closePopovers(container);
+              container.hidden = false;
+            }};
+
+            const downloadCsv = (card) => {{
+              const data = getChartData(card);
+              const rows = [[data.dateLabel || "Date", data.metric || "Value"], ...((data.rows || []).map((row) => [row.date, row.value]))];
+              const csv = rows.map((row) => row.map((cell) => `"${{String(cell).replaceAll('"', '""')}}"`).join(",")).join("\\n");
+              const blob = new Blob([csv], {{ type: "text/csv;charset=utf-8" }});
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = `${{(data.title || "traffic-chart").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "traffic-chart"}}.csv`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              URL.revokeObjectURL(url);
+            }};
+
+            const setDataLabelsVisible = (isVisible) => {{
+              document.querySelectorAll(".chart-card").forEach((card) => {{
+                card.classList.toggle("show-labels", isVisible);
+              }});
+              document.querySelectorAll('[data-action="toggle-labels"]').forEach((checkbox) => {{
+                checkbox.checked = isVisible;
+              }});
+            }};
+
+            document.querySelectorAll(".chart-card").forEach((card) => {{
+              card.querySelectorAll(".chart-popover").forEach((popover) => {{
+                popover.addEventListener("click", (event) => event.stopPropagation());
+              }});
+
+              card.querySelectorAll(".chart-point").forEach((point) => {{
+                point.addEventListener("pointerover", () => renderTooltip(point));
+                point.addEventListener("pointerout", hideTooltip);
+                point.addEventListener("mouseover", () => renderTooltip(point));
+                point.addEventListener("mouseout", hideTooltip);
+                point.addEventListener("click", () => renderTooltip(point));
+                point.addEventListener("focus", () => renderTooltip(point));
+                point.addEventListener("blur", hideTooltip);
+              }});
+
+              const menu = card.querySelector(".chart-menu-popover");
+              const settings = card.querySelector(".chart-settings-popover");
+
+              card.querySelector(".chart-menu-button")?.addEventListener("click", (event) => {{
+                event.stopPropagation();
+                if (!menu) return;
+                const nextHidden = !menu.hidden;
+                closePopovers();
+                menu.hidden = nextHidden;
+              }});
+
+              card.querySelector(".chart-settings-button")?.addEventListener("click", (event) => {{
+                event.stopPropagation();
+                if (!settings) return;
+                const nextHidden = !settings.hidden;
+                closePopovers();
+                settings.hidden = nextHidden;
+              }});
+
+              card.querySelector('[data-action="view-table"]')?.addEventListener("click", (event) => {{
+                event.stopPropagation();
+                renderDataTable(card);
+              }});
+
+              card.querySelector('[data-action="download-csv"]')?.addEventListener("click", (event) => {{
+                event.stopPropagation();
+                downloadCsv(card);
+                closePopovers();
+              }});
+
+              card.querySelector('[data-action="toggle-labels"]')?.addEventListener("change", (event) => {{
+                setDataLabelsVisible(event.target.checked);
+              }});
+            }});
+
+            document.addEventListener("click", () => closePopovers());
+            document.addEventListener("keydown", (event) => {{
+              if (event.key === "Escape") {{
+                closePopovers();
+                hideTooltip();
+              }}
+            }});
+          }})();
+        </script>
       </body>
     </html>
     """
