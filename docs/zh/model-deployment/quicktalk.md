@@ -1,64 +1,168 @@
 # QuickTalk
 
-QuickTalk 在当前仓库里支持两种部署模式：`local` 和 `omnirt`。commit 历史里已有 QuickTalk 通过 OmniRT audio2video 的接入，当前脚本也保留了 `scripts/quickstart/start_omnirt_quicktalk.sh`；因此它不是 local-only 模型。
+## 支持状态
 
 | 项 | 值 |
 |----|----|
 | 模型 ID | `quicktalk` |
-| Backend | `local`、`omnirt` |
-| 仓库默认值 | `omnirt` |
-| 推荐起步 | 单机验证用 `local`；需要推理服务隔离时用 `omnirt` |
+| Backend | `local` |
+| 证据等级 | 已内置，已验证 |
+| 推荐用途 | 本地实时 adapter、开发参考、QuickTalk 资产验证 |
 
-## 选择哪种模式
+## 推荐硬件
 
-| 模式 | 适合场景 | 入口 |
-|------|----------|------|
-| `local` | OpenTalking 单机直接加载 QuickTalk，调试自定义头像、本地 STT/TTS 和实时链路。 | [QuickTalk Local](quicktalk/local.md) |
-| `omnirt` | 希望 QuickTalk 由独立 OmniRT 服务托管，OpenTalking 只做编排和 WebRTC。 | [QuickTalk with OmniRT](quicktalk/omnirt.md) |
+本地 CUDA GPU。`mock` 路径通过后，再接入 QuickTalk 资产包和模板视频。
 
-## 权重目录
+## 权重下载
 
-两种模式都需要 QuickTalk 权重、HuBERT 和 InsightFace 资产，但读取的资产根不同：local adapter 读取包含 `checkpoints/` 的资产目录，OmniRT quickstart 脚本读取 `$OMNIRT_MODEL_ROOT/quicktalk` 下的顶层文件。
+QuickTalk local adapter 直接在 OpenTalking 进程内加载权重，不需要 OmniRT。本地权重、第三方 HuBERT / InsightFace 依赖和缓存统一放到仓库根目录 `models/quicktalk/`。
+
+下载 QuickTalk 权重和 HuBERT 文件：
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p models/quicktalk/checkpoints
+
+uv pip install -U "huggingface_hub[cli]"
+
+# 可选：网络慢时使用镜像
+export HF_ENDPOINT=https://hf-mirror.com
+
+hf download datascale-ai/quicktalk \
+  quicktalk.pth \
+  repair.npy \
+  chinese-hubert-large/config.json \
+  chinese-hubert-large/preprocessor_config.json \
+  chinese-hubert-large/pytorch_model.bin \
+  --local-dir models/quicktalk/checkpoints
+```
+
+QuickTalk 权重和 HuBERT 文件已经包含在 `datascale-ai/quicktalk` 中。QuickTalk 仍需要单独准备 InsightFace `buffalo_l` 依赖权重：
+
+```bash
+# 下载并解压 InsightFace buffalo_l 到 QuickTalk auxiliary 目录。
+mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
+curl -L \
+  -o /tmp/opentalking-insightface/buffalo_l.zip \
+  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
+unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
+  -d /tmp/opentalking-insightface
+rsync -a /tmp/opentalking-insightface/buffalo_l/ \
+  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
+```
+
+## 目录结构
 
 ```text
-$OMNIRT_MODEL_ROOT/quicktalk/          # OmniRT 默认读取
-  quicktalk.pth
-  repair.npy
-  chinese-hubert-large/
-    config.json
-    preprocessor_config.json
-    pytorch_model.bin
-  auxiliary/models/buffalo_l/
-    det_10g.onnx
+models/
+  quicktalk/
+    checkpoints/
+      quicktalk.pth
+      repair.npy
+      chinese-hubert-large/
+        config.json
+        preprocessor_config.json
+        pytorch_model.bin
+      auxiliary/models/buffalo_l/
+        *.onnx
 ```
 
-```text
-$OPENTALKING_QUICKTALK_ASSET_ROOT/    # local adapter 默认读取
-  checkpoints/
-    quicktalk.pth
-    repair.npy
-    chinese-hubert-large/
-      pytorch_model.bin
-    auxiliary/models/buffalo_l/ 或 auxiliary_min/
-      det_10g.onnx
+检查必需文件：
+
+```bash
+stat models/quicktalk/checkpoints/quicktalk.pth
+stat models/quicktalk/checkpoints/repair.npy
+stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
+stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
 ```
 
-如果本地 adapter 使用旧资产包结构，也可以将 `OPENTALKING_QUICKTALK_ASSET_ROOT` 指到包含 `checkpoints/` 的目录；详见 local 页面。
+如果已有旧资产包以 `hdModule/checkpoints/` 组织，也可以把 `OPENTALKING_QUICKTALK_ASSET_ROOT` 指向 `hdModule` 的父目录或 `hdModule` 本身，adapter 会自动归一化到实际包含 `checkpoints/` 的目录。
 
-## 相关教程
+## 配置项
 
-- [QuickTalk Local](quicktalk/local.md)
-- [QuickTalk with OmniRT](quicktalk/omnirt.md)
-- [本地语音 + QuickTalk](recipes/local-quicktalk-audio.md)
-- [支持矩阵](support-matrix.md)
-
-## 前端入口
-
-模型或后端服务启动后，统一用 OpenTalking WebUI 访问：
-
-```bash title="终端"
-cd "$OPENTALKING_HOME"
-bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host 0.0.0.0
+```env title=".env"
+OPENTALKING_QUICKTALK_ASSET_ROOT=/absolute/path/to/opentalking/models/quicktalk
+# 可选：内置 QuickTalk avatar 已在 manifest 中声明 template_video；自定义 avatar 可用该变量覆盖。
+# OPENTALKING_QUICKTALK_TEMPLATE_VIDEO=/absolute/path/to/template.mp4
+OPENTALKING_QUICKTALK_WORKER_CACHE=1
+OPENTALKING_TORCH_DEVICE=cuda:0
 ```
 
-远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。
+Avatar manifest 也应声明：
+
+```json title="manifest.json"
+{
+  "model_type": "quicktalk",
+  "metadata": {
+    "asset_root": "/absolute/path/to/opentalking/models/quicktalk",
+    "template_video": "/absolute/path/to/template.mp4"
+  }
+}
+```
+
+## 启动命令
+
+```bash
+export OPENTALKING_TORCH_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_QUICKTALK_WORKER_CACHE=1
+
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5280
+```
+
+打开 `http://localhost:5280`，选择 `QuickTalk Local` 形象和 `quicktalk` 模型。若不指定 `--web-port`，默认前端地址为 `http://localhost:5173`。
+
+## 准备 Avatar Cache
+
+QuickTalk 会为每个 avatar 生成运行缓存：
+
+- `examples/avatars/<avatar>/quicktalk/template_<width>x<height>.mp4`
+- `examples/avatars/<avatar>/quicktalk/face_cache_v3_<width>x<height>.npz`
+
+这些文件由本机模型和 avatar 共同决定，属于部署环境生成物，不建议提交到代码仓。需要提前准备时，运行：
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+
+opentalking-prepare-cache \
+  --model quicktalk \
+  --avatars-root examples/avatars \
+  --quicktalk-model-root models/quicktalk \
+  --device cuda:0 \
+  --model-backend pth \
+  --verify
+```
+
+只准备单个 avatar：
+
+```bash
+opentalking-prepare-cache \
+  --model quicktalk \
+  --avatars-root examples/avatars \
+  --avatar singer \
+  --quicktalk-model-root models/quicktalk \
+  --device cuda:0 \
+  --model-backend pth \
+  --verify
+```
+
+## `/models` 验证
+
+```bash
+curl -s http://127.0.0.1:8210/models | jq '.statuses[] | select(.id=="quicktalk")'
+```
+
+期望：
+
+```json
+{"id":"quicktalk","backend":"local","connected":true,"reason":"local_runtime"}
+```
+
+## 常见错误
+
+| 现象 | 处理 |
+|------|------|
+| `connected=false` | 检查 QuickTalk 依赖、资产路径和 `OPENTALKING_TORCH_DEVICE`。 |
+| 首轮等待较长 | 开启 `OPENTALKING_QUICKTALK_WORKER_CACHE=1`。 |
+| Avatar 加载失败 | manifest 中 `asset_root`、`template_video` 必须是可访问绝对路径。 |
