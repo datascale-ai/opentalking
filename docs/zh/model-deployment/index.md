@@ -63,3 +63,7 @@ bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host
 ```
 
 远程服务器部署时，把本地浏览器端口映射到服务器 `5173`，再打开 `http://127.0.0.1:5173`。
+
+## 文档版本
+
+线上文档使用版本化发布：`/latest/` 指向当前 main 文档，正式版本会保留在 `/vX.Y.Z/` 这样的冻结路径下。部署生产环境时，优先查看与你安装的 Python 包、GitHub Release 或 Docker 镜像 tag 对应的版本文档。

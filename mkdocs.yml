@@ -48,6 +48,8 @@ theme:
     repo: fontawesome/brands/github
 
 extra:
+  version:
+    provider: mike
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/datascale-ai/opentalking
@@ -150,6 +152,7 @@ plugins:
             Model Adapter: 模型适配器
             Contributing: 贡献指南
             Community: 社区
+            Docs Publishing: 文档发布
             Overview: 概览
             Metrics: 指标定义
             Runbook: 运行方法
@@ -273,6 +276,7 @@ nav:
           - Support Matrix: model-deployment/support-matrix.md
       - Reference Materials:
           - Reference Materials Overview: reference/index.md
+          - Docs Publishing: community/publishing-docs.md
           - Benchmark: reference/benchmark.md
           - Changelog: reference/changelog.md
       - FAQ:

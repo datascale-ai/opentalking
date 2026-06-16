@@ -64,3 +64,7 @@ bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host
 ```
 
 For a remote server, forward your local browser port to the server `5173`, then open `http://127.0.0.1:5173`.
+
+## Documentation Versions
+
+The published site uses versioned docs: `/latest/` points at the current main docs, and formal releases are kept under frozen paths such as `/vX.Y.Z/`. For production deployments, prefer the docs version that matches the Python package, GitHub Release, or Docker image tag you installed.

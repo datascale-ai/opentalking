@@ -4,26 +4,43 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Docs version path to deploy, for example latest or v0.1.0
+        required: false
+        default: latest
+      aliases:
+        description: Optional space-separated aliases for this docs version
+        required: false
+        default: ""
+      default_version:
+        description: Version or alias that the docs root should redirect to
+        required: false
+        default: latest
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
+
+env:
+  DOCS_VERSION: ${{ github.event.inputs.version || 'latest' }}
+  DOCS_ALIASES: ${{ github.event.inputs.aliases || '' }}
+  DOCS_DEFAULT_VERSION: ${{ github.event.inputs.default_version || 'latest' }}
 
 concurrency:
   group: docs-pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    if: github.repository == 'datascale-ai/opentalking' && github.ref == 'refs/heads/main'
+  build-versioned-docs:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
@@ -36,16 +53,51 @@ jobs:
           pip install -r docs/requirements.txt
 
       - name: Configure Pages
+        if: ${{ github.event.repository.has_pages }}
         uses: actions/configure-pages@v6
 
       - name: Build Docs
         run: python -m mkdocs build --strict --clean
 
+      - name: Configure versioned docs git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Deploy versioned docs to gh-pages
+        run: |
+          git fetch origin gh-pages --depth=1 || true
+          read -r -a aliases <<< "${DOCS_ALIASES}"
+          title_args=()
+          if [ "${DOCS_VERSION}" = "latest" ]; then
+            title_args=(--title Latest)
+          fi
+          mike deploy --push --allow-empty --update-aliases --alias-type=redirect "${title_args[@]}" "${DOCS_VERSION}" "${aliases[@]}"
+          mike set-default --push --allow-empty "${DOCS_DEFAULT_VERSION}"
+
+      - name: Export versioned docs artifact
+        if: ${{ github.repository == 'datascale-ai/opentalking' && github.event.repository.has_pages }}
+        run: |
+          rm -rf site /tmp/opentalking-gh-pages
+          git worktree add /tmp/opentalking-gh-pages gh-pages
+          rsync -a --delete --exclude .git /tmp/opentalking-gh-pages/ site/
+          git worktree remove /tmp/opentalking-gh-pages
+
       - name: Upload Pages Artifact
+        if: ${{ github.repository == 'datascale-ai/opentalking' && github.event.repository.has_pages }}
         uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
+  deploy-pages:
+    needs: build-versioned-docs
+    if: ${{ github.repository == 'datascale-ai/opentalking' && github.event.repository.has_pages }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
