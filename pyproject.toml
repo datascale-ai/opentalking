@@ -152,7 +152,16 @@ opentalking = ["assets/voices/system/*/*.json", "assets/voices/system/*/*.txt", 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["opentalking*", "apps*"]
-exclude = ["apps.web*", "tests*", "examples*", "configs*", "deploy*", "docs*", "scripts*"]
+exclude = [
+  "apps.web*",
+  "apps.*.tests*",
+  "tests*",
+  "examples*",
+  "configs*",
+  "deploy*",
+  "docs*",
+  "scripts*",
+]
 
 [tool.ruff]
 line-length = 100

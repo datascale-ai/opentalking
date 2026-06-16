@@ -52,6 +52,50 @@ jobs:
       - name: Test
         run: pytest apps/api/tests tests
 
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build Python Package
+        run: |
+          python -m pip install -U pip build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Check Package Contents
+        run: |
+          python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          wheel = next(Path("dist").glob("*.whl"))
+          sdist = next(Path("dist").glob("*.tar.gz"))
+
+          with zipfile.ZipFile(wheel) as archive:
+              wheel_tests = [
+                  name for name in archive.namelist()
+                  if name.startswith("apps/api/tests/")
+              ]
+
+          with tarfile.open(sdist) as archive:
+              sdist_tests = [
+                  name for name in archive.getnames()
+                  if "/apps/api/tests/" in name
+              ]
+
+          if wheel_tests or sdist_tests:
+              raise SystemExit(
+                  "Package artifacts must not include apps/api/tests files."
+              )
+          PY
+
   frontend:
     runs-on: ubuntu-latest
 
