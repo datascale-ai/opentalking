@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="./README.md">English</a> ·
-  <a href="https://datascale-ai.github.io/opentalking/">文档站</a> ·
+  <a href="https://datascale-ai.github.io/opentalking/latest/">文档站</a> ·
   <a href="https://github.com/datascale-ai/opentalking">GitHub</a>
 </p>
 
@@ -48,8 +48,8 @@ OpenTalking 更偏向可落地的数字人产线：前端 WebUI、形象 / 音�
 
 更多文档：
 
-- 在线文档：<https://datascale-ai.github.io/opentalking/>
-- 英文文档：<https://datascale-ai.github.io/opentalking/en/>
+- 在线文档：<https://datascale-ai.github.io/opentalking/latest/>
+- 英文文档：<https://datascale-ai.github.io/opentalking/latest/en/>
 
 ## WebUI 与效果展示
 

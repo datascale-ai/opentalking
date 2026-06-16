@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="./README.zh.md">中文</a> ·
-  <a href="https://datascale-ai.github.io/opentalking/en/">Documentation</a> ·
+  <a href="https://datascale-ai.github.io/opentalking/latest/en/">Documentation</a> ·
   <a href="https://github.com/datascale-ai/opentalking">GitHub</a>
 </p>
 
@@ -48,8 +48,8 @@ OpenTalking is designed as a practical digital-human production stack. The WebUI
 
 More documentation:
 
-- Documentation site: <https://datascale-ai.github.io/opentalking/en/>
-- Chinese docs: <https://datascale-ai.github.io/opentalking/>
+- Documentation site: <https://datascale-ai.github.io/opentalking/latest/en/>
+- Chinese docs: <https://datascale-ai.github.io/opentalking/latest/>
 
 ## WebUI And Demos
 
