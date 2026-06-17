@@ -43,6 +43,7 @@ $OPENTALKING_MUSETALK_MODEL_ROOT/
     dw-ll_ucoco_384.pth
   face-parse-bisenet/
     79999_iter.pth
+    resnet18-5c106cde.pth
 ```
 
 可从官方 MuseTalk 仓的 `download_weights.sh` 下载后整理。注意两处命名差异：

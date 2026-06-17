@@ -31,6 +31,7 @@ models/
     dw-ll_ucoco_384.pth
   face-parse-bisenet/
     79999_iter.pth
+    resnet18-5c106cde.pth
 ```
 
 local 模式还需要 MuseTalk 官方源码和预处理 Python；OmniRT 模式会通过 OmniRT runtime 管理 MuseTalk 源码环境。

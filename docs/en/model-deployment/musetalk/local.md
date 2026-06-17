@@ -43,6 +43,7 @@ $OPENTALKING_MUSETALK_MODEL_ROOT/
     dw-ll_ucoco_384.pth
   face-parse-bisenet/
     79999_iter.pth
+    resnet18-5c106cde.pth
 ```
 
 You can download the assets with the official MuseTalk `download_weights.sh` and then arrange the directories. Note two naming differences:
