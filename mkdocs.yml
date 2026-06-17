@@ -126,6 +126,7 @@ plugins:
             Models: 模型
             Support Matrix: 支持矩阵
             LLM and STT: LLM 与 STT
+            Mem0 Memory Engine: Mem0 记忆引擎
             TTS: TTS
             Text-to-Speech: 语音合成
             Backend Modes: 后端模式
@@ -272,6 +273,7 @@ nav:
               - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
               - V100 + FasterLivePortrait + FlashHead: model-deployment/recipes/v100-fasterliveportrait-flashhead.md
           - LLM and STT: model-deployment/llm-stt.md
+          - Mem0 Memory Engine: model-deployment/mem0-memory.md
           - TTS: model-deployment/tts.md
           - Support Matrix: model-deployment/support-matrix.md
       - Reference Materials:
@@ -351,6 +353,7 @@ nav:
           - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
           - V100 + FasterLivePortrait + FlashHead: model-deployment/recipes/v100-fasterliveportrait-flashhead.md
       - LLM and STT: model-deployment/llm-stt.md
+      - Mem0 Memory Engine: model-deployment/mem0-memory.md
       - TTS: model-deployment/tts.md
       - Support Matrix: model-deployment/support-matrix.md
   - Reference Materials:

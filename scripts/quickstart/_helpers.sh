@@ -48,6 +48,30 @@ quickstart_describe_uv_default_index() {
   printf '%s\n' "${UV_DEFAULT_INDEX:-${UV_INDEX_URL:-default}}"
 }
 
+quickstart_configure_utf8() {
+  local locale_name="${OPENTALKING_QUICKSTART_LOCALE:-}"
+
+  if [[ -z "$locale_name" ]]; then
+    if locale -a 2>/dev/null | grep -Eiq '^(C|c)\.(UTF-8|utf8)$'; then
+      locale_name="C.UTF-8"
+    else
+      locale_name="en_US.UTF-8"
+    fi
+  fi
+
+  export LANG="$locale_name"
+  export LC_ALL="$locale_name"
+  export PYTHONIOENCODING="${PYTHONIOENCODING:-utf-8}"
+  export PYTHONUTF8="${PYTHONUTF8:-1}"
+  export TERM="${OPENTALKING_QUICKSTART_TERM:-dumb}"
+  export NO_COLOR="${NO_COLOR:-1}"
+  export CLICOLOR="${CLICOLOR:-0}"
+  export FORCE_COLOR="${FORCE_COLOR:-0}"
+  export PY_COLORS="${PY_COLORS:-0}"
+  export TQDM_DISABLE="${TQDM_DISABLE:-1}"
+  export HF_HUB_DISABLE_PROGRESS_BARS="${HF_HUB_DISABLE_PROGRESS_BARS:-1}"
+}
+
 quickstart_source_env() {
   local env_file="$1"
   local restore_allexport=1

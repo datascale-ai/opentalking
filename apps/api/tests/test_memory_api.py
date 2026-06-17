@@ -80,6 +80,8 @@ memory:
         encoding="utf-8",
     )
     monkeypatch.setenv("OPENTALKING_CONFIG_FILE", str(config_file))
+    monkeypatch.setenv("OPENTALKING_MEMORY_PROVIDER", "sqlite")
+    monkeypatch.setenv("OPENTALKING_MEMORY_SQLITE_PATH", str(tmp_path / "memory.sqlite3"))
     get_settings.cache_clear()
 
     app = FastAPI()
@@ -129,6 +131,8 @@ models:
             encoding="utf-8",
         )
         monkeypatch.setenv("OPENTALKING_CONFIG_FILE", str(config_file))
+        monkeypatch.setenv("OPENTALKING_MEMORY_PROVIDER", "sqlite")
+        monkeypatch.setenv("OPENTALKING_MEMORY_SQLITE_PATH", str(tmp_path / "memory.sqlite3"))
         get_settings.cache_clear()
         settings = get_settings()
         redis = InMemoryRedis()

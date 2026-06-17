@@ -82,7 +82,30 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "recall_limit": "memory_recall_limit",
             "recall_min_score": "memory_recall_min_score",
             "recall_timeout_ms": "memory_recall_timeout_ms",
+            "recall_backend": "memory_recall_backend",
+            "write_mode": "memory_write_mode",
+            "decision_mode": "memory_decision_mode",
+            "decision_timeout_ms": "memory_decision_timeout_ms",
+            "smart_write_enabled": "memory_smart_write_enabled",
+            "summary_enabled": "memory_summary_enabled",
+            "summary_turn_window": "memory_summary_turn_window",
+            "summary_max_items": "memory_summary_max_items",
             "mem0_config": "memory_mem0_config",
+            "mem0_llm_provider": "memory_mem0_llm_provider",
+            "mem0_llm_base_url": "memory_mem0_llm_base_url",
+            "mem0_llm_api_key": "memory_mem0_llm_api_key",
+            "mem0_llm_model": "memory_mem0_llm_model",
+            "mem0_embedder_provider": "memory_mem0_embedder_provider",
+            "mem0_embedder_base_url": "memory_mem0_embedder_base_url",
+            "mem0_embedder_api_key": "memory_mem0_embedder_api_key",
+            "mem0_embedder_model": "memory_mem0_embedder_model",
+            "mem0_embedder_embedding_dims": "memory_mem0_embedder_embedding_dims",
+            "mem0_vector_store_provider": "memory_mem0_vector_store_provider",
+            "mem0_vector_store_collection_name": "memory_mem0_vector_store_collection_name",
+            "mem0_vector_store_path": "memory_mem0_vector_store_path",
+            "mem0_vector_store_host": "memory_mem0_vector_store_host",
+            "mem0_vector_store_port": "memory_mem0_vector_store_port",
+            "mem0_vector_store_embedding_model_dims": "memory_mem0_vector_store_embedding_model_dims",
             "sqlite_path": "memory_sqlite_path",
         },
         "tts": {
@@ -412,14 +435,37 @@ class Settings(BaseSettings):
     agent_lightrag_chunk_fallback_enabled: bool = Field(default=False)
 
     # ---- Character memory provider ----
-    memory_provider: str = "none"
+    memory_provider: str = "mem0"
     memory_enabled: bool = False
     memory_default_profile_id: str = "default"
     memory_default_library_id: str = "default"
     memory_recall_limit: int = 5
     memory_recall_min_score: float = 0.0
-    memory_recall_timeout_ms: int = 80
+    memory_recall_timeout_ms: int = 2000
+    memory_recall_backend: str = "hybrid"
+    memory_write_mode: str = "hybrid"
+    memory_decision_mode: str = "hybrid"
+    memory_decision_timeout_ms: int = 2000
+    memory_smart_write_enabled: bool = True
+    memory_summary_enabled: bool = True
+    memory_summary_turn_window: int = 8
+    memory_summary_max_items: int = 3
     memory_mem0_config: str = ""
+    memory_mem0_llm_provider: str = "openai"
+    memory_mem0_llm_base_url: str = ""
+    memory_mem0_llm_api_key: str = ""
+    memory_mem0_llm_model: str = "qwen-flash"
+    memory_mem0_embedder_provider: str = "openai"
+    memory_mem0_embedder_base_url: str = ""
+    memory_mem0_embedder_api_key: str = ""
+    memory_mem0_embedder_model: str = "text-embedding-v4"
+    memory_mem0_embedder_embedding_dims: int = 1024
+    memory_mem0_vector_store_provider: str = "qdrant"
+    memory_mem0_vector_store_collection_name: str = "opentalking_memories"
+    memory_mem0_vector_store_path: str = "./data/mem0_qdrant"
+    memory_mem0_vector_store_host: str = ""
+    memory_mem0_vector_store_port: int = 0
+    memory_mem0_vector_store_embedding_model_dims: int = 1024
     memory_sqlite_path: str = "./data/opentalking_memory.sqlite3"
 
     #: CosyVoice 复刻时，百炼需拉取公网 URL；若留空则用请求的 Host 拼 URL（内网部署请填公网可达地址）

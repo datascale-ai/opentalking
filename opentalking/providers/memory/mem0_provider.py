@@ -2,12 +2,48 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import logging
 import uuid
 from collections.abc import Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from opentalking.providers.memory.base import MemoryProvider
 from opentalking.providers.memory.schemas import MemoryItem, MemoryLibrary, utc_now_iso
+
+log = logging.getLogger(__name__)
+
+
+class _Mem0RawLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "root":
+            return True
+        message = record.getMessage()
+        if message.startswith(
+            (
+                "Creating memory with data=",
+                "NOOP for Memory",
+                "Total existing memories:",
+                "Deleting memory with memory_id=",
+            )
+        ):
+            return False
+        if "'event':" in message and ("'text':" in message or "'memory':" in message):
+            return False
+        return True
+
+
+_MEM0_RAW_LOG_FILTER = _Mem0RawLogFilter()
+
+
+@contextmanager
+def _suppress_mem0_raw_logs():
+    root_logger = logging.getLogger()
+    root_logger.addFilter(_MEM0_RAW_LOG_FILTER)
+    try:
+        yield
+    finally:
+        root_logger.removeFilter(_MEM0_RAW_LOG_FILTER)
 
 
 class Mem0UnavailableError(RuntimeError):
@@ -26,6 +62,50 @@ async def _maybe_await(value: Any) -> Any:
     if inspect.isawaitable(value):
         return await value
     return value
+
+
+def _supports_kwarg(func: Any, name: str) -> bool:
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return True
+    return any(
+        param.kind == inspect.Parameter.VAR_KEYWORD or param.name == name
+        for param in signature.parameters.values()
+    )
+
+
+def _count_add_entry(entry: Any) -> int:
+    if not isinstance(entry, dict):
+        return 1 if entry else 0
+    event = str(entry.get("event") or "").strip().upper()
+    if event in {"NONE", "NOOP", "SKIP", "SKIPPED"}:
+        return 0
+    if event:
+        return 1
+    return 1 if (entry.get("memory") or entry.get("text") or entry.get("content") or entry.get("id")) else 0
+
+
+def _count_add_result(raw: Any) -> int:
+    if raw is None:
+        return 1
+    if isinstance(raw, list):
+        return sum(_count_add_entry(entry) for entry in raw)
+    if isinstance(raw, dict):
+        results = raw.get("results")
+        if isinstance(results, list):
+            return sum(_count_add_entry(entry) for entry in results)
+        if isinstance(results, dict):
+            return sum(
+                _count_add_entry(entry)
+                for value in results.values()
+                if isinstance(value, list)
+                for entry in value
+            )
+        if "event" in raw:
+            return _count_add_entry(raw)
+        return 1 if raw else 0
+    return 1 if raw else 0
 
 
 class Mem0MemoryProvider(MemoryProvider):
@@ -172,9 +252,115 @@ class Mem0MemoryProvider(MemoryProvider):
                     "created_at": item.created_at or utc_now_iso(),
                 }
             )
-            await self._add(text, profile_id=profile_id, character_id=character_id, metadata=metadata)
-            imported += 1
+            imported += await self._add(
+                text,
+                profile_id=profile_id,
+                character_id=character_id,
+                metadata=metadata,
+                infer=False,
+            )
         return imported
+
+    async def search_items(
+        self,
+        *,
+        query: str,
+        library_id: str,
+        profile_id: str,
+        character_id: str,
+        limit: int,
+    ) -> list[MemoryItem]:
+        search = getattr(self._client, "search", None)
+        if not callable(search):
+            return []
+        kwargs = {
+            "user_id": profile_id,
+            "agent_id": character_id,
+            "limit": max(0, int(limit)),
+        }
+        try:
+            with _suppress_mem0_raw_logs():
+                raw = await _maybe_await(search(query, **kwargs))
+        except TypeError:
+            with _suppress_mem0_raw_logs():
+                raw = await _maybe_await(search(query=query, **kwargs))
+        items = self._normalize_raw_items(raw)
+        return [
+            item
+            for item in items
+            if item.metadata.get("library_id") == library_id
+            and item.metadata.get("profile_id", profile_id) == profile_id
+            and item.metadata.get("character_id", character_id) == character_id
+        ][: max(0, int(limit))]
+
+    async def add_conversation_turns(
+        self,
+        *,
+        library_id: str,
+        profile_id: str,
+        character_id: str,
+        turns: Sequence[dict[str, str]],
+        include_assistant_context: bool = False,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        messages = [
+            {"role": str(turn.get("role") or "").strip(), "content": str(turn.get("content") or "").strip()}
+            for turn in turns
+            if str(turn.get("role") or "").strip()
+            and str(turn.get("content") or "").strip()
+            and (include_assistant_context or str(turn.get("role") or "").strip().lower() == "user")
+        ]
+        if not messages:
+            return 0
+        merged_metadata = {
+            "library_id": library_id,
+            "profile_id": profile_id,
+            "character_id": character_id,
+            "type": "chat_turn",
+            "source": "session",
+            "source_type": "conversation_turn",
+            "created_at": utc_now_iso(),
+        }
+        merged_metadata.update(metadata or {})
+        return await self._add(
+            messages,
+            profile_id=profile_id,
+            character_id=character_id,
+            metadata=merged_metadata,
+            infer=True,
+        )
+
+    async def add_summary(
+        self,
+        *,
+        library_id: str,
+        profile_id: str,
+        character_id: str,
+        summary: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        text = summary.strip()
+        if not text:
+            return 0
+        merged_metadata = {
+            "library_id": library_id,
+            "profile_id": profile_id,
+            "character_id": character_id,
+            "type": "summary",
+            "source": "session",
+            "source_type": "session_summary",
+            "layer": "episodic",
+            "opentalking_memory_id": f"summary_{uuid.uuid4().hex}",
+            "created_at": utc_now_iso(),
+        }
+        merged_metadata.update(metadata or {})
+        return await self._add(
+            text,
+            profile_id=profile_id,
+            character_id=character_id,
+            metadata=merged_metadata,
+            infer=False,
+        )
 
     async def delete_item(
         self,
@@ -196,7 +382,8 @@ class Mem0MemoryProvider(MemoryProvider):
         if not callable(delete):
             return False
         raw_id = item.metadata.get("_mem0_id") or item.id
-        await _maybe_await(delete(raw_id))
+        with _suppress_mem0_raw_logs():
+            await _maybe_await(delete(raw_id))
         return True
 
     async def close(self) -> None:
@@ -206,12 +393,21 @@ class Mem0MemoryProvider(MemoryProvider):
 
     async def _add(
         self,
-        text: str,
+        payload: Any,
         *,
         profile_id: str,
         character_id: str,
         metadata: dict[str, Any],
-    ) -> None:
+        infer: bool = False,
+    ) -> int:
+        if isinstance(payload, str) and not infer and await self._create_raw_memory(
+            payload,
+            profile_id=profile_id,
+            character_id=character_id,
+            metadata=metadata,
+        ):
+            return 1
+
         add = getattr(self._client, "add", None)
         if not callable(add):
             raise RuntimeError("mem0 client does not expose add()")
@@ -220,22 +416,61 @@ class Mem0MemoryProvider(MemoryProvider):
             "user_id": profile_id,
             "agent_id": character_id,
             "metadata": metadata,
-            "infer": False,
         }
+        if _supports_kwarg(add, "infer"):
+            kwargs["infer"] = infer
+
+        if isinstance(payload, str):
+            payloads = [[{"role": "user", "content": payload}], payload]
+        else:
+            payloads = [payload]
+
+        last_error: TypeError | None = None
+        for candidate in payloads:
+            try:
+                with _suppress_mem0_raw_logs():
+                    raw = await _maybe_await(add(candidate, **kwargs))
+                count = _count_add_result(raw)
+                if count > 0:
+                    return count
+            except TypeError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return 0
+
+    async def _create_raw_memory(
+        self,
+        text: str,
+        *,
+        profile_id: str,
+        character_id: str,
+        metadata: dict[str, Any],
+    ) -> bool:
+        create_memory = getattr(self._client, "_create_memory", None)
+        if not callable(create_memory):
+            return False
+        raw_metadata = dict(metadata)
+        raw_metadata.setdefault("user_id", profile_id)
+        raw_metadata.setdefault("agent_id", character_id)
         try:
-            await _maybe_await(add(text, **kwargs))
-        except TypeError:
-            messages = [{"role": "user", "content": text}]
-            await _maybe_await(add(messages, **kwargs))
+            with _suppress_mem0_raw_logs():
+                await _maybe_await(create_memory(text, {}, metadata=raw_metadata))
+        except Exception:  # noqa: BLE001
+            log.warning("mem0 direct raw memory create failed; falling back to add()", exc_info=True)
+            return False
+        return True
 
     async def _all_scoped_items(self, *, profile_id: str, character_id: str) -> list[MemoryItem]:
         get_all = getattr(self._client, "get_all", None)
         if not callable(get_all):
             return []
         try:
-            raw = await _maybe_await(get_all(user_id=profile_id, agent_id=character_id))
+            with _suppress_mem0_raw_logs():
+                raw = await _maybe_await(get_all(user_id=profile_id, agent_id=character_id))
         except TypeError:
-            raw = await _maybe_await(get_all(user_id=profile_id))
+            with _suppress_mem0_raw_logs():
+                raw = await _maybe_await(get_all(user_id=profile_id))
         return [
             item
             for item in self._normalize_raw_items(raw)

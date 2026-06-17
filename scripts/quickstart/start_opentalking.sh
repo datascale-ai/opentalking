@@ -9,6 +9,7 @@ source "$script_dir/_helpers.sh"
 
 env_file="${OPENTALKING_QUICKSTART_ENV:-$script_dir/env}"
 quickstart_source_env "$env_file"
+quickstart_configure_utf8
 
 usage() {
   cat <<'USAGE'

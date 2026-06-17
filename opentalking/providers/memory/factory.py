@@ -10,14 +10,92 @@ from opentalking.providers.memory.noop import NoopMemoryProvider
 from opentalking.providers.memory.sqlite_provider import SQLiteMemoryProvider
 
 
+def _strip(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _base_url_key(provider: str) -> str:
+    return "openai_base_url" if provider.lower() == "openai" else "base_url"
+
+
+def _model_config(*, provider: str, model: str, api_key: str, base_url: str) -> dict[str, Any]:
+    cleaned_provider = _strip(provider)
+    config: dict[str, Any] = {}
+    if _strip(model):
+        config["model"] = _strip(model)
+    if _strip(api_key):
+        config["api_key"] = _strip(api_key)
+    if _strip(base_url):
+        config[_base_url_key(cleaned_provider)] = _strip(base_url)
+    if not cleaned_provider and not config:
+        return {}
+    return {"provider": cleaned_provider or "openai", "config": config}
+
+
+def _normalize_vector_store(config: dict[str, Any]) -> dict[str, Any]:
+    vector_store = config.get("vector_store")
+    if isinstance(vector_store, dict) and str(vector_store.get("provider") or "").lower() == "qdrant":
+        store_config = vector_store.get("config")
+        if isinstance(store_config, dict) and store_config.get("path") and "on_disk" not in store_config:
+            store_config["on_disk"] = True
+    return config
+
+
+def _split_mem0_config(settings: Settings) -> dict[str, Any]:
+    config: dict[str, Any] = {}
+
+    llm = _model_config(
+        provider=settings.memory_mem0_llm_provider,
+        model=settings.memory_mem0_llm_model,
+        api_key=settings.memory_mem0_llm_api_key,
+        base_url=settings.memory_mem0_llm_base_url,
+    )
+    if llm:
+        config["llm"] = llm
+
+    embedder = _model_config(
+        provider=settings.memory_mem0_embedder_provider,
+        model=settings.memory_mem0_embedder_model,
+        api_key=settings.memory_mem0_embedder_api_key,
+        base_url=settings.memory_mem0_embedder_base_url,
+    )
+    if embedder:
+        embedder_config = embedder.setdefault("config", {})
+        dims = int(getattr(settings, "memory_mem0_embedder_embedding_dims", 0) or 0)
+        if dims > 0:
+            embedder_config["embedding_dims"] = dims
+        config["embedder"] = embedder
+
+    vector_provider = _strip(settings.memory_mem0_vector_store_provider)
+    if vector_provider:
+        store_config: dict[str, Any] = {}
+        if _strip(settings.memory_mem0_vector_store_collection_name):
+            store_config["collection_name"] = _strip(settings.memory_mem0_vector_store_collection_name)
+        if _strip(settings.memory_mem0_vector_store_path):
+            store_config["path"] = _strip(settings.memory_mem0_vector_store_path)
+        if _strip(settings.memory_mem0_vector_store_host):
+            store_config["host"] = _strip(settings.memory_mem0_vector_store_host)
+        port = int(getattr(settings, "memory_mem0_vector_store_port", 0) or 0)
+        if port > 0:
+            store_config["port"] = port
+        dims = int(getattr(settings, "memory_mem0_vector_store_embedding_model_dims", 0) or 0)
+        if dims > 0:
+            store_config["embedding_model_dims"] = dims
+        config["vector_store"] = {"provider": vector_provider, "config": store_config}
+
+    return _normalize_vector_store(config)
+
+
 def _mem0_config(settings: Settings) -> dict[str, Any]:
     raw = (settings.memory_mem0_config or "").strip()
-    if not raw:
-        return {}
-    import json
+    if raw:
+        import json
 
-    loaded = json.loads(raw)
-    return loaded if isinstance(loaded, dict) else {}
+        loaded = json.loads(raw)
+        if not isinstance(loaded, dict):
+            return {}
+        return _normalize_vector_store(loaded)
+    return _split_mem0_config(settings)
 
 
 @lru_cache(maxsize=1)

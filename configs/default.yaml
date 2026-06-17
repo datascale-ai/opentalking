@@ -45,13 +45,21 @@ tts:
   sample_rate: 16000
   streaming_decode: true
 memory:
-  provider: sqlite
+  provider: mem0
   enabled: false
   default_profile_id: default
   default_library_id: default
   recall_limit: 5
   recall_min_score: 0.0
-  recall_timeout_ms: 80
+  recall_timeout_ms: 2000
+  recall_backend: hybrid
+  write_mode: hybrid
+  decision_mode: hybrid
+  decision_timeout_ms: 2000
+  smart_write_enabled: true
+  summary_enabled: true
+  summary_turn_window: 8
+  summary_max_items: 3
   sqlite_path: ./data/opentalking_memory.sqlite3
 model:
   torch_device: cpu

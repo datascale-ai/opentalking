@@ -7,6 +7,14 @@ from collections.abc import Iterable, Sequence
 
 from opentalking.providers.memory.schemas import MemoryItem
 
+_CATEGORY_PROMPT_GROUPS = (
+    ("user_preference", "Preferences"),
+    ("entity_relation", "Important people/entities"),
+    ("goal_progress", "Goals and progress"),
+    ("decision_plan", "Decisions and plans"),
+    ("feedback_correction", "Interaction feedback"),
+    ("episode_summary", "Conversation summaries"),
+)
 _TOKEN_RE = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
 _IP_RE = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _SERVER_ALIAS_RE = re.compile(r"(?<![A-Za-z0-9_])(\d{2,4})\s*(服务器)")
@@ -106,7 +114,31 @@ def rank_items_bm25(
 
 
 def memories_to_prompt(items: Iterable[MemoryItem]) -> str:
-    lines = [item.text.strip() for item in items if item.text.strip()]
+    materialized = [item for item in items if item.text.strip()]
+    if any((item.metadata or {}).get("category") for item in materialized):
+        grouped: dict[str, list[str]] = {category: [] for category, _label in _CATEGORY_PROMPT_GROUPS}
+        other: list[str] = []
+        for item in materialized:
+            line = item.text.strip()
+            category = str((item.metadata or {}).get("category") or "").strip()
+            if not category and item.type == "preference":
+                category = "user_preference"
+            if category in grouped:
+                grouped[category].append(line)
+            else:
+                other.append(line)
+        sections: list[str] = []
+        for category, label in _CATEGORY_PROMPT_GROUPS:
+            lines = grouped[category]
+            if lines:
+                sections.append(f"{label}:\n" + "\n".join(f"- {line}" for line in lines))
+        if other:
+            sections.append("Other memories:\n" + "\n".join(f"- {line}" for line in other))
+        if not sections:
+            return ""
+        return "Relevant user memories:\n\n" + "\n\n".join(sections)
+
+    lines = [item.text.strip() for item in materialized]
     if not lines:
         return ""
     body = "\n".join(f"- {line}" for line in lines)

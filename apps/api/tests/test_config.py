@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import apps.api.main as api_main
@@ -123,3 +125,127 @@ def test_agent_lightrag_chunk_fallback_can_be_enabled(monkeypatch: pytest.Monkey
     settings = Settings(_env_file=None)
 
     assert settings.agent_lightrag_chunk_fallback_enabled is True
+
+
+def _active_env_names(contents: str) -> set[str]:
+    names: set[str] = set()
+    for raw_line in contents.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, _value = line.split("=", 1)
+        names.add(name)
+    return names
+
+
+def test_env_examples_expose_only_user_facing_memory_settings() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    examples = [
+        repo_root / ".env.example",
+        repo_root / "scripts/quickstart/env.example",
+    ]
+    required_names = {
+        "OPENTALKING_MEMORY_SUMMARY_ENABLED",
+        "OPENTALKING_MEMORY_SUMMARY_TURN_WINDOW",
+        "OPENTALKING_MEMORY_SUMMARY_MAX_ITEMS",
+        "OPENTALKING_MEMORY_MEM0_LLM_PROVIDER",
+        "OPENTALKING_MEMORY_MEM0_LLM_BASE_URL",
+        "OPENTALKING_MEMORY_MEM0_LLM_API_KEY",
+        "OPENTALKING_MEMORY_MEM0_LLM_MODEL",
+        "OPENTALKING_MEMORY_MEM0_EMBEDDER_PROVIDER",
+        "OPENTALKING_MEMORY_MEM0_EMBEDDER_BASE_URL",
+        "OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY",
+        "OPENTALKING_MEMORY_MEM0_EMBEDDER_MODEL",
+    }
+    hidden_names = {
+        "OPENTALKING_MEMORY_PROVIDER",
+        "OPENTALKING_MEMORY_ENABLED",
+        "OPENTALKING_MEMORY_DEFAULT_PROFILE_ID",
+        "OPENTALKING_MEMORY_DEFAULT_LIBRARY_ID",
+        "OPENTALKING_MEMORY_SQLITE_PATH",
+        "OPENTALKING_MEMORY_RECALL_LIMIT",
+        "OPENTALKING_MEMORY_RECALL_MIN_SCORE",
+        "OPENTALKING_MEMORY_RECALL_TIMEOUT_MS",
+        "OPENTALKING_MEMORY_RECALL_BACKEND",
+        "OPENTALKING_MEMORY_WRITE_MODE",
+        "OPENTALKING_MEMORY_DECISION_MODE",
+        "OPENTALKING_MEMORY_DECISION_TIMEOUT_MS",
+        "OPENTALKING_MEMORY_SMART_WRITE_ENABLED",
+        "OPENTALKING_MEMORY_MEM0_CONFIG",
+    }
+
+    for example in examples:
+        contents = example.read_text(encoding="utf-8")
+        missing = sorted(name for name in required_names if name not in contents)
+        exposed = sorted(name for name in hidden_names if name in contents)
+        assert not missing, f"{example} is missing user-facing memory settings: {missing}"
+        assert not exposed, f"{example} exposes internal memory settings: {exposed}"
+
+
+def test_root_env_example_keeps_memory_summary_enabled_by_default() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    contents = (repo_root / ".env.example").read_text(encoding="utf-8")
+    values = {}
+    for raw_line in contents.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        values[name] = value
+
+    assert values["OPENTALKING_MEMORY_SUMMARY_ENABLED"] == "true"
+    assert values["OPENTALKING_MEMORY_SUMMARY_TURN_WINDOW"] == "8"
+    assert values["OPENTALKING_MEMORY_SUMMARY_MAX_ITEMS"] == "3"
+
+
+def test_memory_engine_defaults_are_smart_but_session_scoped(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in [
+        "OPENTALKING_MEMORY_PROVIDER",
+        "OPENTALKING_MEMORY_ENABLED",
+        "OPENTALKING_MEMORY_RECALL_BACKEND",
+        "OPENTALKING_MEMORY_WRITE_MODE",
+        "OPENTALKING_MEMORY_DECISION_MODE",
+        "OPENTALKING_MEMORY_DECISION_TIMEOUT_MS",
+        "OPENTALKING_MEMORY_RECALL_TIMEOUT_MS",
+        "OPENTALKING_MEMORY_SMART_WRITE_ENABLED",
+        "OPENTALKING_MEMORY_SUMMARY_ENABLED",
+        "OPENTALKING_MEMORY_SUMMARY_TURN_WINDOW",
+        "OPENTALKING_MEMORY_SUMMARY_MAX_ITEMS",
+    ]:
+        monkeypatch.delenv(name, raising=False)
+
+    settings = Settings(_env_file=None)
+
+    assert settings.memory_provider == "mem0"
+    assert settings.memory_enabled is False
+    assert settings.memory_recall_backend == "hybrid"
+    assert settings.memory_write_mode == "hybrid"
+    assert settings.memory_decision_mode == "hybrid"
+    assert settings.memory_decision_timeout_ms == 2000
+    assert settings.memory_recall_timeout_ms == 2000
+    assert settings.memory_smart_write_enabled is True
+    assert settings.memory_summary_enabled is True
+    assert settings.memory_summary_turn_window == 8
+    assert settings.memory_summary_max_items == 3
+
+
+def test_memory_engine_settings_read_prefixed_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENTALKING_MEMORY_RECALL_BACKEND", "mem0")
+    monkeypatch.setenv("OPENTALKING_MEMORY_WRITE_MODE", "mem0")
+    monkeypatch.setenv("OPENTALKING_MEMORY_DECISION_MODE", "hybrid")
+    monkeypatch.setenv("OPENTALKING_MEMORY_DECISION_TIMEOUT_MS", "1200")
+    monkeypatch.setenv("OPENTALKING_MEMORY_SMART_WRITE_ENABLED", "false")
+    monkeypatch.setenv("OPENTALKING_MEMORY_SUMMARY_ENABLED", "true")
+    monkeypatch.setenv("OPENTALKING_MEMORY_SUMMARY_TURN_WINDOW", "4")
+    monkeypatch.setenv("OPENTALKING_MEMORY_SUMMARY_MAX_ITEMS", "2")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.memory_recall_backend == "mem0"
+    assert settings.memory_write_mode == "mem0"
+    assert settings.memory_decision_mode == "hybrid"
+    assert settings.memory_decision_timeout_ms == 1200
+    assert settings.memory_smart_write_enabled is False
+    assert settings.memory_summary_enabled is True
+    assert settings.memory_summary_turn_window == 4
+    assert settings.memory_summary_max_items == 2
