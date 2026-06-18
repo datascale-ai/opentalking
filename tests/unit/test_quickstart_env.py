@@ -114,6 +114,28 @@ def test_quickstart_process_launch_does_not_require_setsid_on_macos(relpath: str
     assert "start_new_session=True" in helpers
 
 
+def test_start_frontend_requires_requested_port() -> None:
+    source = (REPO_ROOT / "scripts/quickstart/start_frontend.sh").read_text(encoding="utf-8")
+
+    assert 'quickstart_port_in_use "$web_port"' in source
+    assert "--strictPort" in source
+
+
+def test_stop_all_finds_vite_residue_from_web_cwd() -> None:
+    source = (REPO_ROOT / "scripts/quickstart/stop_all.sh").read_text(encoding="utf-8")
+
+    assert 'web_dir="$repo_root/apps/web"' in source
+    assert 'readlink -f "/proc/$pid/cwd"' in source
+    assert "vite .*--port $port" in source
+
+
+def test_start_omnirt_quicktalk_detaches_long_running_server() -> None:
+    source = (REPO_ROOT / "scripts/quickstart/start_omnirt_quicktalk.sh").read_text(encoding="utf-8")
+
+    assert "quickstart_detach" in source
+    assert ') >"$log_file" 2>&1 &' not in source
+
+
 def test_start_opentalking_resolves_ffmpeg_fallback() -> None:
     source = (REPO_ROOT / "scripts/quickstart/start_opentalking.sh").read_text(encoding="utf-8")
     helpers = (REPO_ROOT / "scripts/quickstart/_helpers.sh").read_text(encoding="utf-8")
@@ -121,6 +143,13 @@ def test_start_opentalking_resolves_ffmpeg_fallback() -> None:
     assert "quickstart_resolve_ffmpeg" in source
     assert 'OPENTALKING_FFMPEG_BIN="${OPENTALKING_FFMPEG_BIN:-ffmpeg}"' not in source
     assert "imageio_ffmpeg.get_ffmpeg_exe()" in helpers
+
+
+def test_start_opentalking_revalidates_existing_pid_with_http_probe() -> None:
+    source = (REPO_ROOT / "scripts/quickstart/start_opentalking.sh").read_text(encoding="utf-8")
+
+    assert 'curl --max-time 2 -fsS "http://127.0.0.1:$api_port/models"' in source
+    assert "Stale OpenTalking API pid file" in source
 
 
 def test_quickstart_source_ascend_env_tolerates_unset_ld_library_path(tmp_path: Path) -> None:

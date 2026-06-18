@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 import pytest
 
+from opentalking.core.config import get_settings
 from opentalking.core.model_config import clear_model_config_cache
 from opentalking.media.frame_avatar import resize_reference_image_to_video
 from opentalking.pipeline.speak.synthesis_runner import FlashTalkRunner
@@ -191,6 +192,21 @@ def test_fasterliveportrait_preloads_tts_openers_for_default_voice(
     runner.model_type = "fasterliveportrait"
 
     assert runner._tts_opener_preload_voice() == "zh-CN-XiaoxiaoNeural"
+
+
+def test_fasterliveportrait_tts_opener_preload_uses_edge_voice_when_tts_voice_changes(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENTALKING_TTS_VOICE", "alloy")
+    monkeypatch.setenv("OPENTALKING_TTS_EDGE_VOICE", "zh-CN-XiaoxiaoNeural")
+    get_settings.cache_clear()
+    runner = FlashTalkRunner.__new__(FlashTalkRunner)
+    runner.model_type = "fasterliveportrait"
+
+    try:
+        assert runner._tts_opener_preload_voice() == "zh-CN-XiaoxiaoNeural"
+    finally:
+        get_settings.cache_clear()
 
 
 def test_fasterliveportrait_video_config_preserves_reference_aspect_ratio(

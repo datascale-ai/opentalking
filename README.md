@@ -132,6 +132,16 @@ OpenTalking's **orchestration layer** (API / Worker / frontend) and **digital-hu
 
 ## Quickstart
 
+### Quick Experience: Compshare Image
+
+If you want to try the OpenTalking + OmniRT + QuickTalk real-time digital-human path before setting up everything manually, use the community image we published on Compshare:
+
+- Image URL: <https://www.compshare.cn/images/TdDwmKZUZebI>
+- Exposed port: `5173` (WebUI; API traffic is proxied internally)
+- Guide: [Compshare image quick experience](docs/en/quick-start/compshare-image.md)
+
+The image includes OpenTalking, OmniRT, the QuickTalk runtime environment, and model files. After deploying an instance, open port `5173` and visit the instance URL provided by the platform. If you need to restart services manually, follow the commands in the guide.
+
 Use this path when you are trying the project for the first time and do not want to download video model weights yet. The digital-human image uses the built-in static Mock frame, while LLM replies, streaming TTS, subtitle events, and WebRTC delivery still run through the full product path.
 
 ```bash

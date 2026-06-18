@@ -132,6 +132,16 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 ## 快速开始
 
+### 快速体验：优云智算镜像
+
+如果你只是想先体验 OpenTalking + OmniRT + QuickTalk 的实时数字人链路，可以直接使用我们在优云智算发布的社区镜像：
+
+- 镜像地址：<https://www.compshare.cn/images/TdDwmKZUZebI>
+- 对外端口：`5173`（WebUI，内部自动代理 API）
+- 操作文档：[优云智算镜像快速体验](docs/zh/quick-start/compshare-image.md)
+
+镜像内已预置 OpenTalking、OmniRT、QuickTalk 运行环境和模型文件。部署实例后开放 `5173` 端口，在浏览器访问平台提供的实例地址即可进入 WebUI；如需手动重启服务，请按操作文档中的命令执行。
+
 适用：第一次接触项目，不下载视频模型权重，先用 Mock 模式跑通产品链路。数字人画面使用内置静态帧，LLM 回复、流式 TTS、字幕事件和 WebRTC 传输仍是完整链路。
 
 ```bash

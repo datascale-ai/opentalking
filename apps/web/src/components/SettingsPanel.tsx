@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { AgentConfig } from "./AvatarSelectionStage";
-import type { AvatarSummary, KnowledgeBaseSummary } from "../lib/api";
+import type { AvatarSummary, KnowledgeBaseSummary, RuntimeConfigApplyInput, RuntimeConfigResponse } from "../lib/api";
 import { modelConnectionBadge, type ModelStatus } from "../lib/modelStatus";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
 import type { MemoryLibrary } from "../types";
@@ -103,6 +103,97 @@ const ASR_PROVIDER_MODELS: Record<string, string> = {
   sensevoice: "iic/SenseVoiceSmall",
 };
 
+const RUNTIME_LLM_DEFAULT = {
+  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  model: "qwen-turbo",
+};
+
+const RUNTIME_STT_PRESETS: Record<string, { label: string; baseUrl: string; model: string; needsKey: boolean }> = {
+  dashscope: {
+    label: "DashScope",
+    baseUrl: "https://dashscope.aliyuncs.com",
+    model: "paraformer-realtime-v2",
+    needsKey: true,
+  },
+  openai_compatible: {
+    label: "OpenAI-compatible",
+    baseUrl: "https://api.openai.com/v1",
+    model: "whisper-1",
+    needsKey: true,
+  },
+  xiaomi_mimo: {
+    label: "小米 MiMo",
+    baseUrl: "",
+    model: "mimo-v2.5-asr",
+    needsKey: true,
+  },
+  sensevoice: {
+    label: "SenseVoice",
+    baseUrl: "",
+    model: "iic/SenseVoiceSmall",
+    needsKey: false,
+  },
+};
+
+const RUNTIME_TTS_PRESETS: Record<TtsProviderExtended, { label: string; baseUrl: string; model: string; voice: string; needsKey: boolean }> = {
+  edge: {
+    label: "Edge",
+    baseUrl: "",
+    model: "",
+    voice: "zh-CN-XiaoxiaoNeural",
+    needsKey: false,
+  },
+  dashscope: {
+    label: "Qwen",
+    baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+    model: "qwen3-tts-flash-realtime",
+    voice: "Cherry",
+    needsKey: true,
+  },
+  cosyvoice: {
+    label: "CosyVoice",
+    baseUrl: "",
+    model: "cosyvoice-v3-flash",
+    voice: "longanyang",
+    needsKey: true,
+  },
+  sambert: {
+    label: "Sambert",
+    baseUrl: "",
+    model: "sambert-zhichu-v1",
+    voice: "",
+    needsKey: true,
+  },
+  local_cosyvoice: {
+    label: "Local CosyVoice",
+    baseUrl: "http://127.0.0.1:9880",
+    model: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+    voice: "",
+    needsKey: false,
+  },
+  indextts: {
+    label: "Local IndexTTS",
+    baseUrl: "http://127.0.0.1:9880",
+    model: "IndexTeam/IndexTTS-2",
+    voice: "",
+    needsKey: false,
+  },
+  xiaomi_mimo: {
+    label: "小米 MiMo",
+    baseUrl: "",
+    model: "mimo-v2.5-tts",
+    voice: "mimo_default",
+    needsKey: true,
+  },
+  openai_compatible: {
+    label: "OpenAI-compatible",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-4o-mini-tts",
+    voice: "alloy",
+    needsKey: true,
+  },
+};
+
 const WAV2LIP_POSTPROCESS_OPTIONS: { id: Wav2LipPostprocessMode; label: string }[] = [
   { id: "auto", label: "自动推荐" },
   { id: "basic", label: "基础" },
@@ -153,6 +244,71 @@ const FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS: {
   { id: "eyes", label: "眼睛" },
 ];
 
+type RuntimeConfigForm = {
+  llmBaseUrl: string;
+  llmModel: string;
+  llmApiKey: string;
+  sttProvider: string;
+  sttBaseUrl: string;
+  sttModel: string;
+  sttApiKey: string;
+  ttsProvider: TtsProviderExtended;
+  ttsBaseUrl: string;
+  ttsModel: string;
+  ttsVoice: string;
+  ttsApiKey: string;
+  syncDashscopeApiKey: boolean;
+};
+
+const RUNTIME_FORM_DEFAULTS: RuntimeConfigForm = {
+  llmBaseUrl: RUNTIME_LLM_DEFAULT.baseUrl,
+  llmModel: RUNTIME_LLM_DEFAULT.model,
+  llmApiKey: "",
+  sttProvider: "dashscope",
+  sttBaseUrl: RUNTIME_STT_PRESETS.dashscope.baseUrl,
+  sttModel: RUNTIME_STT_PRESETS.dashscope.model,
+  sttApiKey: "",
+  ttsProvider: "dashscope",
+  ttsBaseUrl: RUNTIME_TTS_PRESETS.dashscope.baseUrl,
+  ttsModel: RUNTIME_TTS_PRESETS.dashscope.model,
+  ttsVoice: RUNTIME_TTS_PRESETS.dashscope.voice,
+  ttsApiKey: "",
+  syncDashscopeApiKey: true,
+};
+
+function normalizeRuntimeTtsProvider(value: string | null | undefined): TtsProviderExtended {
+  const normalized = (value ?? "").trim();
+  if (normalized === "local_indextts" || normalized === "omnirt_indextts") return "indextts";
+  return Object.prototype.hasOwnProperty.call(RUNTIME_TTS_PRESETS, normalized)
+    ? normalized as TtsProviderExtended
+    : "dashscope";
+}
+
+function runtimeFormFromConfig(runtimeConfig: RuntimeConfigResponse | null): RuntimeConfigForm {
+  if (!runtimeConfig) return { ...RUNTIME_FORM_DEFAULTS };
+  const sttProvider = Object.prototype.hasOwnProperty.call(RUNTIME_STT_PRESETS, runtimeConfig.stt.provider)
+    ? runtimeConfig.stt.provider
+    : "dashscope";
+  const sttPreset = RUNTIME_STT_PRESETS[sttProvider] ?? RUNTIME_STT_PRESETS.dashscope;
+  const ttsProvider = normalizeRuntimeTtsProvider(runtimeConfig.tts.provider);
+  const ttsPreset = RUNTIME_TTS_PRESETS[ttsProvider];
+  return {
+    llmBaseUrl: runtimeConfig.llm.base_url || RUNTIME_LLM_DEFAULT.baseUrl,
+    llmModel: runtimeConfig.llm.model || RUNTIME_LLM_DEFAULT.model,
+    llmApiKey: "",
+    sttProvider,
+    sttBaseUrl: runtimeConfig.stt.base_url || sttPreset.baseUrl,
+    sttModel: runtimeConfig.stt.model || sttPreset.model,
+    sttApiKey: "",
+    ttsProvider,
+    ttsBaseUrl: runtimeConfig.tts.base_url || ttsPreset.baseUrl,
+    ttsModel: runtimeConfig.tts.model || ttsPreset.model,
+    ttsVoice: runtimeConfig.tts.voice || ttsPreset.voice,
+    ttsApiKey: "",
+    syncDashscopeApiKey: true,
+  };
+}
+
 interface SettingsPanelProps {
   /** 展开时显示表单；收起时仅保留右侧竖条入口 */
   expanded: boolean;
@@ -163,6 +319,11 @@ interface SettingsPanelProps {
   avatarId: string;
   model: string;
   modelConnected: boolean;
+  runtimeConfig: RuntimeConfigResponse | null;
+  runtimeConfigLoading?: boolean;
+  runtimeConfigApplying?: boolean;
+  onRuntimeConfigRefresh: () => void;
+  onRuntimeConfigApply: (input: RuntimeConfigApplyInput) => Promise<void>;
   wav2lipPostprocessMode: Wav2LipPostprocessMode;
   wav2lipPostprocessModeLocked: boolean;
   fasterliveportraitConfig: FasterLivePortraitConfig;
@@ -393,6 +554,11 @@ export function SettingsPanel({
   avatarId,
   model,
   modelConnected,
+  runtimeConfig,
+  runtimeConfigLoading = false,
+  runtimeConfigApplying = false,
+  onRuntimeConfigRefresh,
+  onRuntimeConfigApply,
   wav2lipPostprocessMode,
   wav2lipPostprocessModeLocked,
   fasterliveportraitConfig,
@@ -441,6 +607,7 @@ export function SettingsPanel({
   onManageMemoryLibraries,
 }: SettingsPanelProps) {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    runtime: true,
     avatars: true,
     knowledge: true,
     memory: true,
@@ -450,12 +617,17 @@ export function SettingsPanel({
     role: true,
   });
   const [voiceView, setVoiceView] = useState<"providers" | "models" | "voices">("providers");
+  const [runtimeForm, setRuntimeForm] = useState<RuntimeConfigForm>(() => runtimeFormFromConfig(runtimeConfig));
 
   useEffect(() => {
     if (!voiceApplyNotice) return;
     setOpenSections((prev) => ({ ...prev, voice: true }));
     setVoiceView("voices");
   }, [voiceApplyNotice]);
+
+  useEffect(() => {
+    setRuntimeForm(runtimeFormFromConfig(runtimeConfig));
+  }, [runtimeConfig]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -469,6 +641,55 @@ export function SettingsPanel({
 
   const toggleSection = (id: string) => {
     setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+  const updateRuntimeForm = <K extends keyof RuntimeConfigForm>(key: K, value: RuntimeConfigForm[K]) => {
+    setRuntimeForm((prev) => ({ ...prev, [key]: value }));
+  };
+  const selectRuntimeSttProvider = (provider: string) => {
+    const preset = RUNTIME_STT_PRESETS[provider] ?? RUNTIME_STT_PRESETS.dashscope;
+    setRuntimeForm((prev) => ({
+      ...prev,
+      sttProvider: provider,
+      sttBaseUrl: preset.baseUrl,
+      sttModel: preset.model,
+    }));
+  };
+  const selectRuntimeTtsProvider = (provider: TtsProviderExtended) => {
+    const preset = RUNTIME_TTS_PRESETS[provider];
+    setRuntimeForm((prev) => ({
+      ...prev,
+      ttsProvider: provider,
+      ttsBaseUrl: preset.baseUrl,
+      ttsModel: preset.model,
+      ttsVoice: preset.voice,
+    }));
+  };
+  const handleRuntimeApply = async () => {
+    const payload: RuntimeConfigApplyInput = {
+      llm_base_url: runtimeForm.llmBaseUrl.trim(),
+      llm_model: runtimeForm.llmModel.trim(),
+      stt_provider: runtimeForm.sttProvider,
+      stt_base_url: runtimeForm.sttBaseUrl.trim(),
+      stt_model: runtimeForm.sttModel.trim(),
+      tts_provider: runtimeForm.ttsProvider,
+      tts_base_url: runtimeForm.ttsBaseUrl.trim(),
+      tts_model: runtimeForm.ttsModel.trim(),
+      tts_voice: runtimeForm.ttsVoice.trim(),
+      sync_dashscope_api_key: runtimeForm.syncDashscopeApiKey,
+    };
+    const llmApiKey = runtimeForm.llmApiKey.trim();
+    const sttApiKey = runtimeForm.sttApiKey.trim();
+    const ttsApiKey = runtimeForm.ttsApiKey.trim();
+    if (llmApiKey) payload.llm_api_key = llmApiKey;
+    if (sttApiKey) payload.stt_api_key = sttApiKey;
+    if (ttsApiKey) payload.tts_api_key = ttsApiKey;
+    await onRuntimeConfigApply(payload);
+    setRuntimeForm((prev) => ({
+      ...prev,
+      llmApiKey: "",
+      sttApiKey: "",
+      ttsApiKey: "",
+    }));
   };
   const selectedKnowledgeBaseSet = new Set(agentConfig.knowledgeBaseIds);
   const updateKnowledgeBaseIds = (nextIds: string[]) => {
@@ -523,6 +744,20 @@ export function SettingsPanel({
     label: option.label,
     subtitle: option.id,
   }));
+  const runtimeSttPreset = RUNTIME_STT_PRESETS[runtimeForm.sttProvider] ?? RUNTIME_STT_PRESETS.dashscope;
+  const runtimeTtsPreset = RUNTIME_TTS_PRESETS[runtimeForm.ttsProvider];
+  const runtimeLlmKeySet = Boolean(runtimeConfig?.llm.api_key_set || runtimeForm.llmApiKey.trim());
+  const runtimeSttSavedKeySet = runtimeConfig?.stt.provider === runtimeForm.sttProvider && runtimeConfig.stt.api_key_set;
+  const runtimeTtsSavedKeySet = normalizeRuntimeTtsProvider(runtimeConfig?.tts.provider) === runtimeForm.ttsProvider && runtimeConfig?.tts.api_key_set;
+  const runtimeSttKeySet = Boolean(runtimeSttSavedKeySet || runtimeForm.sttApiKey.trim() || !runtimeSttPreset.needsKey);
+  const runtimeTtsKeySet = Boolean(runtimeTtsSavedKeySet || runtimeForm.ttsApiKey.trim() || !runtimeTtsPreset.needsKey);
+  const runtimeConfigNeedsSetup = !runtimeLlmKeySet || !runtimeSttKeySet || !runtimeTtsKeySet;
+  const runtimeBadgeLabel = runtimeConfigLoading ? "读取中" : runtimeConfigNeedsSetup ? "待配置" : "已配置";
+  const runtimeBadgeClass = runtimeConfigNeedsSetup
+    ? "border-amber-200 bg-amber-50 text-amber-700"
+    : "border-emerald-200 bg-emerald-50 text-emerald-700";
+  const runtimeSttProviderOptions = Object.entries(RUNTIME_STT_PRESETS);
+  const runtimeTtsProviderOptions = Object.entries(RUNTIME_TTS_PRESETS) as [TtsProviderExtended, typeof RUNTIME_TTS_PRESETS[TtsProviderExtended]][];
 
   const providerHasSingleModel = (provider: TtsProviderExtended) => {
     if (provider === "edge" || provider === "openai_compatible") return true;
@@ -580,6 +815,202 @@ export function SettingsPanel({
       </div>
 
       <div className="space-y-4 p-4 pt-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+        <SettingsSection
+          id="runtime"
+          title="运行配置"
+          open={openSections.runtime}
+          onToggle={toggleSection}
+          action={
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={onRuntimeConfigRefresh}
+                disabled={runtimeConfigLoading || runtimeConfigApplying}
+                className="min-h-8 px-1 text-xs font-semibold text-slate-600 transition hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {runtimeConfigLoading ? "读取中" : "刷新"}
+              </button>
+              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${runtimeBadgeClass}`}>
+                {runtimeBadgeLabel}
+              </span>
+            </div>
+          }
+        >
+          <div className="space-y-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-500">LLM</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                  runtimeLlmKeySet ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}>
+                  {runtimeLlmKeySet ? "Key 已设置" : "Key 未设置"}
+                </span>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Base URL</span>
+                <input
+                  value={runtimeForm.llmBaseUrl}
+                  onChange={(event) => updateRuntimeForm("llmBaseUrl", event.target.value)}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                />
+              </label>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Model</span>
+                  <input
+                    value={runtimeForm.llmModel}
+                    onChange={(event) => updateRuntimeForm("llmModel", event.target.value)}
+                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">API Key</span>
+                  <input
+                    type="password"
+                    value={runtimeForm.llmApiKey}
+                    onChange={(event) => updateRuntimeForm("llmApiKey", event.target.value)}
+                    autoComplete="new-password"
+                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-500">STT</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                  runtimeSttKeySet ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}>
+                  {runtimeSttKeySet ? "Key 已设置" : "Key 未设置"}
+                </span>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Provider</span>
+                <select
+                  value={runtimeForm.sttProvider}
+                  onChange={(event) => selectRuntimeSttProvider(event.target.value)}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-cyan-300"
+                >
+                  {runtimeSttProviderOptions.map(([provider, preset]) => (
+                    <option key={provider} value={provider}>{preset.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Base URL</span>
+                  <input
+                    value={runtimeForm.sttBaseUrl}
+                    onChange={(event) => updateRuntimeForm("sttBaseUrl", event.target.value)}
+                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Model</span>
+                    <input
+                      value={runtimeForm.sttModel}
+                      onChange={(event) => updateRuntimeForm("sttModel", event.target.value)}
+                      className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">API Key</span>
+                    <input
+                      type="password"
+                      value={runtimeForm.sttApiKey}
+                      onChange={(event) => updateRuntimeForm("sttApiKey", event.target.value)}
+                      autoComplete="new-password"
+                      className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-500">TTS</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                  runtimeTtsKeySet ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"
+                }`}>
+                  {runtimeTtsKeySet ? "Key 已设置" : "Key 未设置"}
+                </span>
+              </div>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Provider</span>
+                <select
+                  value={runtimeForm.ttsProvider}
+                  onChange={(event) => selectRuntimeTtsProvider(event.target.value as TtsProviderExtended)}
+                  className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-cyan-300"
+                >
+                  {runtimeTtsProviderOptions.map(([provider, preset]) => (
+                    <option key={provider} value={provider}>{preset.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">Base URL</span>
+                  <input
+                    value={runtimeForm.ttsBaseUrl}
+                    onChange={(event) => updateRuntimeForm("ttsBaseUrl", event.target.value)}
+                    className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                  />
+                </label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Model</span>
+                    <input
+                      value={runtimeForm.ttsModel}
+                      onChange={(event) => updateRuntimeForm("ttsModel", event.target.value)}
+                      className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Voice</span>
+                    <input
+                      value={runtimeForm.ttsVoice}
+                      onChange={(event) => updateRuntimeForm("ttsVoice", event.target.value)}
+                      className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">API Key</span>
+                    <input
+                      type="password"
+                      value={runtimeForm.ttsApiKey}
+                      onChange={(event) => updateRuntimeForm("ttsApiKey", event.target.value)}
+                      autoComplete="new-password"
+                      className="h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-800 outline-none transition focus:border-cyan-300"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <span className="min-w-0 text-xs font-semibold text-slate-600">同步 DashScope Key</span>
+              <input
+                type="checkbox"
+                checked={runtimeForm.syncDashscopeApiKey}
+                onChange={(event) => updateRuntimeForm("syncDashscopeApiKey", event.target.checked)}
+                className="h-4 w-4 shrink-0 accent-cyan-600"
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={() => void handleRuntimeApply()}
+              disabled={runtimeConfigApplying || runtimeConfigLoading}
+              className="w-full rounded-lg bg-slate-950 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {runtimeConfigApplying ? "应用中..." : "应用配置"}
+            </button>
+          </div>
+        </SettingsSection>
+
         <SettingsSection
           id="avatars"
           title="数字人形象"

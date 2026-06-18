@@ -9,7 +9,6 @@ source "$script_dir/_helpers.sh"
 
 env_file="${OPENTALKING_QUICKSTART_ENV:-$script_dir/env}"
 quickstart_source_env "$env_file"
-quickstart_configure_utf8
 
 usage() {
   cat <<'USAGE'
@@ -83,6 +82,13 @@ if [[ -f "$pid_file" ]]; then
   rm -f "$pid_file"
 fi
 
+if quickstart_port_in_use "$web_port"; then
+  echo "OpenTalking frontend port $web_port is already in use." >&2
+  echo "Stop the existing service first, or choose another --web-port." >&2
+  quickstart_describe_port "$web_port" >&2 || true
+  exit 1
+fi
+
 if [[ ! -d "$web_dir/node_modules" ]]; then
   echo "Installing frontend dependencies with npm ci ..."
   (cd "$web_dir" && npm ci)
@@ -97,7 +103,7 @@ echo "  api:  http://127.0.0.1:$backend_port"
 (
   cd "$web_dir"
   export VITE_BACKEND_PORT="$backend_port"
-  quickstart_detach "$log_file" ./node_modules/.bin/vite --host "$web_host" --port "$web_port" >"$pid_file"
+  quickstart_detach "$log_file" ./node_modules/.bin/vite --host "$web_host" --port "$web_port" --strictPort >"$pid_file"
 )
 
 pid="$(cat "$pid_file" 2>/dev/null || true)"

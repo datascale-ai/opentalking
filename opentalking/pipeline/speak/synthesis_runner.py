@@ -1446,7 +1446,8 @@ class FlashTalkRunner:
         return self.model_type == "fasterliveportrait"
 
     def _tts_opener_preload_voice(self) -> str | None:
-        return get_settings().tts_voice or None
+        settings = get_settings()
+        return (settings.tts_edge_voice or "").strip() or (settings.tts_voice or "").strip() or None
 
     async def _select_tts_opener(
         self,

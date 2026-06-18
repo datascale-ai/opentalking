@@ -58,6 +58,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 run_dir="$DIGITAL_HUMAN_HOME/run"
+web_dir="$repo_root/apps/web"
 
 stop_pid_file() {
   local name="$1"
@@ -144,12 +145,15 @@ stop_unified_all() {
 stop_vite_port() {
   local port="$1"
   local pids
-  pids="$(pgrep -f "$repo_root/apps/web/node_modules/.bin/vite .*--port $port" || true)"
+  pids="$(pgrep -f "vite .*--port $port" || true)"
   if [[ -z "$pids" ]]; then
     return
   fi
   for pid in $pids; do
     if [[ "$pid" == "$$" ]]; then
+      continue
+    fi
+    if [[ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)" != "$web_dir" ]]; then
       continue
     fi
     echo "Stopping OpenTalking frontend Vite residue: pid=$pid port=$port"
@@ -159,12 +163,15 @@ stop_vite_port() {
 
 stop_vite_all() {
   local pids
-  pids="$(pgrep -f "$repo_root/apps/web/node_modules/.bin/vite .*--port" || true)"
+  pids="$(pgrep -f "vite .*--port" || true)"
   if [[ -z "$pids" ]]; then
     return
   fi
   for pid in $pids; do
     if [[ "$pid" == "$$" ]]; then
+      continue
+    fi
+    if [[ "$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)" != "$web_dir" ]]; then
       continue
     fi
     echo "Stopping OpenTalking frontend Vite residue: pid=$pid"

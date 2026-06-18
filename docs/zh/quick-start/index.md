@@ -7,6 +7,16 @@
 - QuickTalk 模式：使用本地 CUDA GPU 和 QuickTalk 权重，验证真实数字人渲染链路。
 - WebUI 验证：在页面中选择 Avatar、模型、音色，发起一次实时对话。
 
+## 快速体验：优云智算镜像
+
+如果你希望跳过本地依赖安装和模型下载，可以直接部署我们发布的优云智算社区镜像：
+
+- 镜像地址：<https://www.compshare.cn/images/TdDwmKZUZebI>
+- 对外端口：`5173`
+- 操作文档：[优云智算镜像快速体验](compshare-image.md)
+
+镜像已预置 OpenTalking、OmniRT、QuickTalk 运行环境和模型文件，适合先体验真实数字人链路；需要从源码安装或做二次开发时，再继续阅读本页后续步骤。
+
 ## Mock 模式
 
 Mock 模式是第一次使用 OpenTalking 的推荐路径。它不需要 GPU、模型权重或外部推理服务，

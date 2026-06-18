@@ -70,6 +70,7 @@ plugins:
             Home: 首页
             Quick Start: 快速开始
             Platform Notes: 平台说明
+            Compshare Image Quick Experience: 优云智算镜像快速体验
             Docker Deployment: Docker 部署
             Windows Deployment: Windows 部署
             Usage: 使用指南
@@ -206,6 +207,7 @@ nav:
       - Quick Start:
           - Quick Start: quick-start/index.md
           - Platform Notes: quick-start/platform-notes.md
+          - Compshare Image Quick Experience: quick-start/compshare-image.md
           - Docker Deployment: quick-start/docker-deployment.md
           - Windows Deployment: quick-start/windows-deployment.md
       - Usage:
@@ -286,6 +288,7 @@ nav:
   - Quick Start:
       - Quick Start: quick-start/index.md
       - Platform Notes: quick-start/platform-notes.md
+      - Compshare Image Quick Experience: quick-start/compshare-image.md
       - Docker Deployment: quick-start/docker-deployment.md
       - Windows Deployment: quick-start/windows-deployment.md
   - Usage:

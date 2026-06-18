@@ -134,34 +134,79 @@ echo "  uv index:      $(quickstart_describe_uv_default_index)"
 echo "  port:          $port"
 echo "  log:           $log_file"
 
-(
-  cd "$omnirt_dir"
-  source .venv/bin/activate
+uv_bin=""
+if [[ "$install_deps" == "1" ]]; then
+  uv_bin="$(quickstart_require_uv "OmniRT QuickTalk dependency installation")"
+fi
 
-  if [[ "$install_deps" == "1" ]]; then
-    uv_bin="$(quickstart_require_uv "OmniRT QuickTalk dependency installation")"
-    "$uv_bin" sync --extra server --extra quicktalk-cuda --python 3.11
-  fi
+pid="$(
+  quickstart_detach "$log_file" bash -c '
+set -euo pipefail
 
-  export OMNIRT_MODEL_ROOT="$OMNIRT_MODEL_ROOT"
-  export OMNIRT_QUICKTALK_RUNTIME=1
-  export OMNIRT_QUICKTALK_MODEL_ROOT="$quicktalk_root"
-  export OMNIRT_QUICKTALK_CHECKPOINT="$checkpoint"
-  export OMNIRT_QUICKTALK_DEVICE="$device"
-  export OMNIRT_QUICKTALK_HUBERT_DEVICE="$hubert_device"
-  export OMNIRT_QUICKTALK_MAX_LONG_EDGE="${OMNIRT_QUICKTALK_MAX_LONG_EDGE:-900}"
-  export OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS="${OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS:-1}"
-  export OMNIRT_QUICKTALK_SCALE_H="${OMNIRT_QUICKTALK_SCALE_H:-1.6}"
-  export OMNIRT_QUICKTALK_SCALE_W="${OMNIRT_QUICKTALK_SCALE_W:-3.6}"
-  export OMNIRT_QUICKTALK_RESOLUTION="${OMNIRT_QUICKTALK_RESOLUTION:-256}"
-  export OMNIRT_QUICKTALK_NECK_FADE_START="${OMNIRT_QUICKTALK_NECK_FADE_START:-0.72}"
-  export OMNIRT_QUICKTALK_NECK_FADE_END="${OMNIRT_QUICKTALK_NECK_FADE_END:-0.88}"
-  export OMNIRT_ALLOWED_FRAME_ROOTS="${OMNIRT_ALLOWED_FRAME_ROOTS:-$DIGITAL_HUMAN_HOME/opentalking/examples/avatars}"
+omnirt_dir="$1"
+install_deps="$2"
+uv_bin="$3"
+omnirt_model_root="$4"
+quicktalk_root="$5"
+checkpoint="$6"
+device="$7"
+hubert_device="$8"
+max_long_edge="$9"
+max_template_seconds="${10}"
+scale_h="${11}"
+scale_w="${12}"
+resolution="${13}"
+neck_fade_start="${14}"
+neck_fade_end="${15}"
+allowed_frame_roots="${16}"
+host="${17}"
+port="${18}"
+backend="${19}"
 
-  exec omnirt serve-avatar-ws --host "$host" --port "$port" --backend "$backend"
-) >"$log_file" 2>&1 &
+cd "$omnirt_dir"
+source .venv/bin/activate
 
-pid="$!"
+if [[ "$install_deps" == "1" ]]; then
+  "$uv_bin" sync --extra server --extra quicktalk-cuda --python 3.11
+fi
+
+export OMNIRT_MODEL_ROOT="$omnirt_model_root"
+export OMNIRT_QUICKTALK_RUNTIME=1
+export OMNIRT_QUICKTALK_MODEL_ROOT="$quicktalk_root"
+export OMNIRT_QUICKTALK_CHECKPOINT="$checkpoint"
+export OMNIRT_QUICKTALK_DEVICE="$device"
+export OMNIRT_QUICKTALK_HUBERT_DEVICE="$hubert_device"
+export OMNIRT_QUICKTALK_MAX_LONG_EDGE="$max_long_edge"
+export OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS="$max_template_seconds"
+export OMNIRT_QUICKTALK_SCALE_H="$scale_h"
+export OMNIRT_QUICKTALK_SCALE_W="$scale_w"
+export OMNIRT_QUICKTALK_RESOLUTION="$resolution"
+export OMNIRT_QUICKTALK_NECK_FADE_START="$neck_fade_start"
+export OMNIRT_QUICKTALK_NECK_FADE_END="$neck_fade_end"
+export OMNIRT_ALLOWED_FRAME_ROOTS="$allowed_frame_roots"
+
+exec omnirt serve-avatar-ws --host "$host" --port "$port" --backend "$backend"
+' bash \
+    "$omnirt_dir" \
+    "$install_deps" \
+    "$uv_bin" \
+    "$OMNIRT_MODEL_ROOT" \
+    "$quicktalk_root" \
+    "$checkpoint" \
+    "$device" \
+    "$hubert_device" \
+    "${OMNIRT_QUICKTALK_MAX_LONG_EDGE:-900}" \
+    "${OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS:-1}" \
+    "${OMNIRT_QUICKTALK_SCALE_H:-1.6}" \
+    "${OMNIRT_QUICKTALK_SCALE_W:-3.6}" \
+    "${OMNIRT_QUICKTALK_RESOLUTION:-256}" \
+    "${OMNIRT_QUICKTALK_NECK_FADE_START:-0.72}" \
+    "${OMNIRT_QUICKTALK_NECK_FADE_END:-0.88}" \
+    "${OMNIRT_ALLOWED_FRAME_ROOTS:-$DIGITAL_HUMAN_HOME/opentalking/examples/avatars}" \
+    "$host" \
+    "$port" \
+    "$backend"
+)"
 echo "$pid" > "$pid_file"
 
 for _ in {1..180}; do

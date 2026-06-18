@@ -6,6 +6,16 @@ This page helps you quickly run OpenTalking. Start with **Mock mode** to validat
 - QuickTalk mode: uses a local CUDA GPU and QuickTalk weights to validate the real digital-human rendering path.
 - WebUI validation: select avatar, model, and voice in the page, then start a real-time conversation.
 
+## Quick Experience: Compshare Image
+
+If you want to skip local dependency installation and model downloads, deploy our published Compshare community image:
+
+- Image URL: <https://www.compshare.cn/images/TdDwmKZUZebI>
+- Exposed port: `5173`
+- Guide: [Compshare image quick experience](compshare-image.md)
+
+The image already includes OpenTalking, OmniRT, the QuickTalk runtime environment, and model files. Use it to try the real digital-human path first; continue with the source-based steps below when you need local installation or development.
+
 ## Mock Mode
 
 Mock mode is the recommended first path for OpenTalking. It does not require GPU, model weights, or an external inference service, but still validates the API, LLM, TTS, subtitle events, WebRTC, and browser playback path.

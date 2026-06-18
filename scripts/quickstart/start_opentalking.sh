@@ -9,7 +9,6 @@ source "$script_dir/_helpers.sh"
 
 env_file="${OPENTALKING_QUICKSTART_ENV:-$script_dir/env}"
 quickstart_source_env "$env_file"
-quickstart_configure_utf8
 
 usage() {
   cat <<'USAGE'
@@ -83,9 +82,12 @@ mkdir -p "$run_dir" "$log_dir"
 if [[ -f "$pid_file" ]]; then
   old_pid="$(cat "$pid_file" 2>/dev/null || true)"
   if [[ -n "$old_pid" ]] && kill -0 "$old_pid" >/dev/null 2>&1; then
-    echo "OpenTalking API is already running: pid=$old_pid port=$api_port"
-    echo "Log: $log_file"
-    exit 0
+    if curl --max-time 2 -fsS "http://127.0.0.1:$api_port/models" >/dev/null 2>&1; then
+      echo "OpenTalking API is already running: pid=$old_pid port=$api_port"
+      echo "Log: $log_file"
+      exit 0
+    fi
+    echo "Stale OpenTalking API pid file: pid=$old_pid port=$api_port" >&2
   fi
   rm -f "$pid_file"
 fi

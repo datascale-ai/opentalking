@@ -21,6 +21,7 @@ import {
 } from "./components/VideoCreationWorkspace";
 import {
   ApiError,
+  applyRuntimeConfig,
   apiDelete,
   apiGet,
   apiPost,
@@ -29,6 +30,7 @@ import {
   apiUploadFile,
   buildApiUrl,
   getMemoryLibraries,
+  loadRuntimeConfig,
   uploadExportVideo,
   type AvatarKnowledgeBasesResponse,
   type AvatarSummary,
@@ -38,6 +40,8 @@ import {
   type KnowledgeBasesResponse,
   type PersonaSummary,
   type PersonasResponse,
+  type RuntimeConfigApplyInput,
+  type RuntimeConfigResponse,
   type SessionKnowledgeBasesRequest,
   type SessionKnowledgeBasesResponse,
   type VoiceCatalogItem,
@@ -889,6 +893,9 @@ export default function App() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentSubtitle, setCurrentSubtitle] = useState("");
   const [, setRuntimeStatus] = useState<HealthResponse | null>(null);
+  const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfigResponse | null>(null);
+  const [runtimeConfigLoading, setRuntimeConfigLoading] = useState(false);
+  const [runtimeConfigApplying, setRuntimeConfigApplying] = useState(false);
 
   const clearSubtitleFallbackTimer = useCallback(() => {
     if (subtitleFallbackTimerRef.current !== null) {
@@ -1045,6 +1052,62 @@ export default function App() {
       setToasts((prev) => prev.filter((toast) => toast.id !== id));
     }, tone === "error" ? 5200 : 3600);
   }, []);
+
+  const syncRuntimeConfigSelection = useCallback((next: RuntimeConfigResponse) => {
+    const nextAsrProvider = normalizeAsrProvider(next.stt.provider, "dashscope");
+    setAsrProvider(nextAsrProvider);
+    setAsrModel(next.stt.model || sttModelForProvider(nextAsrProvider));
+
+    const nextTtsProvider = normalizeTtsProvider(next.tts.provider, "edge");
+    setTtsProvider(nextTtsProvider);
+    if (next.tts.model) {
+      setQwenModel(next.tts.model);
+    }
+    if (next.tts.voice) {
+      if (nextTtsProvider === "edge") {
+        setEdgeVoice(next.tts.voice);
+      } else {
+        setQwenVoice(next.tts.voice);
+      }
+    }
+  }, []);
+
+  const refreshRuntimeConfig = useCallback(async () => {
+    setRuntimeConfigLoading(true);
+    try {
+      const next = await loadRuntimeConfig();
+      setRuntimeConfig(next);
+      syncRuntimeConfigSelection(next);
+      return next;
+    } catch (error) {
+      console.warn("load runtime config failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `运行配置读取失败：${detail}` : "运行配置读取失败，请查看后端日志。", "error");
+      return null;
+    } finally {
+      setRuntimeConfigLoading(false);
+    }
+  }, [notify, syncRuntimeConfigSelection]);
+
+  const handleApplyRuntimeConfig = useCallback(async (input: RuntimeConfigApplyInput) => {
+    setRuntimeConfigApplying(true);
+    try {
+      const next = await applyRuntimeConfig(input);
+      setRuntimeConfig(next);
+      syncRuntimeConfigSelection(next);
+      void apiGet<HealthResponse>("/health")
+        .then(setRuntimeStatus)
+        .catch((error) => console.warn("refresh health after runtime config failed", error));
+      notify(next.requires_new_session ? "运行配置已保存，下次会话生效。" : "运行配置已应用。", "success");
+    } catch (error) {
+      console.warn("apply runtime config failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      notify(detail ? `运行配置应用失败：${detail}` : "运行配置应用失败，请查看后端日志。", "error");
+      throw error;
+    } finally {
+      setRuntimeConfigApplying(false);
+    }
+  }, [notify, syncRuntimeConfigSelection]);
 
   const syncSessionKnowledgeBases = useCallback((knowledgeBaseIds: string[]) => {
     const sid = sessionIdRef.current;
@@ -1693,20 +1756,29 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const [av, mo, health] = await Promise.all([
+        const [av, mo, health, , initialRuntimeConfig] = await Promise.all([
           apiGet<AvatarSummary[]>("/avatars"),
           apiGet<{ models: string[]; statuses?: ModelStatus[]; default_model?: string | null }>("/models"),
           apiGet<HealthResponse>("/health"),
           loadVoices(),
+          loadRuntimeConfig().catch((error) => {
+            console.warn("load runtime config during init failed", error);
+            return null;
+          }),
         ]);
         setRuntimeStatus(health);
         setAvatars(av);
         setModels(mo.models);
-        setAsrProvider((prev) => {
-          const next = normalizeAsrProvider(prev || health.stt_provider, "dashscope");
-          setAsrModel(sttModelForProvider(next));
-          return next;
-        });
+        if (initialRuntimeConfig) {
+          setRuntimeConfig(initialRuntimeConfig);
+          syncRuntimeConfigSelection(initialRuntimeConfig);
+        } else {
+          setAsrProvider((prev) => {
+            const next = normalizeAsrProvider(prev || health.stt_provider, "dashscope");
+            setAsrModel(sttModelForProvider(next));
+            return next;
+          });
+        }
         const statuses = mo.statuses ?? mo.models.map((id) => ({ id, connected: true }));
         setModelStatuses(statuses);
         const storedAvatarSelection = readStoredAvatarSelection();
@@ -1725,7 +1797,7 @@ export default function App() {
         setConnection("error");
       }
     })();
-  }, [loadVoices]);
+  }, [loadVoices, syncRuntimeConfigSelection]);
 
   // ---------- SSE ----------
   useEffect(() => {
@@ -2671,6 +2743,11 @@ export default function App() {
             avatarId={avatarId}
             model={model}
             modelConnected={selectedModelConnected}
+            runtimeConfig={runtimeConfig}
+            runtimeConfigLoading={runtimeConfigLoading}
+            runtimeConfigApplying={runtimeConfigApplying}
+            onRuntimeConfigRefresh={() => void refreshRuntimeConfig()}
+            onRuntimeConfigApply={handleApplyRuntimeConfig}
             wav2lipPostprocessMode={wav2lipPostprocessMode}
             wav2lipPostprocessModeLocked={wav2lipPostprocessModeLocked}
             fasterliveportraitConfig={fasterliveportraitConfig}
