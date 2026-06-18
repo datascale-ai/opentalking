@@ -87,6 +87,7 @@ plugins:
             Course and News Presenter: 课程与新闻口播
             Emotional Companion: 情绪安抚与实时陪伴
             Private Digital Human Assistant: 私有数字人助手
+            Huangshan Scenic Area Digital Human: 黄山景区数字人
             Custom Avatar: 自定义 Avatar
             Voice and TTS: 音色与 TTS
             Command Line Tools: 命令行工具
@@ -228,6 +229,7 @@ nav:
           - Product Demo and Live Sales: examples/product-demo-live-sales.md
           - Course and News Presenter: examples/course-news-presenter.md
           - Private Digital Human Assistant: examples/private-assistant.md
+          - Huangshan Scenic Area Digital Human: examples/huangshan-digital-human-guide.md
       - Model Support:
           - Model Support Overview: model-support/index.md
           - Model and Backend Selection: model-support/selection.md
@@ -309,6 +311,7 @@ nav:
       - Product Demo and Live Sales: examples/product-demo-live-sales.md
       - Course and News Presenter: examples/course-news-presenter.md
       - Private Digital Human Assistant: examples/private-assistant.md
+      - Huangshan Scenic Area Digital Human: examples/huangshan-digital-human-guide.md
   - Model Support:
       - Model Support Overview: model-support/index.md
       - Model and Backend Selection: model-support/selection.md
