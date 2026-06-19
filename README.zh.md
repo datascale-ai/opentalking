@@ -132,7 +132,14 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 ## 快速开始
 
-### 快速体验：优云智算镜像
+先按目标选择一条快速开始路径：
+
+| 路线 | 适合场景 | 需要准备 | 验证内容 |
+| --- | --- | --- | --- |
+| 优云镜像 | 想先体验 OpenTalking，不想配置依赖或下载模型权重。 | 使用已发布镜像创建优云实例，并开放 `5173` 端口。 | WebUI、LLM 回复、流式 TTS、字幕事件、WebRTC 传输和预置镜像工作流。 |
+| 自己部署 | 想在自己的机器或服务器运行仓库、调整配置，或继续接本地/远端真实模型。 | Python、Node.js、FFmpeg、`.env` provider 配置；真实模型还需要 GPU、运行时和模型权重。 | 先跑通 Mock 首次运行链路，再切到本地 QuickTalk 或远端 OmniRT。 |
+
+### 1. 优云
 
 如果你只是想先体验 OpenTalking + OmniRT + QuickTalk 的实时数字人链路，可以直接使用我们在优云智算发布的社区镜像：
 
@@ -142,7 +149,9 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 镜像内已预置 OpenTalking、OmniRT、QuickTalk 运行环境和模型文件。部署实例后开放 `5173` 端口，在浏览器访问平台提供的实例地址即可进入 WebUI；如需手动重启服务，请按操作文档中的命令执行。
 
-适用：第一次接触项目，不下载视频模型权重，先用 Mock 模式跑通产品链路。数字人画面使用内置静态帧，LLM 回复、流式 TTS、字幕事件和 WebRTC 传输仍是完整链路。
+### 2. 自己部署
+
+适用：想从源码运行 OpenTalking。第一次部署时可以先用 Mock 模式，不下载视频模型权重；Mock 模式使用内置静态帧，LLM 回复、流式 TTS、字幕事件和 WebRTC 传输仍是完整链路。
 
 ```bash
 git clone https://github.com/datascale-ai/opentalking.git
@@ -171,7 +180,7 @@ bash scripts/start_unified.sh --mock --api-port 8210 --web-port 5280
 bash scripts/quickstart/stop_all.sh
 ```
 
-### 真实模型启动入口
+#### 真实模型启动入口
 
 完成 Mock 验证后，再按机器条件选择真实模型路线。权重下载、目录结构、国内镜像、校验、故障排查都放在文档站中维护，README 只保留启动入口：
 

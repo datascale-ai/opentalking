@@ -132,7 +132,14 @@ OpenTalking's **orchestration layer** (API / Worker / frontend) and **digital-hu
 
 ## Quickstart
 
-### Quick Experience: Compshare Image
+Choose one of the two quickstart paths first:
+
+| Path | Use when | What you need | What it validates |
+| --- | --- | --- | --- |
+| Compshare image | You want to try OpenTalking before setting up dependencies or downloading model weights. | A Compshare instance created from the published image, with port `5173` open. | WebUI, LLM replies, streaming TTS, subtitle events, WebRTC delivery, and the prebuilt image workflow. |
+| Self deployment | You want to run the repo on your own machine or server, customize config, or continue into local/remote model deployment. | Python, Node.js, FFmpeg, `.env` provider config; real models also need GPU/runtime/model weights. | Mock first-run path, then local QuickTalk or remote OmniRT model paths. |
+
+### 1. Compshare Image
 
 If you want to try the OpenTalking + OmniRT + QuickTalk real-time digital-human path before setting up everything manually, use the community image we published on Compshare:
 
@@ -142,7 +149,9 @@ If you want to try the OpenTalking + OmniRT + QuickTalk real-time digital-human 
 
 The image includes OpenTalking, OmniRT, the QuickTalk runtime environment, and model files. After deploying an instance, open port `5173` and visit the instance URL provided by the platform. If you need to restart services manually, follow the commands in the guide.
 
-Use this path when you are trying the project for the first time and do not want to download video model weights yet. The digital-human image uses the built-in static Mock frame, while LLM replies, streaming TTS, subtitle events, and WebRTC delivery still run through the full product path.
+### 2. Self Deployment
+
+Use this path when you want to run OpenTalking from source. Start with Mock mode if you do not want to download video model weights yet: Mock mode uses the built-in static frame, while LLM replies, streaming TTS, subtitle events, and WebRTC delivery still run through the full product path.
 
 ```bash
 git clone https://github.com/datascale-ai/opentalking.git
@@ -171,7 +180,7 @@ Stop services:
 bash scripts/quickstart/stop_all.sh
 ```
 
-### Real Model Entrypoints
+#### Real Model Entrypoints
 
 After Mock mode works, choose a real model path based on your machine. Weight downloads, directory layout, mirrors, checks, and troubleshooting are maintained in the docs; the README keeps only the startup entrypoints:
 
