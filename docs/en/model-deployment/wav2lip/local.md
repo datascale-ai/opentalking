@@ -17,7 +17,7 @@ uv sync --extra dev --extra models --python 3.11
 source .venv/bin/activate
 export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
 mkdir -p "$OPENTALKING_WAV2LIP_MODEL_ROOT"
-uv pip install -U "huggingface_hub[cli]"
+
 hf download Pypa/wav2lip384 wav2lip384.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_ROOT"
 hf download rippertnt/wav2lip s3fd.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_ROOT"
 ```

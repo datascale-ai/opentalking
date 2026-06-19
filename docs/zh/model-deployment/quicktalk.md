@@ -23,8 +23,6 @@ QuickTalk local adapter 直接在 OpenTalking 进程内加载权重，不需要 
 cd "$DIGITAL_HUMAN_HOME/opentalking"
 mkdir -p models/quicktalk/checkpoints
 
-uv pip install -U "huggingface_hub[cli]"
-
 # 可选：网络慢时使用镜像
 export HF_ENDPOINT=https://hf-mirror.com
 

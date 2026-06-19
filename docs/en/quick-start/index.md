@@ -171,8 +171,6 @@ Place local QuickTalk weights and dependencies under repository-root `models/qui
 cd "$DIGITAL_HUMAN_HOME/opentalking"
 mkdir -p models/quicktalk/checkpoints
 
-uv pip install -U "huggingface_hub[cli]"
-
 # Optional: use a Hugging Face mirror when the network is slow.
 export HF_ENDPOINT=https://hf-mirror.com
 

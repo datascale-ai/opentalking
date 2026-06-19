@@ -178,8 +178,6 @@ QuickTalk 本地权重和依赖建议统一放在仓库根目录的 `models/quic
 cd "$DIGITAL_HUMAN_HOME/opentalking"
 mkdir -p models/quicktalk/checkpoints
 
-uv pip install -U "huggingface_hub[cli]"
-
 # 可选：网络慢时使用 Hugging Face 镜像
 export HF_ENDPOINT=https://hf-mirror.com
 
