@@ -11,11 +11,12 @@ import {
   type Wav2LipPostprocessMode,
 } from "./components/SettingsPanel";
 import { RuntimeConfigWorkspace } from "./components/RuntimeConfigWorkspace";
-import { TopBar, type StudioWorkflow } from "./components/TopBar";
+import { SceneStage } from "./components/SceneStage";
+import { TopBar, type ConversationViewMode, type StudioWorkflow } from "./components/TopBar";
 import { ToastStack, type ToastMessage, type ToastTone } from "./components/ToastStack";
-import { VideoBackground } from "./components/VideoBackground";
 import { AssetLibraryWorkspace, type AssetLibraryTab } from "./components/AssetLibraryWorkspace";
 import { VideoCloneWorkspace } from "./components/VideoCloneWorkspace";
+import { playWithMutedFallback } from "./components/VideoBackground";
 import {
   DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG,
   VideoCreationWorkspace,
@@ -31,6 +32,8 @@ import {
   apiUploadFile,
   buildApiUrl,
   getMemoryLibraries,
+  listSceneBackgrounds,
+  listSceneCompositions,
   loadRuntimeConfig,
   uploadExportVideo,
   type AvatarKnowledgeBasesResponse,
@@ -43,6 +46,8 @@ import {
   type PersonasResponse,
   type RuntimeConfigApplyInput,
   type RuntimeConfigResponse,
+  type SceneBackgroundAsset,
+  type SceneComposition,
   type SessionKnowledgeBasesRequest,
   type SessionKnowledgeBasesResponse,
   type VoiceCatalogItem,
@@ -186,6 +191,9 @@ const ASR_PROVIDER_STORAGE_KEY = "opentalking-asr-provider-v1";
 const CLIENT_USER_ID_KEY = "opentalking-client-user-id";
 const AGENT_CONFIG_STORAGE_KEY = "opentalking-agent-config-v1";
 const SELECTED_PERSONA_STORAGE_KEY = "opentalking-selected-persona-id-v1";
+const SELECTED_SCENE_STORAGE_KEY = "opentalking-selected-scene-id-v2";
+const SELECTED_SCENE_BY_AVATAR_STORAGE_KEY = "opentalking-selected-scene-by-avatar-v1";
+const CONVERSATION_VIEW_MODE_KEY = "opentalking-conversation-view-mode-v1";
 const LEGACY_FASTLIVEPORTRAIT_DEFAULT_CONFIG: FasterLivePortraitConfig = {
   head_motion_multiplier: 1.0,
   pose_motion_multiplier: 0.35,
@@ -344,6 +352,22 @@ function writeStoredAvatarId(avatarId: string, source: "auto" | "explicit" = "ex
     }
   } catch {
     /* ignore */
+  }
+}
+
+function readStoredSceneIdsByAvatar(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SELECTED_SCENE_BY_AVATAR_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, string] => (
+        typeof entry[0] === "string" && typeof entry[1] === "string" && entry[0].length > 0 && entry[1].length > 0
+      )),
+    );
+  } catch {
+    return {};
   }
 }
 
@@ -828,6 +852,7 @@ function realtimeRecordingStartErrorMessage(error: unknown): string {
 
 export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const realtimeRecorderRef = useRef<MediaRecorder | null>(null);
@@ -886,6 +911,7 @@ export default function App() {
   // Connection
   const [connection, setConnection] = useState<ConnectionStatus>("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [queueInfo, setQueueInfo] = useState<QueueInfo | null>(null);
   const [expiringCountdown, setExpiringCountdown] = useState<number | null>(null);
 
@@ -972,6 +998,14 @@ export default function App() {
   const [ftRecordPhase, setFtRecordPhase] = useState<"idle" | "recording" | "stopped">("idle");
   const [ftRecordBusy, setFtRecordBusy] = useState(false);
   const [assetLibraryRefreshKey, setAssetLibraryRefreshKey] = useState(0);
+  const [conversationViewMode, setConversationViewMode] = useState<ConversationViewMode>(() => {
+    try {
+      return window.localStorage.getItem(CONVERSATION_VIEW_MODE_KEY) === "immersive" ? "immersive" : "studio";
+    } catch {
+      return "studio";
+    }
+  });
+  const [immersiveAvatarAdjust, setImmersiveAvatarAdjust] = useState({ x: 0, y: 0, scale: 1 });
   const [voiceCatalog, setVoiceCatalog] = useState<VoiceCatalogItem[]>([]);
   const [voiceApplyNotice, setVoiceApplyNotice] = useState<string | null>(null);
   const [ttsPreviewText, setTtsPreviewText] = useState(DEFAULT_TTS_PREVIEW_TEXT);
@@ -982,6 +1016,9 @@ export default function App() {
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [memoryLibraryId, setMemoryLibraryId] = useState<string | null>(null);
   const [memoryLibraries, setMemoryLibraries] = useState<MemoryLibrary[]>([]);
+  const [sceneBackgrounds, setSceneBackgrounds] = useState<SceneBackgroundAsset[]>([]);
+  const [sceneCompositions, setSceneCompositions] = useState<SceneComposition[]>([]);
+  const [selectedSceneIdsByAvatar, setSelectedSceneIdsByAvatar] = useState<Record<string, string>>(readStoredSceneIdsByAvatar);
   const avatarKnowledgeBasesSyncReadyRef = useRef(false);
   const lastPersistedAvatarKnowledgeBasesRef = useRef<Map<string, string[]>>(new Map());
   const avatarKnowledgeBasesLoadSeqRef = useRef(0);
@@ -1041,6 +1078,17 @@ export default function App() {
   });
 
   const compactSquareStage = usesCompactSquareStage(model);
+  const selectedScene = useMemo(
+    () => {
+      const selectedSceneId = selectedSceneIdsByAvatar[avatarId];
+      const matchingScenes = sceneCompositions.filter((scene) => scene.avatar_id === avatarId);
+      if (selectedSceneId) {
+        return matchingScenes.find((scene) => scene.id === selectedSceneId) ?? null;
+      }
+      return matchingScenes.length === 1 ? matchingScenes[0] : null;
+    },
+    [avatarId, sceneCompositions, selectedSceneIdsByAvatar],
+  );
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
@@ -1177,6 +1225,63 @@ export default function App() {
     }
   }, [notify]);
 
+  const refreshScenes = useCallback(async () => {
+    try {
+      const [backgrounds, scenes] = await Promise.all([
+        listSceneBackgrounds(),
+        listSceneCompositions(),
+      ]);
+      setSceneBackgrounds(backgrounds.items);
+      setSceneCompositions(scenes.items);
+      setSelectedSceneIdsByAvatar((current) => {
+        const next = Object.fromEntries(
+          Object.entries(current).filter(([sceneAvatarId, sceneId]) => (
+            scenes.items.some((scene) => scene.id === sceneId && scene.avatar_id === sceneAvatarId)
+          )),
+        );
+        try {
+          const legacySceneId = window.localStorage.getItem(SELECTED_SCENE_STORAGE_KEY);
+          const legacyScene = legacySceneId ? scenes.items.find((scene) => scene.id === legacySceneId) : null;
+          if (legacyScene && !next[legacyScene.avatar_id]) {
+            next[legacyScene.avatar_id] = legacyScene.id;
+          }
+          window.localStorage.removeItem(SELECTED_SCENE_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    } catch (error) {
+      console.warn("load scene assets failed", error);
+    }
+  }, []);
+
+  const handleSceneCompositionsChange = useCallback((scenes: SceneComposition[]) => {
+    setSceneCompositions(scenes);
+    setSelectedSceneIdsByAvatar((current) => {
+      return Object.fromEntries(
+        Object.entries(current).filter(([sceneAvatarId, sceneId]) => (
+          scenes.some((scene) => scene.id === sceneId && scene.avatar_id === sceneAvatarId)
+        )),
+      );
+    });
+  }, []);
+
+  const handleSceneSelect = useCallback((scene: SceneComposition) => {
+    setSelectedSceneIdsByAvatar((current) => ({
+      ...current,
+      [scene.avatar_id]: scene.id,
+    }));
+  }, []);
+
+  const handleSceneClear = useCallback((sceneAvatarId: string) => {
+    setSelectedSceneIdsByAvatar((current) => {
+      const next = { ...current };
+      delete next[sceneAvatarId];
+      return next;
+    });
+  }, []);
+
   const refreshAvatarKnowledgeBases = useCallback(async (targetAvatarId: string) => {
     if (!targetAvatarId) return;
     const seq = ++avatarKnowledgeBasesLoadSeqRef.current;
@@ -1258,6 +1363,46 @@ export default function App() {
   useEffect(() => {
     if (workflow === "realtime") void refreshPersonas();
   }, [refreshPersonas, workflow]);
+
+  useEffect(() => {
+    void refreshScenes();
+  }, [refreshScenes]);
+
+  useEffect(() => {
+    try {
+      if (Object.keys(selectedSceneIdsByAvatar).length) {
+        window.localStorage.setItem(SELECTED_SCENE_BY_AVATAR_STORAGE_KEY, JSON.stringify(selectedSceneIdsByAvatar));
+      } else {
+        window.localStorage.removeItem(SELECTED_SCENE_BY_AVATAR_STORAGE_KEY);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [selectedSceneIdsByAvatar]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CONVERSATION_VIEW_MODE_KEY, conversationViewMode);
+    } catch {
+      /* ignore */
+    }
+  }, [conversationViewMode]);
+
+  useEffect(() => {
+    const startupVisible = connection === "idle" || connection === "error" || connection === "connecting" || connection === "queued";
+    if (startupVisible && conversationViewMode === "immersive") setConversationViewMode("studio");
+  }, [connection, conversationViewMode]);
+
+  useEffect(() => {
+    if (workflow !== "realtime" || conversationViewMode !== "immersive") return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setConversationViewMode("studio");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [conversationViewMode, workflow]);
 
   useEffect(() => {
     if (selectedPersonaId) return;
@@ -1561,6 +1706,37 @@ export default function App() {
   }, [sessionId]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.srcObject !== remoteStream) {
+      video.srcObject = remoteStream;
+    }
+    if (remoteStream) {
+      video.muted = false;
+      video.volume = 1;
+      playWithMutedFallback(video);
+    } else {
+      video.muted = true;
+    }
+  }, [conversationViewMode, remoteStream, workflow]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!remoteStream) {
+      audio.srcObject = null;
+      return;
+    }
+    audio.srcObject = remoteStream;
+    audio.muted = false;
+    audio.volume = 1;
+    void audio.play().catch(() => {});
+    return () => {
+      audio.srcObject = null;
+    };
+  }, [remoteStream]);
+
+  useEffect(() => {
     return () => {
       if (ttsPreviewUrlRef.current) {
         URL.revokeObjectURL(ttsPreviewUrlRef.current);
@@ -1656,6 +1832,7 @@ export default function App() {
       for (const track of remoteStreamRef.current.getTracks()) track.stop();
       remoteStreamRef.current = null;
     }
+    setRemoteStream(null);
   }, []);
 
   const releaseSession = useCallback(async (sid: string, keepalive = false) => {
@@ -2047,10 +2224,12 @@ export default function App() {
       const playback = await startPlayback(created.session_id, videoRef.current!, {
         onRemoteStream: (remoteStream) => {
           remoteStreamRef.current = remoteStream;
+          setRemoteStream(remoteStream);
         },
       });
       pcRef.current = playback.pc;
       remoteStreamRef.current = playback.remoteStream;
+      setRemoteStream(playback.remoteStream);
       setActiveAsrProvider(lockedAsrProvider);
       videoRef.current!.muted = false;
       setConnection("live");
@@ -2605,9 +2784,14 @@ export default function App() {
   }, [closePeerConnection, releaseSession]);
 
   const currentAvatar = avatars.find((a) => a.id === avatarId) ?? null;
+  const selectedAvatarMaskUrl = selectedScene && currentAvatar?.matting_status === "transparent_ready"
+    ? buildApiUrl(`/avatars/${encodeURIComponent(currentAvatar.id)}/preview`)
+    : null;
   const sessionConfigLocked = connection === "connecting" || connection === "queued" || connection === "live" || connection === "expiring";
   const effectiveAsrProvider = activeAsrProvider || normalizeAsrProvider(asrProvider, "dashscope");
   const showStart = connection === "idle" || connection === "error" || connection === "connecting" || connection === "queued";
+  const effectiveConversationViewMode = showStart ? "studio" : conversationViewMode;
+  const immersiveActive = workflow === "realtime" && effectiveConversationViewMode === "immersive";
   const chatMaxVisible = readChatMaxVisible();
   const selectedModelLabel = MODEL_LABELS_FOR_STAGE[model] ?? model;
   const wav2lipPostprocessModeLocked = sessionId !== null && connection !== "idle" && connection !== "error";
@@ -2640,9 +2824,12 @@ export default function App() {
   };
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 lg:h-screen lg:overflow-hidden">
+      <audio ref={audioRef} autoPlay playsInline className="hidden" />
       <TopBar
         connection={connection}
         workflow={workflow}
+        conversationViewMode={effectiveConversationViewMode}
+        immersiveChrome={immersiveActive}
         flashtalkRecording={!!sessionId && (connection === "live" || connection === "expiring")}
         flashtalkRecordPhase={ftRecordPhase}
         flashtalkRecordBusy={ftRecordBusy}
@@ -2650,6 +2837,7 @@ export default function App() {
         runtimeConfigReady={runtimeConfigReady}
         runtimeConfigLoading={runtimeConfigLoading}
         onInactiveModuleClick={(label) => notify(`${label}模块规划中。当前可用的是实时对话、视频克隆、数字人配置、语音驱动和导出能力。`, "info")}
+        onConversationViewModeChange={setConversationViewMode}
         onWorkflowChange={(next) => {
           setWorkflow(next);
           if (next === "videoClone" && sessionIdRef.current) {
@@ -2708,6 +2896,12 @@ export default function App() {
             onMemoryEnabledChange={setMemoryEnabled}
             onMemoryLibrariesChange={setMemoryLibraries}
             onRefreshMemoryLibraries={() => void refreshMemoryLibraries()}
+            avatars={avatars}
+            selectedSceneIdsByAvatar={selectedSceneIdsByAvatar}
+            onSceneSelect={handleSceneSelect}
+            onSceneClear={handleSceneClear}
+            onSceneBackgroundsChange={setSceneBackgrounds}
+            onSceneCompositionsChange={handleSceneCompositionsChange}
           />
         </div>
       ) : workflow === "videoCreation" ? (
@@ -2761,8 +2955,14 @@ export default function App() {
           />
         </div>
       ) : (
-      <div className="flex min-h-0 flex-col lg:h-[calc(100vh-3.5rem)] lg:flex-row">
-        <div className="order-2 min-h-0 lg:order-none lg:h-full lg:shrink-0">
+      <div
+        className={
+          immersiveActive
+            ? "relative flex h-dvh min-h-0 flex-col bg-slate-950"
+            : "flex min-h-0 flex-col lg:h-[calc(100vh-3.5rem)] lg:flex-row"
+        }
+      >
+        <div className={`${immersiveActive ? "hidden" : "order-2 min-h-0 lg:order-none lg:h-full lg:shrink-0"}`}>
           <SettingsPanel
             expanded={settingsExpanded}
             onExpandedChange={setSettingsExpanded}
@@ -2826,55 +3026,141 @@ export default function App() {
           />
         </div>
 
-        <main className="order-1 flex min-h-0 flex-1 flex-col bg-slate-100 lg:order-none">
-          <div className="flex min-h-0 flex-1 flex-col p-4">
-            <div className="relative min-h-[360px] flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70 lg:min-h-[420px]">
-              <div className="absolute inset-0 bg-slate-50" />
-              <div className="absolute inset-3 rounded-lg border border-slate-200 bg-white shadow-inner shadow-slate-200/60" />
-              <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-                <div
-                  className={
-                    compactSquareStage
-                      ? "relative aspect-square w-full max-w-[42rem] max-h-full"
-                      : "relative h-full w-full"
-                  }
-                >
-                  <VideoBackground ref={videoRef} className="absolute inset-0 h-full w-full object-contain" />
-                </div>
-              </div>
-
-              <div className="absolute left-4 right-4 top-4 z-30 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm">
-                    <span className={`h-1.5 w-1.5 rounded-full ${
-                      connection === "live" || connection === "expiring" ? "bg-emerald-500" : "bg-slate-400"
-                    }`} />
-                    {connection === "live" || connection === "expiring" ? "已连接" : "待启动"}
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 shadow-sm">
-                    WebRTC 舞台
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                    {MODEL_LABELS_FOR_STAGE[model] ?? model}
-                  </span>
-                  <span className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                    {currentAvatar?.name ?? currentAvatar?.id ?? "未选形象"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleReturnToAvatarSelection}
-                  className="shrink-0 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-cyan-200 hover:text-cyan-700"
-                >
-                  更换形象
-                </button>
-              </div>
-
-              {currentSubtitle && !showStart ? (
-                <div className="absolute inset-x-4 bottom-4 z-10 mx-auto max-w-xl rounded-lg border border-slate-200 bg-white/95 px-4 py-3 text-center text-sm font-medium leading-relaxed text-slate-900 shadow-lg shadow-slate-200/80 backdrop-blur">
-                  {currentSubtitle}
-                </div>
-              ) : null}
+        <main
+          className={
+            immersiveActive
+              ? "order-1 flex min-h-0 flex-1 flex-col overflow-hidden bg-slate-950 lg:order-none"
+              : "order-1 flex min-h-0 flex-1 flex-col bg-slate-100 lg:order-none"
+          }
+        >
+          <div
+            className={
+              immersiveActive
+                ? "relative flex min-h-0 flex-1 flex-col overflow-hidden"
+                : "flex min-h-0 flex-1 flex-col p-4"
+            }
+          >
+            <div
+              className={
+                immersiveActive
+                  ? "absolute inset-x-0 top-0 bottom-12 overflow-hidden bg-black sm:bottom-14"
+                  : "relative min-h-[360px] flex-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm shadow-slate-200/70 lg:min-h-[420px]"
+              }
+            >
+              <SceneStage
+                videoRef={videoRef}
+                videoStream={remoteStream}
+                scene={showStart ? null : selectedScene}
+                backgrounds={sceneBackgrounds}
+                subtitle={!showStart ? currentSubtitle : null}
+                avatarMaskUrl={showStart ? null : selectedAvatarMaskUrl}
+                avatarAdjust={immersiveActive ? immersiveAvatarAdjust : undefined}
+                compactSquareStage={compactSquareStage}
+                className="h-full w-full"
+              >
+                {immersiveActive ? (
+                  <>
+                    <div className="absolute right-0 top-0 z-30 flex h-24 w-48 items-start justify-end p-4">
+                      <button
+                        type="button"
+                        onClick={() => setConversationViewMode("studio")}
+                        className="rounded-lg border border-white/15 bg-slate-950/45 px-3 py-2 text-xs font-semibold text-white opacity-0 shadow-lg backdrop-blur transition hover:bg-slate-950/65 hover:opacity-100 focus:opacity-100"
+                      >
+                        返回工作台
+                      </button>
+                    </div>
+                    <div className="group absolute right-0 top-1/2 z-30 flex -translate-y-1/2 translate-x-[calc(100%-1.25rem)] items-center transition-transform duration-200 hover:translate-x-0 focus-within:translate-x-0">
+                      <div className="flex h-20 w-5 items-center justify-center rounded-l-lg border border-r-0 border-slate-700 bg-slate-950 text-[10px] font-semibold text-white shadow-lg">
+                        微调
+                      </div>
+                      <div className="w-64 rounded-l-xl border border-slate-700 bg-slate-950 p-4 text-white shadow-2xl shadow-slate-950/30">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold">画面微调</p>
+                          <button
+                            type="button"
+                            onClick={() => setImmersiveAvatarAdjust({ x: 0, y: 0, scale: 1 })}
+                            className="rounded-md border border-white/15 px-2 py-1 text-xs font-semibold text-white/80 transition hover:bg-white/10 hover:text-white"
+                          >
+                            重置
+                          </button>
+                        </div>
+                        <label className="mb-3 block text-xs font-medium text-white/80">
+                          <span className="mb-1 flex justify-between">
+                            <span>水平</span>
+                            <span className="tabular-nums">{immersiveAvatarAdjust.x}px</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="-480"
+                            max="480"
+                            step="4"
+                            value={immersiveAvatarAdjust.x}
+                            onChange={(event) => setImmersiveAvatarAdjust((prev) => ({ ...prev, x: Number(event.target.value) }))}
+                            className="w-full accent-cyan-300"
+                          />
+                        </label>
+                        <label className="mb-3 block text-xs font-medium text-white/80">
+                          <span className="mb-1 flex justify-between">
+                            <span>垂直</span>
+                            <span className="tabular-nums">{immersiveAvatarAdjust.y}px</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="-320"
+                            max="320"
+                            step="4"
+                            value={immersiveAvatarAdjust.y}
+                            onChange={(event) => setImmersiveAvatarAdjust((prev) => ({ ...prev, y: Number(event.target.value) }))}
+                            className="w-full accent-cyan-300"
+                          />
+                        </label>
+                        <label className="block text-xs font-medium text-white/80">
+                          <span className="mb-1 flex justify-between">
+                            <span>缩放</span>
+                            <span className="tabular-nums">{immersiveAvatarAdjust.scale.toFixed(2)}x</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="0.4"
+                            max="2.2"
+                            step="0.02"
+                            value={immersiveAvatarAdjust.scale}
+                            onChange={(event) => setImmersiveAvatarAdjust((prev) => ({ ...prev, scale: Number(event.target.value) }))}
+                            className="w-full accent-cyan-300"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="absolute left-4 right-4 top-4 z-30 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                        <span className={`h-1.5 w-1.5 rounded-full ${
+                          connection === "live" || connection === "expiring" ? "bg-emerald-500" : "bg-slate-400"
+                        }`} />
+                        {connection === "live" || connection === "expiring" ? "已连接" : "待启动"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-medium text-cyan-700 shadow-sm">
+                        WebRTC 舞台
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                        {MODEL_LABELS_FOR_STAGE[model] ?? model}
+                      </span>
+                      <span className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                        {currentAvatar?.name ?? currentAvatar?.id ?? "未选形象"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleReturnToAvatarSelection}
+                      className="shrink-0 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:border-cyan-200 hover:text-cyan-700"
+                    >
+                      更换形象
+                    </button>
+                  </div>
+                )}
+              </SceneStage>
 
               {showStart ? (
                 <div className="absolute inset-0 z-40 bg-white">
@@ -2909,7 +3195,18 @@ export default function App() {
             </div>
 
             {connection === "live" || connection === "expiring" ? (
-            <div className="mt-4">
+            <div
+              className={
+                immersiveActive
+                  ? "group absolute inset-x-3 bottom-0 z-30 mx-auto max-w-4xl translate-y-[calc(100%-1.25rem)] pb-3 transition-transform duration-200 hover:translate-y-0 focus-within:translate-y-0 sm:pb-5"
+                  : "mt-4"
+              }
+            >
+              {immersiveActive ? (
+                <div className="pointer-events-none mb-2 flex justify-center opacity-100 transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0">
+                  <div className="h-1.5 w-16 rounded-full bg-white/80 shadow-sm" />
+                </div>
+              ) : null}
               <ChatInput
                 onSend={handleSend}
                 onSpeakAudio={handleSpeakAudio}
@@ -2936,9 +3233,13 @@ export default function App() {
         </main>
 
         <aside
-          className={`order-3 min-h-0 overflow-hidden border-l border-slate-200 bg-white transition-[width] duration-200 lg:shrink-0 ${
-            sessionPanelCollapsed ? "lg:w-12" : "lg:w-[360px]"
-          }`}
+          className={
+            immersiveActive
+              ? "hidden"
+              : `order-3 min-h-0 overflow-hidden border-l border-slate-200 bg-white transition-[width] duration-200 lg:shrink-0 ${
+                  sessionPanelCollapsed ? "lg:w-12" : "lg:w-[360px]"
+                }`
+          }
         >
           <div className="flex h-full min-h-0">
             <div className="flex w-12 shrink-0 flex-col items-center justify-center gap-4 border-r border-slate-100 bg-slate-50 py-3">

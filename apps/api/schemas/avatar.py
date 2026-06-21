@@ -14,3 +14,4 @@ class AvatarSummary(BaseModel):
     # True for avatars created via POST /avatars/custom; only these are deletable.
     is_custom: bool = False
     has_preview_video: bool = False
+    matting_status: str = "unknown"

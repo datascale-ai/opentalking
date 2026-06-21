@@ -79,6 +79,7 @@ machine.md
 
 # Internal dev specs (not for public repo)
 docs/superpowers/
+.worktrees/
 
 # MkDocs build output
 site/

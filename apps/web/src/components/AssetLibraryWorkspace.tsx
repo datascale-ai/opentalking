@@ -7,16 +7,25 @@ import {
   apiPostForm,
   buildApiDownloadUrl,
   buildApiUrl,
+  createSceneComposition,
+  deleteSceneBackground,
+  deleteSceneComposition,
+  listSceneBackgrounds,
+  listSceneCompositions,
+  uploadSceneBackground,
+  type AvatarSummary,
   type ExportVideoItem,
   type KnowledgeBaseSummary,
   type KnowledgeBasesResponse,
   type KnowledgeDocument,
   type KnowledgeDocumentsResponse,
+  type SceneBackgroundAsset,
+  type SceneComposition,
 } from "../lib/api";
 import { MemoryPanel } from "./MemoryPanel";
 import type { MemoryLibrary } from "../types";
 
-type AssetTab = "exports" | "knowledge" | "memory" | "avatars" | "voices";
+type AssetTab = "exports" | "knowledge" | "memory" | "scenes" | "voices";
 export type AssetLibraryTab = AssetTab;
 
 type AssetLibraryWorkspaceProps = {
@@ -34,13 +43,19 @@ type AssetLibraryWorkspaceProps = {
   onMemoryEnabledChange?: (enabled: boolean) => void;
   onMemoryLibrariesChange?: (libraries: MemoryLibrary[]) => void;
   onRefreshMemoryLibraries?: () => void;
+  avatars?: AvatarSummary[];
+  onSceneCompositionsChange?: (scenes: SceneComposition[]) => void;
+  selectedSceneIdsByAvatar?: Record<string, string>;
+  onSceneSelect?: (scene: SceneComposition) => void;
+  onSceneClear?: (avatarId: string) => void;
+  onSceneBackgroundsChange?: (backgrounds: SceneBackgroundAsset[]) => void;
 };
 
 const ASSET_TABS: { id: AssetTab; label: string; disabled?: boolean }[] = [
   { id: "exports", label: "导出视频" },
   { id: "knowledge", label: "知识库" },
   { id: "memory", label: "记忆库" },
-  { id: "avatars", label: "Avatar资产", disabled: true },
+  { id: "scenes", label: "场景资产" },
   { id: "voices", label: "声音资产", disabled: true },
 ];
 
@@ -224,6 +239,12 @@ export function AssetLibraryWorkspace({
   onMemoryEnabledChange,
   onMemoryLibrariesChange,
   onRefreshMemoryLibraries,
+  avatars,
+  onSceneCompositionsChange,
+  selectedSceneIdsByAvatar = {},
+  onSceneSelect,
+  onSceneClear,
+  onSceneBackgroundsChange,
 }: AssetLibraryWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<AssetTab>(initialTab);
   const [items, setItems] = useState<ExportVideoItem[]>([]);
@@ -253,6 +274,14 @@ export function AssetLibraryWorkspace({
   const [creatingKnowledge, setCreatingKnowledge] = useState(false);
   const [filePoolUploading, setFilePoolUploading] = useState(false);
   const [memoryRefreshToken, setMemoryRefreshToken] = useState(0);
+  const [sceneBackgrounds, setSceneBackgrounds] = useState<SceneBackgroundAsset[]>([]);
+  const [sceneCompositions, setSceneCompositions] = useState<SceneComposition[]>([]);
+  const [sceneLoading, setSceneLoading] = useState(false);
+  const [sceneName, setSceneName] = useState("");
+  const [sceneAvatarId, setSceneAvatarId] = useState("");
+  const [sceneBackgroundId, setSceneBackgroundId] = useState("");
+  const [backgroundName, setBackgroundName] = useState("");
+  const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const newKnowledgeFileInputRef = useRef<HTMLInputElement>(null);
   const uploadKnowledgeFileInputRef = useRef<HTMLInputElement>(null);
   const filePoolUploadInputRef = useRef<HTMLInputElement>(null);
@@ -324,6 +353,27 @@ export function AssetLibraryWorkspace({
     }
   }, [onNotify]);
 
+  const loadScenes = useCallback(async () => {
+    setSceneLoading(true);
+    try {
+      const [backgrounds, scenes] = await Promise.all([
+        listSceneBackgrounds(),
+        listSceneCompositions(),
+      ]);
+      setSceneBackgrounds(backgrounds.items);
+      setSceneCompositions(scenes.items);
+      onSceneBackgroundsChange?.(backgrounds.items);
+      onSceneCompositionsChange?.(scenes.items);
+      setSceneAvatarId((current) => current || avatars?.[0]?.id || "");
+    } catch (err) {
+      console.warn("load scene assets failed", err);
+      const detail = err instanceof ApiError ? err.detail : null;
+      onNotify?.(detail ? `场景资产加载失败：${detail}` : "场景资产加载失败。", "error");
+    } finally {
+      setSceneLoading(false);
+    }
+  }, [avatars, onNotify, onSceneBackgroundsChange, onSceneCompositionsChange]);
+
   useEffect(() => {
     if (activeTabOverride) setActiveTab(activeTabOverride);
   }, [activeTabOverride]);
@@ -346,6 +396,10 @@ export function AssetLibraryWorkspace({
       setKnowledgeDocuments([]);
     }
   }, [activeTab, loadKnowledgeDocuments, selectedKnowledgeId]);
+
+  useEffect(() => {
+    if (activeTab === "scenes") void loadScenes();
+  }, [activeTab, loadScenes, refreshToken]);
 
   const totalSize = useMemo(
     () => items.reduce((sum, item) => sum + item.size_bytes, 0),
@@ -386,8 +440,12 @@ export function AssetLibraryWorkspace({
       setMemoryRefreshToken((value) => value + 1);
       return;
     }
+    if (activeTab === "scenes") {
+      void loadScenes();
+      return;
+    }
     if (activeTab === "exports") void loadExports();
-  }, [activeTab, loadAllKnowledgeDocuments, loadExports, loadKnowledgeBases, loadKnowledgeDocuments, onRefreshMemoryLibraries, selectedKnowledgeId]);
+  }, [activeTab, loadAllKnowledgeDocuments, loadExports, loadKnowledgeBases, loadKnowledgeDocuments, loadScenes, onRefreshMemoryLibraries, selectedKnowledgeId]);
 
   const handleCopyPath = useCallback(async (path: string) => {
     try {
@@ -600,6 +658,76 @@ export function AssetLibraryWorkspace({
       setFilePoolUploading(false);
     }
   }, [filePoolFiles, filePoolUploadDisabled, loadAllKnowledgeDocuments, onNotify, uploadFilesToFilePool]);
+
+  const handleUploadSceneBackground = useCallback(async () => {
+    if (!backgroundFile) return;
+    try {
+      const uploaded = await uploadSceneBackground({
+        file: backgroundFile,
+        name: backgroundName.trim() || backgroundFile.name,
+      });
+      const nextBackgrounds = [uploaded, ...sceneBackgrounds.filter((item) => item.id !== uploaded.id)];
+      setSceneBackgrounds(nextBackgrounds);
+      onSceneBackgroundsChange?.(nextBackgrounds);
+      setBackgroundFile(null);
+      setBackgroundName("");
+      onNotify?.("背景资产已上传。", "success");
+    } catch (err) {
+      console.warn("upload scene background failed", err);
+      const detail = err instanceof ApiError ? err.detail : null;
+      onNotify?.(detail ? `上传失败：${detail}` : "上传失败，请稍后重试。", "error");
+    }
+  }, [backgroundFile, backgroundName, onNotify, onSceneBackgroundsChange, sceneBackgrounds]);
+
+  const handleCreateSceneComposition = useCallback(async () => {
+    if (!sceneName.trim() || !sceneAvatarId) return;
+    try {
+      const created = await createSceneComposition({
+        name: sceneName.trim(),
+        avatar_id: sceneAvatarId,
+        background_id: sceneBackgroundId || null,
+        avatar_fit: "contain",
+        avatar_scale: 1,
+        avatar_anchor: "center",
+        matting_required: true,
+        subtitle_style: "lower-third",
+      });
+      const nextScenes = [created, ...sceneCompositions.filter((item) => item.id !== created.id)];
+      setSceneCompositions(nextScenes);
+      onSceneCompositionsChange?.(nextScenes);
+      onSceneSelect?.(created);
+      setSceneName("");
+      onNotify?.("场景组合已创建。", "success");
+    } catch (err) {
+      console.warn("create scene composition failed", err);
+      const detail = err instanceof ApiError ? err.detail : null;
+      onNotify?.(detail ? `创建失败：${detail}` : "创建失败，请稍后重试。", "error");
+    }
+  }, [onNotify, onSceneCompositionsChange, onSceneSelect, sceneAvatarId, sceneBackgroundId, sceneCompositions, sceneName]);
+
+  const handleDeleteSceneBackground = useCallback(async (background: SceneBackgroundAsset) => {
+    try {
+      await deleteSceneBackground(background.id);
+      await loadScenes();
+      onNotify?.("背景资产已删除。", "success");
+    } catch (err) {
+      console.warn("delete scene background failed", err);
+      const detail = err instanceof ApiError ? err.detail : null;
+      onNotify?.(detail ? `删除失败：${detail}` : "删除失败，请稍后重试。", "error");
+    }
+  }, [loadScenes, onNotify]);
+
+  const handleDeleteSceneComposition = useCallback(async (scene: SceneComposition) => {
+    try {
+      await deleteSceneComposition(scene.id);
+      await loadScenes();
+      onNotify?.("场景组合已删除。", "success");
+    } catch (err) {
+      console.warn("delete scene composition failed", err);
+      const detail = err instanceof ApiError ? err.detail : null;
+      onNotify?.(detail ? `删除失败：${detail}` : "删除失败，请稍后重试。", "error");
+    }
+  }, [loadScenes, onNotify]);
 
   const handleUploadKnowledgeDocuments = useCallback(async () => {
     if (!selectedKnowledgeId || uploadDisabled) return;
@@ -911,6 +1039,195 @@ export function AssetLibraryWorkspace({
     />
   );
 
+  const avatarById = useMemo(() => new Map((avatars ?? []).map((avatar) => [avatar.id, avatar])), [avatars]);
+  const sceneGroups = useMemo(() => {
+    const avatarGroups = (avatars ?? [])
+      .map((avatar) => ({
+        avatar,
+        scenes: sceneCompositions.filter((scene) => scene.avatar_id === avatar.id),
+      }))
+      .filter((group) => group.scenes.length > 0);
+    const knownAvatarIds = new Set((avatars ?? []).map((avatar) => avatar.id));
+    const orphanScenes = sceneCompositions.filter((scene) => !knownAvatarIds.has(scene.avatar_id));
+    if (orphanScenes.length > 0) {
+      avatarGroups.push({
+        avatar: { id: "__unknown__", name: "未识别形象" } as AvatarSummary,
+        scenes: orphanScenes,
+      });
+    }
+    return avatarGroups;
+  }, [avatars, sceneCompositions]);
+
+  const renderScenesTab = () => (
+    <div className="grid min-h-[24rem] gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
+      <aside className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-950">背景资产</h2>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+          背景是资产库能力，可被工作台、沉浸模式和后续视频创作复用。
+        </p>
+        <div className="mt-4 space-y-3">
+          <label className="block text-xs font-semibold text-slate-600" htmlFor="scene-background-name">
+            背景名称
+          </label>
+          <input
+            id="scene-background-name"
+            value={backgroundName}
+            onChange={(event) => setBackgroundName(event.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-cyan-300 focus:bg-white"
+          />
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime"
+            onChange={(event) => setBackgroundFile(event.currentTarget.files?.[0] ?? null)}
+            className="block w-full text-xs text-slate-600"
+          />
+          <button
+            type="button"
+            disabled={!backgroundFile}
+            onClick={() => void handleUploadSceneBackground()}
+            className="w-full rounded-lg bg-cyan-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            上传背景
+          </button>
+        </div>
+        <div className="mt-5 space-y-2">
+          {sceneLoading ? (
+            <p className="text-sm text-slate-500">背景资产加载中...</p>
+          ) : sceneBackgrounds.length ? sceneBackgrounds.map((background) => (
+            <div key={background.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="truncate text-sm font-semibold text-slate-900">{background.name}</p>
+              <p className="mt-1 text-xs text-slate-500">{background.kind} · {formatSize(background.size_bytes)}</p>
+              <button
+                type="button"
+                onClick={() => void handleDeleteSceneBackground(background)}
+                className="mt-2 text-xs font-semibold text-rose-600 hover:text-rose-500"
+              >
+                删除
+              </button>
+            </div>
+          )) : (
+            <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500">
+              暂无背景资产
+            </p>
+          )}
+        </div>
+      </aside>
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold text-slate-950">场景组合</h2>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+          场景组合保存数字人、背景、构图和字幕样式，可在实时对话和沉浸模式中复用。
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_12rem_auto] md:items-end">
+          <label className="block text-xs font-semibold text-slate-600">
+            场景名称
+            <input
+              value={sceneName}
+              onChange={(event) => setSceneName(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-cyan-300 focus:bg-white"
+            />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            数字人
+            <select
+              value={sceneAvatarId}
+              onChange={(event) => setSceneAvatarId(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              {(avatars ?? []).map((avatar) => (
+                <option key={avatar.id} value={avatar.id}>{avatar.name ?? avatar.id}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            背景
+            <select
+              value={sceneBackgroundId}
+              onChange={(event) => setSceneBackgroundId(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+            >
+              <option value="">纯色背景</option>
+              {sceneBackgrounds.map((background) => (
+                <option key={background.id} value={background.id}>{background.name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={!sceneName.trim() || !sceneAvatarId}
+            onClick={() => void handleCreateSceneComposition()}
+            className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            创建
+          </button>
+        </div>
+        <div className="mt-5 space-y-4">
+          {sceneGroups.length ? sceneGroups.map(({ avatar, scenes }) => (
+            <section key={avatar.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">{avatar.name ?? avatar.id}</p>
+                  <p className="text-xs text-slate-500">{scenes.length} 个场景组合</p>
+                </div>
+                {selectedSceneIdsByAvatar[avatar.id] ? (
+                  <button
+                    type="button"
+                    onClick={() => onSceneClear?.(avatar.id)}
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-800"
+                  >
+                    取消默认
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {scenes.map((scene) => {
+                  const selected = selectedSceneIdsByAvatar[scene.avatar_id] === scene.id;
+                  const sceneAvatar = avatarById.get(scene.avatar_id);
+                  return (
+                    <article
+                      key={scene.id}
+                      className={`rounded-lg border p-3 transition ${
+                        selected
+                          ? "border-cyan-300 bg-cyan-50"
+                          : "border-slate-200 bg-white"
+                      }`}
+                    >
+                      <p className="truncate text-sm font-semibold text-slate-950">{scene.name}</p>
+                      <p className="mt-1 truncate text-xs text-slate-500">Avatar {sceneAvatar?.name ?? scene.avatar_id}</p>
+                      <p className="mt-1 truncate text-xs text-slate-500">Background {scene.background_id ?? scene.background_color}</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <button
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => onSceneSelect?.(scene)}
+                          className={`text-xs font-semibold ${
+                            selected ? "text-cyan-800" : "text-cyan-700 hover:text-cyan-600"
+                          }`}
+                        >
+                          {selected ? "当前默认" : "设为默认"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteSceneComposition(scene)}
+                          className="text-xs font-semibold text-rose-600 hover:text-rose-500"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          )) : (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+              暂无场景组合
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
       <section className="flex min-h-0 flex-1 flex-col rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -930,6 +1247,11 @@ export function AssetLibraryWorkspace({
                 <span>{memoryLibraries.length} 个记忆库</span>
                 <span>{memoryLibraries.reduce((sum, library) => sum + library.memory_count, 0)} 条记忆</span>
               </>
+            ) : activeTab === "scenes" ? (
+              <>
+                <span>{sceneBackgrounds.length} 个背景</span>
+                <span>{sceneCompositions.length} 个组合</span>
+              </>
             ) : (
               <>
                 <span>{items.length} 个导出</span>
@@ -939,10 +1261,10 @@ export function AssetLibraryWorkspace({
             <button
               type="button"
               onClick={handleRefresh}
-              disabled={activeTab === "knowledge" ? knowledgeLoading : loading}
+              disabled={activeTab === "knowledge" ? knowledgeLoading : activeTab === "scenes" ? sceneLoading : loading}
               className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:border-cyan-200 hover:text-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {(activeTab === "knowledge" ? knowledgeLoading : loading) ? "刷新中..." : "刷新"}
+              {(activeTab === "knowledge" ? knowledgeLoading : activeTab === "scenes" ? sceneLoading : loading) ? "刷新中..." : "刷新"}
             </button>
           </div>
         </div>
@@ -1036,9 +1358,11 @@ export function AssetLibraryWorkspace({
             renderKnowledgeTab()
           ) : activeTab === "memory" ? (
             renderMemoryTab()
+          ) : activeTab === "scenes" ? (
+            renderScenesTab()
           ) : (
             <div className="flex min-h-[18rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-500">
-              {activeTab === "avatars" ? "Avatar资产管理规划中" : "声音资产管理规划中"}
+              声音资产管理规划中
             </div>
           )}
         </div>

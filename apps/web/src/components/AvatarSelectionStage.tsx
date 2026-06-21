@@ -271,7 +271,7 @@ export function AvatarSelectionStage({
                         />
                       </div>
                       <div className="px-3 py-2">
-                        <span className="truncate text-xs font-medium text-slate-500">
+                        <span className="block truncate text-xs font-medium text-slate-500">
                           {avatar.is_custom ? "自定义形象" : "数字人形象"}
                         </span>
                       </div>

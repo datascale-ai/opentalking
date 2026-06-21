@@ -60,6 +60,15 @@ def _is_hidden_avatar(manifest_path: Path) -> bool:
     return bool((raw.get("metadata") or {}).get("hidden"))
 
 
+def _avatar_matting_status(manifest_path: Path) -> str:
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "unknown"
+    value = str((raw.get("metadata") or {}).get("matting_status") or "").strip()
+    return value if value in {"unknown", "opaque", "transparent_ready"} else "unknown"
+
+
 def _avatar_preview_video_path(avatar_dir: Path) -> Path | None:
     manifest_path = avatar_dir / "manifest.json"
     try:
@@ -112,6 +121,7 @@ def _summary_from_dir(path: Path) -> AvatarSummary:
         height=m.height,
         is_custom=_is_custom_avatar(path / "manifest.json"),
         has_preview_video=_avatar_preview_video_path(path) is not None,
+        matting_status=_avatar_matting_status(path / "manifest.json"),
     )
 
 
@@ -144,7 +154,7 @@ async def _read_upload_image(upload: UploadFile) -> Image.Image:
         image.load()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="invalid image") from exc
-    return image.convert("RGB")
+    return image.convert("RGBA") if "A" in image.getbands() else image.convert("RGB")
 
 
 async def _read_upload_video(upload: UploadFile) -> tuple[Image.Image, bytes, str]:
@@ -209,6 +219,7 @@ def _write_custom_avatar_manifest(
     metadata["idle_mode"] = "static"
     metadata["reference_mode"] = "image"
     metadata["source_image"] = "source/source.png"
+    metadata["matting_status"] = "opaque"
     raw["metadata"] = metadata
     target_manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -233,6 +244,24 @@ def _resize_uploaded_avatar_image(image: Image.Image, *, max_width: int, max_hei
     fitted = image.copy()
     fitted.thumbnail((int(max_width), int(max_height)), Image.Resampling.LANCZOS)
     return fitted
+
+
+def _avatar_image_has_alpha(image: Image.Image) -> bool:
+    if "A" not in image.getbands():
+        return False
+    alpha = image.getchannel("A")
+    low, high = alpha.getextrema()
+    if not isinstance(low, int | float) or not isinstance(high, int | float):
+        return False
+    return low < 255 or high < 255
+
+
+def _update_manifest_matting_status(manifest_path: Path, image: Image.Image) -> None:
+    raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    metadata = dict(raw.get("metadata") or {})
+    metadata["matting_status"] = "transparent_ready" if _avatar_image_has_alpha(image) else "opaque"
+    raw["metadata"] = metadata
+    manifest_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _update_manifest_dimensions(manifest_path: Path, image: Image.Image) -> None:
@@ -916,6 +945,7 @@ async def create_custom_avatar(
         max_w, max_h = _custom_avatar_max_size()
         fitted_image = _resize_uploaded_avatar_image(image_rgb, max_width=max_w, max_height=max_h)
         _update_manifest_dimensions(target_dir / "manifest.json", fitted_image)
+        _update_manifest_matting_status(target_dir / "manifest.json", fitted_image)
         fitted_image.save(target_dir / "preview.png", format="PNG")
         fitted_image.save(target_dir / "reference.png", format="PNG")
         source_dir = target_dir / "source"

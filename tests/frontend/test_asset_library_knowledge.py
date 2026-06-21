@@ -6,7 +6,7 @@ from pathlib import Path
 def test_asset_library_exposes_knowledge_base_tab_and_modal() -> None:
     source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
 
-    assert 'type AssetTab = "exports" | "knowledge" | "memory" | "avatars" | "voices"' in source
+    assert 'type AssetTab = "exports" | "knowledge" | "memory" | "scenes" | "voices"' in source
     assert "知识库" in source
     assert "新建知识库" in source
     assert "从本地中间文件导入" in source

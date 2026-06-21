@@ -338,12 +338,14 @@ def test_asset_library_workspace_lists_exported_videos():
     assert "AssetLibraryWorkspace" in app
     assert "assetLibrary" in topbar
     assert "导出视频" in asset
-    assert "Avatar资产" in asset
+    assert "场景资产" in asset
     assert "声音资产" in asset
     assert 'apiGet<{ items: ExportVideoItem[] }>("/exports/videos")' in asset
+    assert "listSceneCompositions()" in asset
     assert "download_url" in asset
     assert "navigator.clipboard.writeText" in asset
     assert "apiDelete(`/exports/videos/${item.id}`)" in asset
+    assert "deleteSceneComposition(scene.id)" in asset
 
 
 def test_realtime_recording_uses_browser_media_recorder_and_uploads_export():

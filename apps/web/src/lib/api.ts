@@ -242,6 +242,71 @@ export async function uploadExportVideo(input: UploadExportVideoInput): Promise<
   return apiPostForm<ExportVideoItem>("/exports/videos", form);
 }
 
+export type SceneBackgroundAsset = {
+  id: string;
+  name: string;
+  kind: "image" | "video";
+  mime_type: string;
+  filename: string;
+  size_bytes: number;
+  url: string;
+  created_at: string;
+};
+
+export type SceneComposition = {
+  id: string;
+  name: string;
+  avatar_id: string;
+  background_id: string | null;
+  background_color: string;
+  avatar_fit: "contain" | "cover";
+  avatar_scale: number;
+  avatar_anchor: "center" | "bottom" | "left" | "right";
+  matting_required: boolean;
+  subtitle_style: "none" | "compact" | "lower-third";
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateSceneCompositionInput = {
+  name: string;
+  avatar_id: string;
+  background_id?: string | null;
+  background_color?: string;
+  avatar_fit?: "contain" | "cover";
+  avatar_scale?: number;
+  avatar_anchor?: "center" | "bottom" | "left" | "right";
+  matting_required?: boolean;
+  subtitle_style?: "none" | "compact" | "lower-third";
+};
+
+export async function listSceneBackgrounds(): Promise<{ items: SceneBackgroundAsset[] }> {
+  return apiGet<{ items: SceneBackgroundAsset[] }>("/scene-assets/backgrounds");
+}
+
+export async function uploadSceneBackground(input: { file: File; name: string }): Promise<SceneBackgroundAsset> {
+  const form = new FormData();
+  form.set("file", input.file);
+  form.set("name", input.name);
+  return apiPostForm<SceneBackgroundAsset>("/scene-assets/backgrounds", form);
+}
+
+export async function deleteSceneBackground(backgroundId: string): Promise<{ id: string; deleted: boolean }> {
+  return apiDelete<{ id: string; deleted: boolean }>(`/scene-assets/backgrounds/${encodeURIComponent(backgroundId)}`);
+}
+
+export async function listSceneCompositions(): Promise<{ items: SceneComposition[] }> {
+  return apiGet<{ items: SceneComposition[] }>("/scene-assets/compositions");
+}
+
+export async function createSceneComposition(input: CreateSceneCompositionInput): Promise<SceneComposition> {
+  return apiPost<SceneComposition>("/scene-assets/compositions", input);
+}
+
+export async function deleteSceneComposition(compositionId: string): Promise<{ id: string; deleted: boolean }> {
+  return apiDelete<{ id: string; deleted: boolean }>(`/scene-assets/compositions/${encodeURIComponent(compositionId)}`);
+}
+
 
 export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone" | "reference_video";
 
@@ -441,6 +506,7 @@ export type AvatarSummary = {
   height: number;
   is_custom: boolean;
   has_preview_video: boolean;
+  matting_status: "unknown" | "opaque" | "transparent_ready";
 };
 
 export type CreateSessionResponse = { session_id: string; status: string };

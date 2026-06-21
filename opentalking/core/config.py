@@ -328,6 +328,8 @@ class Settings(BaseSettings):
     models_dir: str = "./models"
     worker_url: str = "http://127.0.0.1:9001"
     exports_dir: str = "./data/exports"
+    scene_assets_dir: str = "./data/scene-assets"
+    scene_asset_max_bytes: int = 200 * 1024 * 1024
     export_max_bytes: int = 1024 * 1024 * 1024
     video_creation_audio_max_bytes: int = 50 * 1024 * 1024
     video_creation_fasterliveportrait_preroll_ms: int = 400

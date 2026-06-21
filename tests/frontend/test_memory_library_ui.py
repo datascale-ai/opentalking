@@ -36,7 +36,7 @@ def test_realtime_settings_memory_does_not_render_editing_tools() -> None:
 def test_asset_library_exposes_memory_tab_and_management_panel() -> None:
     source = (ROOT / "apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
 
-    assert 'type AssetTab = "exports" | "knowledge" | "memory" | "avatars" | "voices"' in source
+    assert 'type AssetTab = "exports" | "knowledge" | "memory" | "scenes" | "voices"' in source
     assert '{ id: "memory", label: "记忆库" }' in source
     assert "renderMemoryTab" in source
     assert "<MemoryPanel" in source

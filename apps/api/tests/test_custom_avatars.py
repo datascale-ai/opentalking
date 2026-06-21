@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,10 +13,20 @@ from PIL import Image
 from apps.cli import prepare_cache
 from apps.api.routes import avatars, sessions
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
 
 def _png_bytes(size: tuple[int, int] = (8, 8)) -> bytes:
     out = BytesIO()
     Image.new("RGB", size, (10, 180, 210)).save(out, format="PNG")
+    return out.getvalue()
+
+
+def _transparent_png_bytes(size: tuple[int, int] = (8, 8)) -> bytes:
+    image = Image.new("RGBA", size, (10, 180, 210, 255))
+    image.putpixel((0, 0), (10, 180, 210, 0))
+    out = BytesIO()
+    image.save(out, format="PNG")
     return out.getvalue()
 
 
@@ -72,6 +83,106 @@ def test_create_custom_avatar_adds_listed_asset_with_preview(tmp_path):
     preview = client.get(f"/avatars/{created['id']}/preview")
     assert preview.status_code == 200
     assert preview.headers["content-type"] == "image/png"
+
+
+def test_avatar_summary_includes_matting_status(tmp_path: Path) -> None:
+    root = tmp_path
+    avatar_dir = root / "anchor"
+    avatar_dir.mkdir()
+    (avatar_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "anchor",
+                "name": "Anchor",
+                "model_type": "flashtalk",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 1,
+                "height": 1,
+                "version": "1.0",
+                "metadata": {"matting_status": "transparent_ready"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (avatar_dir / "preview.png").write_bytes(_png_bytes())
+    (avatar_dir / "reference.png").write_bytes(_png_bytes())
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(avatars_dir=str(root))
+    app.include_router(avatars.router)
+    response = TestClient(app).get("/avatars")
+
+    assert response.status_code == 200
+    assert response.json()[0]["matting_status"] == "transparent_ready"
+
+
+def test_builtin_female_host_transparent_avatar_asset_is_ready() -> None:
+    avatar_dir = REPO_ROOT / "examples" / "avatars" / "female-host-transparent"
+    manifest = json.loads((avatar_dir / "manifest.json").read_text(encoding="utf-8"))
+    reference = avatar_dir / "reference.png"
+    preview = avatar_dir / "preview.png"
+    source = avatar_dir / "source" / "source.png"
+
+    assert manifest["id"] == "female-host-transparent"
+    assert manifest["name"] == "女主持（透明背景）"
+    assert manifest["metadata"]["matting_status"] == "transparent_ready"
+    assert manifest["metadata"]["source_image"] == "source/source.png"
+    assert manifest["metadata"]["source_image_path"] == "reference.png"
+    assert reference.is_file()
+    assert preview.is_file()
+    assert source.is_file()
+
+    image = Image.open(reference)
+    assert image.mode == "RGBA"
+    assert image.size == (manifest["width"], manifest["height"])
+    assert image.getchannel("A").getextrema() == (0, 255)
+    assert hashlib.sha256(reference.read_bytes()).hexdigest() == manifest["metadata"]["source_image_hash"]
+
+
+def test_create_custom_avatar_preserves_uploaded_png_alpha(tmp_path, monkeypatch):
+    base = tmp_path / "base-avatar"
+    base.mkdir()
+    (base / "preview.png").write_bytes(_png_bytes())
+    (base / "reference.png").write_bytes(_png_bytes())
+    (base / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "base-avatar",
+                "name": "Base Avatar",
+                "model_type": "mock",
+                "fps": 25,
+                "sample_rate": 16000,
+                "width": 8,
+                "height": 8,
+                "version": "1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(avatars.mouth_metadata, "detect_mouth_landmarks", lambda frame: None)
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(avatars_dir=str(tmp_path))
+    app.include_router(avatars.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/avatars/custom",
+        data={"base_avatar_id": "base-avatar", "name": "透明形象"},
+        files={"image": ("avatar.png", _transparent_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    created = response.json()
+    assert created["matting_status"] == "transparent_ready"
+    custom_dir = tmp_path / created["id"]
+    manifest = json.loads((custom_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["metadata"]["matting_status"] == "transparent_ready"
+    for rel in ("reference.png", "preview.png", "source/source.png"):
+        image = Image.open(custom_dir / rel)
+        assert image.mode == "RGBA"
+        assert image.getchannel("A").getextrema()[0] == 0
 
 
 def test_quicktalk_model_root_falls_back_to_omnirt_model_root(tmp_path, monkeypatch):
