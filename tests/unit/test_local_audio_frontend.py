@@ -67,7 +67,7 @@ def test_frontend_exposes_api_stt_provider_selection():
     app = (WEB / "App.tsx").read_text(encoding="utf-8")
 
     assert "API 语音识别" in settings
-    assert "DashScope API" in settings
+    assert "百炼 API" in settings
     assert "onAsrProviderChange" in settings
     assert "stt_provider" in chat_input
     assert "fd.append(\"stt_provider\"" in app
