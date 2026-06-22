@@ -387,9 +387,23 @@ class Mem0MemoryProvider(MemoryProvider):
         return True
 
     async def close(self) -> None:
-        close = getattr(self._client, "close", None)
-        if callable(close):
-            await _maybe_await(close())
+        closed: set[int] = set()
+
+        async def close_candidate(candidate: Any) -> None:
+            if candidate is None:
+                return
+            marker = id(candidate)
+            if marker in closed:
+                return
+            closed.add(marker)
+            close = getattr(candidate, "close", None)
+            if callable(close):
+                await _maybe_await(close())
+
+        vector_store = getattr(self._client, "vector_store", None)
+        await close_candidate(self._client)
+        await close_candidate(vector_store)
+        await close_candidate(getattr(vector_store, "client", None))
 
     async def _add(
         self,

@@ -177,13 +177,13 @@ async def test_runtime_config_apply_persists_llm_stt_tts_and_keeps_blank_keys(mo
 
 
 async def test_runtime_config_apply_updates_mem0_keys_and_refreshes_memory_provider(monkeypatch, tmp_path) -> None:
-    cleared = False
+    refreshed = False
 
-    def fake_cache_clear() -> None:
-        nonlocal cleared
-        cleared = True
+    async def fake_close_cached_memory_provider() -> None:
+        nonlocal refreshed
+        refreshed = True
 
-    monkeypatch.setattr(runtime_config, "build_memory_provider", SimpleNamespace(cache_clear=fake_cache_clear))
+    monkeypatch.setattr(runtime_config, "close_cached_memory_provider", fake_close_cached_memory_provider, raising=False)
 
     payload = await runtime_config.apply_runtime_config(
         runtime_config.RuntimeConfigPayload(
@@ -200,7 +200,7 @@ async def test_runtime_config_apply_updates_mem0_keys_and_refreshes_memory_provi
         _request(monkeypatch, tmp_path),
     )
 
-    assert cleared is True
+    assert refreshed is True
     assert payload["mem0"]["llm"]["api_key_set"] is True
     assert payload["mem0"]["embedder"]["api_key_set"] is True
     assert "sk-new-mem0-llm" not in str(payload)
@@ -208,6 +208,22 @@ async def test_runtime_config_apply_updates_mem0_keys_and_refreshes_memory_provi
     assert os.environ["OPENTALKING_MEMORY_MEM0_LLM_API_KEY"] == "sk-new-mem0-llm"
     assert os.environ["OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY"] == "sk-new-mem0-embedder"
     assert os.environ.get("DASHSCOPE_API_KEY") != "sk-new-mem0-llm"
+
+
+async def test_runtime_config_apply_discards_stale_wechat_memory_registry(monkeypatch, tmp_path) -> None:
+    async def fake_close_cached_memory_provider() -> None:
+        return None
+
+    request = _request(monkeypatch, tmp_path)
+    request.app.state.wechat_import_registry = object()
+    monkeypatch.setattr(runtime_config, "close_cached_memory_provider", fake_close_cached_memory_provider, raising=False)
+
+    await runtime_config.apply_runtime_config(
+        runtime_config.RuntimeConfigPayload(mem0_llm_api_key="sk-new-mem0-llm"),
+        request,
+    )
+
+    assert not hasattr(request.app.state, "wechat_import_registry")
 
 
 async def test_runtime_config_apply_rejects_unknown_provider(monkeypatch, tmp_path) -> None:

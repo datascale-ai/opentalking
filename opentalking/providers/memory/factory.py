@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
@@ -8,6 +9,8 @@ from opentalking.providers.memory.base import MemoryProvider
 from opentalking.providers.memory.mem0_provider import InMemoryMemoryProvider, Mem0MemoryProvider
 from opentalking.providers.memory.noop import NoopMemoryProvider
 from opentalking.providers.memory.sqlite_provider import SQLiteMemoryProvider
+
+log = logging.getLogger(__name__)
 
 
 def _strip(value: Any) -> str:
@@ -111,3 +114,15 @@ def build_memory_provider() -> MemoryProvider:
     if provider in {"memory", "inmemory", "in-memory"}:
         return InMemoryMemoryProvider()
     raise ValueError(f"unsupported memory provider: {settings.memory_provider}")
+
+
+async def close_cached_memory_provider() -> None:
+    if build_memory_provider.cache_info().currsize <= 0:
+        return
+    provider = build_memory_provider()
+    try:
+        await provider.close()
+    except Exception:  # noqa: BLE001
+        log.warning("failed to close cached memory provider", exc_info=True)
+    finally:
+        build_memory_provider.cache_clear()

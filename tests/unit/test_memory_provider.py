@@ -875,6 +875,33 @@ def test_mem0_provider_summary_write_uses_infer_false_metadata() -> None:
     asyncio.run(run())
 
 
+def test_mem0_provider_close_closes_nested_vector_store_client() -> None:
+    class FakeVectorClient:
+        def __init__(self) -> None:
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    class FakeVectorStore:
+        def __init__(self) -> None:
+            self.client = FakeVectorClient()
+
+    class FakeMem0:
+        def __init__(self) -> None:
+            self.vector_store = FakeVectorStore()
+
+    async def run() -> None:
+        fake = FakeMem0()
+        provider = Mem0MemoryProvider(client=fake)
+
+        await provider.close()
+
+        assert fake.vector_store.client.closed is True
+
+    asyncio.run(run())
+
+
 def test_sqlite_memory_provider_roundtrip(tmp_path) -> None:
     async def run() -> None:
         provider = SQLiteMemoryProvider(tmp_path / "memory.sqlite3")

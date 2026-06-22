@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from apps.api.core.config import get_settings
-from opentalking.providers.memory.factory import build_memory_provider
+from opentalking.providers.memory.factory import close_cached_memory_provider
 from opentalking.providers.stt.factory import (
     clear_stt_adapter_cache,
     normalize_stt_provider,
@@ -531,12 +531,14 @@ def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
     return updates
 
 
-def _refresh_settings(request: Request) -> Any:
+async def _refresh_settings(request: Request) -> Any:
     get_settings.cache_clear()
     settings = get_settings()
     request.app.state.settings = settings
     clear_stt_adapter_cache()
-    build_memory_provider.cache_clear()
+    await close_cached_memory_provider()
+    if hasattr(request.app.state, "wechat_import_registry"):
+        delattr(request.app.state, "wechat_import_registry")
     return settings
 
 
@@ -580,7 +582,7 @@ async def apply_runtime_config(payload: RuntimeConfigPayload, request: Request) 
     for key in _RUNTIME_ENV_KEYS:
         if key in values:
             os.environ[key] = values[key]
-    settings = _refresh_settings(request)
+    settings = await _refresh_settings(request)
     refreshed_runners = _refresh_live_runners(request, settings)
     result = _current_payload(settings)
     result["applied"] = True
