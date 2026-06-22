@@ -142,10 +142,23 @@ export type RuntimeConfigTts = {
   service_url_set: boolean;
 };
 
+export type RuntimeConfigMem0Model = {
+  provider: string;
+  base_url: string;
+  model: string;
+  api_key_set: boolean;
+};
+
+export type RuntimeConfigMem0 = {
+  llm: RuntimeConfigMem0Model;
+  embedder: RuntimeConfigMem0Model;
+};
+
 export type RuntimeConfigResponse = {
   llm: RuntimeConfigLlm;
   stt: RuntimeConfigStt;
   tts: RuntimeConfigTts;
+  mem0: RuntimeConfigMem0;
   applied?: boolean;
   requires_new_session?: boolean;
   live_runners_refreshed?: number;
@@ -164,6 +177,14 @@ export type RuntimeConfigApplyInput = {
   tts_model?: string;
   tts_voice?: string;
   tts_api_key?: string;
+  mem0_llm_provider?: string;
+  mem0_llm_base_url?: string;
+  mem0_llm_api_key?: string;
+  mem0_llm_model?: string;
+  mem0_embedder_provider?: string;
+  mem0_embedder_base_url?: string;
+  mem0_embedder_api_key?: string;
+  mem0_embedder_model?: string;
   sync_dashscope_api_key?: boolean;
 };
 

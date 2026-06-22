@@ -388,7 +388,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
               onChange={(e) => onProviderChange(e.target.value as CloneProvider)}
               disabled={busy}
             >
-              <option value="dashscope">千问（DashScope 复刻）</option>
+              <option value="dashscope">千问（百炼复刻）</option>
               <option value="xiaomi_mimo">小米 MiMo VoiceClone</option>
               <option value="local_cosyvoice">本地 CosyVoice</option>
               <option value="indextts">Local IndexTTS</option>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Literal
+import uuid
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -44,6 +45,10 @@ def _ensure_character(value: str | None) -> str:
     return character_id
 
 
+def _library_id(value: str | None) -> str:
+    return (value or "").strip() or f"lib_{uuid.uuid4().hex[:12]}"
+
+
 @router.get("/libraries")
 async def list_libraries(
     profile_id: str = Query("default"),
@@ -61,7 +66,7 @@ async def list_libraries(
 async def create_library(body: MemoryLibraryRequest) -> dict[str, object]:
     provider = build_memory_provider()
     library = await provider.create_library(
-        library_id=(body.id or "").strip() or None,
+        library_id=_library_id(body.id),
         name=(body.name or "").strip() or None,
         profile_id=_profile(body.profile_id),
         character_id=_ensure_character(body.character_id),

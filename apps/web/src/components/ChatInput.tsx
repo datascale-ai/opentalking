@@ -40,7 +40,7 @@ async function awaitSttWsReply(ws: WebSocket): Promise<{ text?: string; error?: 
       settle(() =>
         reject(
           new Error(
-            `语音识别等待超时（${STT_WS_REPLY_MS / 1000}s）。若后端无 STT 日志，多为连接未到达服务或 DashScope 阻塞。`,
+            `语音识别等待超时（${STT_WS_REPLY_MS / 1000}s）。若后端无 STT 日志，多为连接未到达服务或百炼阻塞。`,
           ),
         ),
       );

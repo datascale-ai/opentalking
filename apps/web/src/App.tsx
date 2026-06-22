@@ -10,6 +10,7 @@ import {
   type FasterLivePortraitConfig,
   type Wav2LipPostprocessMode,
 } from "./components/SettingsPanel";
+import { RuntimeConfigWorkspace } from "./components/RuntimeConfigWorkspace";
 import { TopBar, type StudioWorkflow } from "./components/TopBar";
 import { ToastStack, type ToastMessage, type ToastTone } from "./components/ToastStack";
 import { VideoBackground } from "./components/VideoBackground";
@@ -2616,6 +2617,22 @@ export default function App() {
     ? EDGE_ZH_VOICES.find((voice) => voice.id === edgeVoice)?.label ?? edgeVoice
     : bailianVoices.find((voice) => voice.id === qwenVoice)?.label ?? (qwenVoice || "暂无音色");
   const selectedMemoryLibrary = memoryLibraries.find((library) => library.id === memoryLibraryId) ?? null;
+  const runtimeConfigTtsProvider = runtimeConfig?.tts.provider ?? "";
+  const runtimeConfigTtsReady = Boolean(
+    runtimeConfig?.tts.api_key_set
+      || runtimeConfigTtsProvider === "edge"
+      || runtimeConfigTtsProvider === "local_cosyvoice"
+      || runtimeConfigTtsProvider === "indextts"
+      || runtimeConfigTtsProvider === "local_indextts"
+      || runtimeConfigTtsProvider === "omnirt_indextts",
+  );
+  const runtimeConfigReady = Boolean(
+    runtimeConfig?.llm.api_key_set
+      && runtimeConfig.stt.api_key_set
+      && runtimeConfigTtsReady
+      && runtimeConfig.mem0?.llm.api_key_set
+      && runtimeConfig.mem0?.embedder.api_key_set,
+  );
   const memorySummary = {
     enabled: memoryEnabled && Boolean(selectedMemoryLibrary),
     libraryName: selectedMemoryLibrary?.name || selectedMemoryLibrary?.id || null,
@@ -2630,6 +2647,8 @@ export default function App() {
         flashtalkRecordPhase={ftRecordPhase}
         flashtalkRecordBusy={ftRecordBusy}
         recordingSaving={recordingSaving}
+        runtimeConfigReady={runtimeConfigReady}
+        runtimeConfigLoading={runtimeConfigLoading}
         onInactiveModuleClick={(label) => notify(`${label}模块规划中。当前可用的是实时对话、视频克隆、数字人配置、语音驱动和导出能力。`, "info")}
         onWorkflowChange={(next) => {
           setWorkflow(next);
@@ -2731,6 +2750,16 @@ export default function App() {
             onNotify={notify}
           />
         </div>
+      ) : workflow === "runtimeConfig" ? (
+        <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
+          <RuntimeConfigWorkspace
+            runtimeConfig={runtimeConfig}
+            runtimeConfigLoading={runtimeConfigLoading}
+            runtimeConfigApplying={runtimeConfigApplying}
+            onRuntimeConfigRefresh={() => void refreshRuntimeConfig()}
+            onRuntimeConfigApply={handleApplyRuntimeConfig}
+          />
+        </div>
       ) : (
       <div className="flex min-h-0 flex-col lg:h-[calc(100vh-3.5rem)] lg:flex-row">
         <div className="order-2 min-h-0 lg:order-none lg:h-full lg:shrink-0">
@@ -2743,11 +2772,6 @@ export default function App() {
             avatarId={avatarId}
             model={model}
             modelConnected={selectedModelConnected}
-            runtimeConfig={runtimeConfig}
-            runtimeConfigLoading={runtimeConfigLoading}
-            runtimeConfigApplying={runtimeConfigApplying}
-            onRuntimeConfigRefresh={() => void refreshRuntimeConfig()}
-            onRuntimeConfigApply={handleApplyRuntimeConfig}
             wav2lipPostprocessMode={wav2lipPostprocessMode}
             wav2lipPostprocessModeLocked={wav2lipPostprocessModeLocked}
             fasterliveportraitConfig={fasterliveportraitConfig}

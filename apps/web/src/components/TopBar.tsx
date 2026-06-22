@@ -28,7 +28,7 @@ const DOT_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export type FlashtalkRecordPhase = "idle" | "recording" | "stopped";
-export type StudioWorkflow = "realtime" | "videoCreation" | "videoClone" | "assetLibrary";
+export type StudioWorkflow = "realtime" | "videoCreation" | "videoClone" | "assetLibrary" | "runtimeConfig";
 
 interface TopBarProps {
   connection: ConnectionStatus;
@@ -37,6 +37,8 @@ interface TopBarProps {
   flashtalkRecordPhase?: FlashtalkRecordPhase;
   flashtalkRecordBusy?: boolean;
   recordingSaving?: boolean;
+  runtimeConfigReady?: boolean;
+  runtimeConfigLoading?: boolean;
   onInactiveModuleClick?: (label: string) => void;
   onFlashtalkRecordStart?: () => void;
   onFlashtalkRecordStop?: () => void;
@@ -51,6 +53,8 @@ export function TopBar({
   flashtalkRecordPhase = "idle",
   flashtalkRecordBusy = false,
   recordingSaving = false,
+  runtimeConfigReady = false,
+  runtimeConfigLoading = false,
   onInactiveModuleClick,
   onFlashtalkRecordStart,
   onFlashtalkRecordStop,
@@ -99,17 +103,14 @@ export function TopBar({
             </button>
           );
         })}
-        {["运行监控"].map((item) => (
-          <button
-            key={item}
-            type="button"
-            className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-white/70 hover:text-slate-700"
-            title={`${item}规划中`}
-            onClick={() => onInactiveModuleClick?.(item)}
-          >
-            {item}
-          </button>
-        ))}
+        <button
+          type="button"
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-white/70 hover:text-slate-700"
+          title="运行监控规划中"
+          onClick={() => onInactiveModuleClick?.("运行监控")}
+        >
+          运行监控
+        </button>
       </nav>
 
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
@@ -166,6 +167,20 @@ export function TopBar({
             ) : null}
           </div>
         ) : null}
+        <button
+          type="button"
+          onClick={() => onWorkflowChange?.("runtimeConfig")}
+          className={`h-8 rounded-lg border px-3 text-xs font-semibold transition ${
+            workflow === "runtimeConfig"
+              ? "border-cyan-200 bg-cyan-50 text-cyan-700 shadow-sm"
+              : runtimeConfigReady
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+          }`}
+          title={runtimeConfigLoading ? "API 配置读取中" : runtimeConfigReady ? "API 配置已配置" : "API 配置未配置"}
+        >
+          {runtimeConfigReady ? "API配置（已配置）" : "API配置（未配置）"}
+        </button>
         <div
           className={`flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs font-medium sm:px-2.5 ${PILL_COLORS[connection]}`}
           title={DOT_LABELS[connection]}

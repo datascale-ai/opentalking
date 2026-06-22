@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import time
 from pathlib import Path
@@ -10,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from apps.api.core.config import get_settings
+from opentalking.providers.memory.factory import build_memory_provider
 from opentalking.providers.stt.factory import (
     clear_stt_adapter_cache,
     normalize_stt_provider,
@@ -22,6 +24,7 @@ from opentalking.providers.tts.providers import normalize_tts_provider
 router = APIRouter(prefix="/runtime-config", tags=["runtime-config"])
 
 _ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+_ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 
 _RUNTIME_ENV_KEYS = {
     "DASHSCOPE_API_KEY",
@@ -70,6 +73,14 @@ _RUNTIME_ENV_KEYS = {
     "OPENTALKING_TTS_XIAOMI_MODEL",
     "OPENTALKING_TTS_XIAOMI_VOICE",
     "OPENTALKING_TTS_XIAOMI_API_KEY",
+    "OPENTALKING_MEMORY_MEM0_LLM_PROVIDER",
+    "OPENTALKING_MEMORY_MEM0_LLM_BASE_URL",
+    "OPENTALKING_MEMORY_MEM0_LLM_API_KEY",
+    "OPENTALKING_MEMORY_MEM0_LLM_MODEL",
+    "OPENTALKING_MEMORY_MEM0_EMBEDDER_PROVIDER",
+    "OPENTALKING_MEMORY_MEM0_EMBEDDER_BASE_URL",
+    "OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY",
+    "OPENTALKING_MEMORY_MEM0_EMBEDDER_MODEL",
 }
 
 
@@ -86,6 +97,14 @@ class RuntimeConfigPayload(BaseModel):
     tts_model: Optional[str] = Field(default=None, max_length=256)
     tts_voice: Optional[str] = Field(default=None, max_length=256)
     tts_api_key: Optional[str] = Field(default=None, max_length=4096)
+    mem0_llm_provider: Optional[str] = Field(default=None, max_length=64)
+    mem0_llm_base_url: Optional[str] = Field(default=None, max_length=2048)
+    mem0_llm_api_key: Optional[str] = Field(default=None, max_length=4096)
+    mem0_llm_model: Optional[str] = Field(default=None, max_length=256)
+    mem0_embedder_provider: Optional[str] = Field(default=None, max_length=64)
+    mem0_embedder_base_url: Optional[str] = Field(default=None, max_length=2048)
+    mem0_embedder_api_key: Optional[str] = Field(default=None, max_length=4096)
+    mem0_embedder_model: Optional[str] = Field(default=None, max_length=256)
     sync_dashscope_api_key: bool = True
 
 
@@ -125,7 +144,22 @@ def _read_env_lines(path: Path) -> tuple[list[str], dict[str, str]]:
 
 
 def _env_value(values: dict[str, str], key: str, fallback: str = "") -> str:
-    return os.environ.get(key, "").strip() or values.get(key, "").strip() or fallback
+    value = os.environ.get(key, "").strip() or values.get(key, "").strip() or fallback
+    return _expand_env_refs(str(value), values).strip()
+
+
+def _expand_env_refs(value: str, values: dict[str, str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        key = match.group(1) or match.group(2) or ""
+        return os.environ.get(key, "") or values.get(key, "") or match.group(0)
+
+    previous = value
+    for _ in range(5):
+        expanded = _ENV_REF_RE.sub(replace, previous)
+        if expanded == previous:
+            return expanded
+        previous = expanded
+    return previous
 
 
 def _settings_value(settings: Any, name: str, default: str = "") -> str:
@@ -286,6 +320,61 @@ def _current_tts_payload(provider: str, settings: Any, values: dict[str, str]) -
     }
 
 
+def _current_mem0_model_payload(
+    *,
+    values: dict[str, str],
+    settings: Any,
+    prefix: str,
+    settings_prefix: str,
+    default_model: str,
+) -> dict[str, Any]:
+    provider = _env_value(
+        values,
+        f"OPENTALKING_MEMORY_MEM0_{prefix}_PROVIDER",
+        _settings_value(settings, f"memory_mem0_{settings_prefix}_provider", "openai"),
+    )
+    base_url = _env_value(
+        values,
+        f"OPENTALKING_MEMORY_MEM0_{prefix}_BASE_URL",
+        _settings_value(settings, f"memory_mem0_{settings_prefix}_base_url"),
+    )
+    model = _env_value(
+        values,
+        f"OPENTALKING_MEMORY_MEM0_{prefix}_MODEL",
+        _settings_value(settings, f"memory_mem0_{settings_prefix}_model", default_model),
+    )
+    key = _env_value(
+        values,
+        f"OPENTALKING_MEMORY_MEM0_{prefix}_API_KEY",
+        _settings_value(settings, f"memory_mem0_{settings_prefix}_api_key"),
+    )
+    return {
+        "provider": provider or "openai",
+        "base_url": base_url.rstrip("/"),
+        "model": model,
+        "api_key_set": bool(key),
+    }
+
+
+def _current_mem0_payload(settings: Any, values: dict[str, str]) -> dict[str, Any]:
+    return {
+        "llm": _current_mem0_model_payload(
+            values=values,
+            settings=settings,
+            prefix="LLM",
+            settings_prefix="llm",
+            default_model="qwen-flash",
+        ),
+        "embedder": _current_mem0_model_payload(
+            values=values,
+            settings=settings,
+            prefix="EMBEDDER",
+            settings_prefix="embedder",
+            default_model="text-embedding-v4",
+        ),
+    }
+
+
 def _current_payload(settings: Any | None = None) -> dict[str, Any]:
     settings = settings or get_settings()
     _, values = _read_env_lines(_ENV_PATH)
@@ -306,11 +395,12 @@ def _current_payload(settings: Any | None = None) -> dict[str, Any]:
     return {
         "llm": {
             "base_url": _env_value(values, "OPENTALKING_LLM_BASE_URL", _settings_value(settings, "llm_base_url")).rstrip("/"),
-            "model": _env_value(values, "OPENTALKING_LLM_MODEL", _settings_value(settings, "llm_model", "qwen-turbo")),
+            "model": _env_value(values, "OPENTALKING_LLM_MODEL", _settings_value(settings, "llm_model", "qwen-flash")),
             "api_key_set": bool(llm_key),
         },
         "stt": _current_stt_payload(stt_provider, settings, values),
         "tts": _current_tts_payload(tts_provider, settings, values),
+        "mem0": _current_mem0_payload(settings, values),
     }
 
 
@@ -416,6 +506,26 @@ def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
             updates["OPENTALKING_TTS_DASHSCOPE_API_KEY"] = value
         sync_key = sync_key or value
 
+    if value := _strip(payload.mem0_llm_provider):
+        updates["OPENTALKING_MEMORY_MEM0_LLM_PROVIDER"] = value
+    if value := _strip(payload.mem0_llm_base_url):
+        updates["OPENTALKING_MEMORY_MEM0_LLM_BASE_URL"] = value.rstrip("/")
+    if value := _strip(payload.mem0_llm_model):
+        updates["OPENTALKING_MEMORY_MEM0_LLM_MODEL"] = value
+    if value := _strip(payload.mem0_llm_api_key):
+        updates["OPENTALKING_MEMORY_MEM0_LLM_API_KEY"] = value
+        sync_key = sync_key or value
+
+    if value := _strip(payload.mem0_embedder_provider):
+        updates["OPENTALKING_MEMORY_MEM0_EMBEDDER_PROVIDER"] = value
+    if value := _strip(payload.mem0_embedder_base_url):
+        updates["OPENTALKING_MEMORY_MEM0_EMBEDDER_BASE_URL"] = value.rstrip("/")
+    if value := _strip(payload.mem0_embedder_model):
+        updates["OPENTALKING_MEMORY_MEM0_EMBEDDER_MODEL"] = value
+    if value := _strip(payload.mem0_embedder_api_key):
+        updates["OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY"] = value
+        sync_key = sync_key or value
+
     if payload.sync_dashscope_api_key and sync_key:
         updates.setdefault("DASHSCOPE_API_KEY", sync_key)
     return updates
@@ -426,6 +536,7 @@ def _refresh_settings(request: Request) -> Any:
     settings = get_settings()
     request.app.state.settings = settings
     clear_stt_adapter_cache()
+    build_memory_provider.cache_clear()
     return settings
 
 

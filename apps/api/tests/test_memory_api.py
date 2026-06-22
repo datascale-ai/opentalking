@@ -69,6 +69,36 @@ def test_memory_api_import_list_delete(monkeypatch) -> None:
         assert deleted.json() == {"deleted": True}
 
 
+def test_memory_api_generates_unique_library_ids_when_id_is_omitted(monkeypatch) -> None:
+    provider = InMemoryMemoryProvider()
+    monkeypatch.setattr(memory_routes, "build_memory_provider", lambda: provider)
+
+    app = FastAPI()
+    app.include_router(memory_routes.router)
+
+    with TestClient(app) as client:
+        first = client.post(
+            "/memory/libraries",
+            json={"name": "First", "character_id": "avatar-a"},
+        )
+        second = client.post(
+            "/memory/libraries",
+            json={"name": "Second", "character_id": "avatar-a"},
+        )
+        libraries = client.get(
+            "/memory/libraries",
+            params={"profile_id": "default", "character_id": "avatar-a"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["id"] != second.json()["id"]
+    assert first.json()["id"] != "default"
+    assert second.json()["id"] != "default"
+    assert libraries.status_code == 200
+    assert len(libraries.json()["items"]) == 2
+
+
 def test_memory_api_uses_configured_sqlite_provider(monkeypatch, tmp_path) -> None:
     config_file = tmp_path / "opentalking.yaml"
     config_file.write_text(
