@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import io
 import os
 import sys
@@ -16,6 +17,112 @@ import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+
+
+def _soundfile_load_wav(wav: str, target_sr: int):
+    import torch
+
+    audio, sr = sf.read(wav, dtype="float32", always_2d=False)
+    arr = np.asarray(audio, dtype=np.float32)
+    if arr.ndim > 1:
+        arr = arr.mean(axis=1)
+    tensor = torch.from_numpy(arr).unsqueeze(0)
+    if int(sr) == int(target_sr):
+        return tensor
+    try:
+        import torchaudio.functional as AF
+
+        return AF.resample(tensor, int(sr), int(target_sr))
+    except Exception:
+        import torch.nn.functional as F
+
+        n_dst = max(1, int(round(tensor.shape[-1] * int(target_sr) / int(sr))))
+        return F.interpolate(
+            tensor.unsqueeze(0),
+            size=n_dst,
+            mode="linear",
+            align_corners=False,
+        ).squeeze(0)
+
+
+def _build_strongly_typed_trt(trt_model: str, trt_kwargs: dict[str, Any], onnx_model: str) -> None:
+    import tensorrt as trt
+
+    logger = trt.Logger(trt.Logger.INFO)
+    builder = trt.Builder(logger)
+    network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.STRONGLY_TYPED)
+    network = builder.create_network(network_flags)
+    parser = trt.OnnxParser(network, logger)
+    config = builder.create_builder_config()
+    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 32)
+    profile = builder.create_optimization_profile()
+    with open(onnx_model, "rb") as f:
+        if not parser.parse(f.read()):
+            errors = [str(parser.get_error(i)) for i in range(parser.num_errors)]
+            raise RuntimeError(f"failed to parse {onnx_model}: {'; '.join(errors)}")
+    for i, name in enumerate(trt_kwargs["input_names"]):
+        profile.set_shape(name, trt_kwargs["min_shape"][i], trt_kwargs["opt_shape"][i], trt_kwargs["max_shape"][i])
+    config.add_optimization_profile(profile)
+    engine_bytes = builder.build_serialized_network(network, config)
+    if engine_bytes is None:
+        raise RuntimeError(f"failed to build TensorRT engine from {onnx_model}")
+    with open(trt_model, "wb") as f:
+        f.write(engine_bytes)
+
+
+def _patch_cosyvoice_autocast_fp16_trt() -> None:
+    try:
+        import cosyvoice.cli.model as cosy_model
+    except Exception:
+        return
+    if getattr(cosy_model, "_opentalking_autocast_fp16_trt_patched", False):
+        return
+
+    original_convert = cosy_model.convert_onnx_to_trt
+    original_load_trt = cosy_model.CosyVoiceModel.load_trt
+
+    def convert_onnx_to_trt(trt_model, trt_kwargs, onnx_model, fp16):
+        onnx_path = Path(str(onnx_model))
+        if fp16 and onnx_path.name == "flow.decoder.estimator.autocast_fp16.onnx":
+            print(f"building strongly-typed autocast fp16 TensorRT engine: {trt_model}", flush=True)
+            return _build_strongly_typed_trt(str(trt_model), trt_kwargs, str(onnx_model))
+        return original_convert(trt_model, trt_kwargs, onnx_model, fp16)
+
+    def load_trt(self, flow_decoder_estimator_model, flow_decoder_onnx_model, trt_concurrent, fp16):
+        if fp16:
+            model_dir = Path(str(flow_decoder_estimator_model)).parent
+            autocast_onnx = model_dir / "flow.decoder.estimator.autocast_fp16.onnx"
+            if autocast_onnx.exists():
+                flow_decoder_estimator_model = str(model_dir / "flow.decoder.estimator.autocast_fp16.mygpu.plan")
+                flow_decoder_onnx_model = str(autocast_onnx)
+                setattr(self, "_opentalking_trt_autocast_fp16", True)
+                setattr(self, "_opentalking_trt_plan", flow_decoder_estimator_model)
+                setattr(self, "_opentalking_trt_onnx", flow_decoder_onnx_model)
+                print(
+                    "using CosyVoice autocast fp16 TensorRT asset "
+                    f"onnx={flow_decoder_onnx_model} plan={flow_decoder_estimator_model}",
+                    flush=True,
+                )
+        return original_load_trt(self, flow_decoder_estimator_model, flow_decoder_onnx_model, trt_concurrent, fp16)
+
+    cosy_model.convert_onnx_to_trt = convert_onnx_to_trt
+    cosy_model.CosyVoiceModel.load_trt = load_trt
+    cosy_model._opentalking_autocast_fp16_trt_patched = True
+    print("patched cosyvoice autocast fp16 TensorRT loader", flush=True)
+
+
+def _patch_cosyvoice_load_wav() -> None:
+    patched: list[str] = []
+    for module_name in ("cosyvoice.utils.file_utils", "cosyvoice.cli.frontend"):
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:
+            continue
+        setattr(module, "load_wav", _soundfile_load_wav)
+        patched.append(module_name)
+    if patched:
+        print(f"patched cosyvoice load_wav via soundfile modules={','.join(patched)}", flush=True)
 
 
 class SynthesizeRequest(BaseModel):
@@ -77,6 +184,15 @@ def apply_streaming_tuning(
     effective = current_streaming_tuning(cosyvoice)
     setattr(model, "_opentalking_streaming_tuning", effective)
     return {"requested": requested, "applied": applied, "effective": effective}
+
+
+def ensure_cosyvoice_flow_half(cosyvoice: Any) -> bool:
+    model = _cosyvoice_model(cosyvoice)
+    flow = getattr(model, "flow", None)
+    if flow is None or not hasattr(flow, "half"):
+        return False
+    flow.half()
+    return True
 
 
 def reset_streaming_tuning(cosyvoice: Any) -> dict[str, Any]:
@@ -207,6 +323,9 @@ def current_runtime_info(cosyvoice: Any) -> dict[str, Any]:
         "fp16": bool(getattr(cosyvoice, "fp16", False)),
         "flow_decoder_estimator": estimator_type,
         "flow_decoder_trt": estimator_type == "TrtContextWrapper",
+        "trt_autocast_fp16": bool(getattr(model, "_opentalking_trt_autocast_fp16", False)),
+        "trt_plan": getattr(model, "_opentalking_trt_plan", ""),
+        "trt_onnx": getattr(model, "_opentalking_trt_onnx", ""),
     }
 
 
@@ -293,8 +412,10 @@ class CosyVoiceService:
         for path in (runtime, matcha):
             if str(path) not in sys.path:
                 sys.path.insert(0, str(path))
+        _patch_cosyvoice_load_wav()
         try:
             from cosyvoice.cli.cosyvoice import AutoModel
+            _patch_cosyvoice_autocast_fp16_trt()
         except ImportError as exc:
             raise RuntimeError(
                 "CosyVoice runtime is not importable. Clone FunAudioLLM/CosyVoice and install its requirements in this service venv."
@@ -318,6 +439,9 @@ class CosyVoiceService:
             "trt_concurrent": self.trt_concurrent,
         }
         self._model, self._loaded_model_kwargs = _instantiate_automodel(AutoModel, model_kwargs)
+        flow_half_applied = False
+        if self.load_trt and self.fp16:
+            flow_half_applied = ensure_cosyvoice_flow_half(self._model)
         self._apply_runtime_tuning()
         # Keep the service zero-shot first so it does not require precomputed spk2info.pt.
         print(
@@ -325,6 +449,7 @@ class CosyVoiceService:
             f"model={self.model_dir} runtime={runtime} device={self.device} "
             f"fp16={self.fp16} load_jit={self.load_jit} load_trt={self.load_trt} "
             f"load_vllm={self.load_vllm} trt_concurrent={self.trt_concurrent} "
+            f"flow_half_applied={flow_half_applied} "
             f"seconds={time.perf_counter() - t0:.3f}",
             flush=True,
         )
@@ -386,6 +511,7 @@ class CosyVoiceService:
                 "torch",
                 "torchaudio",
                 "numpy",
+                "onnxruntime-gpu",
                 "onnxruntime",
             ),
         }
@@ -542,9 +668,10 @@ class CosyVoiceService:
             self.model()
             return
         req = SynthesizeRequest(text=warmup_text)
+        # Exhaust the stream so CosyVoice releases its request state and model lock.
         stream, _sr = self.synthesize_pcm_stream(req)
         for _chunk in stream:
-            break
+            pass
 
 
 def create_app(service: CosyVoiceService) -> FastAPI:

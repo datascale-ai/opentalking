@@ -60,11 +60,38 @@ export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/s
 export UV_INDEX_URL="${UV_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export UV_LINK_MODE=copy
-uv sync --extra dev --extra models --extra local-audio --extra local-cosyvoice-service --python 3.11
+uv sync --extra dev --extra models --extra local-audio --python 3.11
 .venv/bin/python scripts/download_local_audio_models.py \
   --root ./models/local-audio \
   --model fun-cosyvoice3-0.5b-2512
 ```
+
+这一步会从 ModelScope 下载 CosyVoice3 主模型：
+
+| 资产 | 来源 | 目标目录 |
+|---|---|---|
+| CosyVoice3 主权重 | ModelScope `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` | `./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512/` |
+
+主模型目录至少需要包含 sidecar runtime 会加载的文件，包括 `cosyvoice3.yaml`、
+`llm.pt`、`flow.pt`、`hift.pt`、`speech_tokenizer_v3.onnx`、
+`speech_tokenizer_v3.batch.onnx`、`campplus.onnx` 和
+`flow.decoder.estimator.fp32.onnx`。内置 zero-shot 音色还需要
+`OPENTALKING_TTS_LOCAL_COSYVOICE_PROMPT_AUDIO` 指向一段 prompt wav；复刻音色会把
+自己的 prompt wav 保存在本地音色目录。
+
+如果要启用 fp16 TensorRT，再从 Hugging Face 下载额外 ONNX 资产，并放到同一个主模型目录：
+
+| 资产 | 来源 | 用途 |
+|---|---|---|
+| `flow.decoder.estimator.autocast_fp16.onnx` | Hugging Face `yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX` | `FP16 + LOAD_TRT=1` 必需；OpenTalking 会由它生成 `flow.decoder.estimator.autocast_fp16.mygpu.plan`。 |
+| `flow.decoder.estimator.streaming.autocast_fp16.onnx` | Hugging Face `yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX` | 可选 streaming fp16 ONNX 资产；建议和 estimator ONNX 放在一起，保持 runtime 兼容。 |
+
+生成的 `*.mygpu.plan` 是和机器绑定的 TensorRT engine，不要跨 GPU / TensorRT /
+CUDA 环境复制；在目标机器上由 ONNX 重新构建。
+
+这个主 `.venv` 负责 OpenTalking、SenseVoice 和视频后端。CosyVoice 需要独立
+sidecar venv，避免它的 `transformers==4.51.3` runtime 与 OpenTalking 的
+`transformers>=4.57,<6` 冲突。
 
 准备 CosyVoice runtime：
 
@@ -75,18 +102,50 @@ cd ./models/local-audio/runtime/CosyVoice
 git submodule update --init --recursive
 ```
 
+创建或更新 CosyVoice 专用 sidecar venv：
+
+```bash title="终端"
+OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
+  bash scripts/prepare_cosyvoice_venv.sh
+```
+
+如果要启用 TensorRT，把 TRT 依赖安装在 CosyVoice sidecar venv 中，不要安装进 OpenTalking 主 `.venv`：
+
+```bash title="终端"
+PIP_EXTRA_INDEX_URL=https://pypi.nvidia.com/ OPENTALKING_COSYVOICE_INSTALL_TENSORRT=1 \
+  OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice bash scripts/prepare_cosyvoice_venv.sh
+```
+
 启动本地 TTS service：
 
 ```bash title="终端"
-OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD=1 \
-python scripts/local_cosyvoice_service.py --host 127.0.0.1 --port 19090
+bash scripts/quickstart/start_local_cosyvoice.sh --port 19090
 ```
 
 在既有 GPU 验证中，CosyVoice3 的关键问题不是单次 TTFA，而是随机种子导致的生成长度漂移。OpenTalking 的本地 CosyVoice service 因此默认保留两类稳定性保护：`OPENTALKING_TTS_LOCAL_COSYVOICE_MASK_STOP_TOKENS=1` 会屏蔽 CosyVoice LLM 暴露的全部 stop token，`OPENTALKING_TTS_LOCAL_COSYVOICE_MAX_TOKEN_TEXT_RATIO=6` 会限制 token/text 比例，避免长文本偶发生成过长音频。不要为了追求更快首包把这两个保护关掉。
 
 TensorRT 是可选加速。只有当当前 CosyVoice runtime、CUDA、onnxruntime-gpu/TensorRT engine 与模型目录匹配时再开启：
 
-```env title=".env"
+```bash title="终端"
+.venv-cosyvoice/bin/python -c "import tensorrt as trt; print(trt.__version__)"
+test -f ./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512/flow.decoder.estimator.fp32.onnx
+```
+
+CosyVoice3 的 fp16 TRT 推荐使用官方 autocast fp16 ONNX 资产。普通 `flow.decoder.estimator.fp32.onnx` 可以生成 TRT engine，但在部分 GPU/TensorRT 组合上会出现 NaN 或静音；如果要开启 `FP16 + LOAD_TRT`，先把 `flow.decoder.estimator.autocast_fp16.onnx` 放到同一个模型目录。服务器需要代理访问 Hugging Face 时，只给下载命令临时注入代理变量即可，不要写入 OpenTalking 主服务环境：
+
+```bash title="终端"
+env ALL_PROXY=socks5h://127.0.0.1:7890 HTTPS_PROXY=socks5h://127.0.0.1:7890 \
+  HF_ENDPOINT=https://huggingface.co .venv-cosyvoice/bin/python - <<'PY'
+from huggingface_hub import hf_hub_download
+repo = "yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX"
+target = "./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512"
+for name in ["flow.decoder.estimator.autocast_fp16.onnx", "flow.decoder.estimator.streaming.autocast_fp16.onnx"]:
+    hf_hub_download(repo_id=repo, filename=name, repo_type="model", local_dir=target)
+PY
+```
+
+```env title="scripts/quickstart/env"
+OPENTALKING_TTS_LOCAL_COSYVOICE_FP16=auto
 OPENTALKING_TTS_LOCAL_COSYVOICE_LOAD_TRT=1
 OPENTALKING_TTS_LOCAL_COSYVOICE_TRT_CONCURRENT=1
 OPENTALKING_TTS_LOCAL_COSYVOICE_TOKEN_HOP_LEN=8
@@ -94,11 +153,24 @@ OPENTALKING_TTS_LOCAL_COSYVOICE_TOKEN_MAX_HOP_LEN=16
 OPENTALKING_TTS_LOCAL_COSYVOICE_STREAM_SCALE_FACTOR=1
 ```
 
-启动后先检查 sidecar 健康信息，确认 `runtime_flags.load_trt`、`streaming`、`llm_token_ratio` 和 `llm_stop_token_patch` 符合预期：
+`start_local_cosyvoice.sh` 会自动把 sidecar venv 里的 `site-packages/tensorrt_libs` 加入 `LD_LIBRARY_PATH`。首次启动 `FP16 + LOAD_TRT=1` 时，如果模型目录里存在 `flow.decoder.estimator.autocast_fp16.onnx`，OpenTalking 会从它生成当前 GPU 对应的 `flow.decoder.estimator.autocast_fp16.mygpu.plan`；这个步骤可能比普通启动更久。SenseVoice 仍然运行在 OpenTalking 主 `.venv`，不需要也不应该跟随 CosyVoice TRT 配置。
+
+启动后先检查 sidecar 健康信息，确认 `runtime_flags.load_trt`、`runtime.trt_autocast_fp16`、`streaming`、`llm_token_ratio` 和 `llm_stop_token_patch` 符合预期：
 
 ```bash title="终端"
 curl -fsS http://127.0.0.1:19090/health | python3 -m json.tool
 ```
+
+在 NVIDIA RTX 3090 Linux 服务器上实测，CosyVoice3 使用独立 sidecar venv，已加载
+`FP16 + LOAD_TRT=1` 和 autocast fp16 TensorRT plan。测试直接请求 sidecar 的
+`/synthesize`，TTFB 按第一批 PCM 字节到达时间计算：
+
+| 文本长度 | TTFB | 总耗时 | 音频时长 | RTF |
+|---:|---:|---:|---:|---:|
+| 43 字 | 0.683 s | 6.215 s | 7.200 s | 0.863 |
+| 42 字 | 0.642 s | 5.858 s | 6.960 s | 0.842 |
+| 29 字 | 0.639 s | 5.771 s | 6.520 s | 0.885 |
+| **平均** | **0.655 s** | **5.948 s** | **6.893 s** | **0.863** |
 
 完整本地语音输入、语音合成和 QuickTalk 视频链路见 [本地 STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md)。
 

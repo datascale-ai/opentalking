@@ -60,12 +60,17 @@ OPENTALKING_TTS_DASHSCOPE_API_KEY=<dashscope-tts-key>
 ## Install and Models
 
 ```bash title="terminal"
-uv sync --extra dev --extra models --extra local-audio --extra local-cosyvoice-service --extra quicktalk-cuda --python 3.11
+uv sync --extra dev --extra models --extra local-audio --extra quicktalk-cuda --python 3.11
 python scripts/download_local_audio_models.py \
   --root ./models/local-audio \
   --model sensevoice-small \
   --model fun-cosyvoice3-0.5b-2512
 ```
+
+Use the main `.venv` for OpenTalking, SenseVoice, and QuickTalk. Create a
+separate CosyVoice sidecar venv after the runtime checkout.
+
+For CosyVoice3 model sources and the optional fp16 TensorRT ONNX files, see [TTS deployment](../tts.md#local-cosyvoice3-05b).
 
 Prepare QuickTalk weights as described in [QuickTalk Local](../quicktalk/local.md). Put the CosyVoice runtime under the model directory:
 
@@ -74,6 +79,9 @@ mkdir -p ./models/local-audio/runtime
 git clone https://github.com/FunAudioLLM/CosyVoice.git ./models/local-audio/runtime/CosyVoice
 cd ./models/local-audio/runtime/CosyVoice
 git submodule update --init --recursive
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
+  bash scripts/prepare_cosyvoice_venv.sh
 ```
 
 ## Start
@@ -81,8 +89,7 @@ git submodule update --init --recursive
 Start the local TTS service first:
 
 ```bash title="terminal"
-OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD=1 \
-python scripts/local_cosyvoice_service.py --host 127.0.0.1 --port 19090
+bash scripts/quickstart/start_local_cosyvoice.sh --port 19090
 ```
 
 Then start OpenTalking:

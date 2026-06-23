@@ -60,12 +60,17 @@ OPENTALKING_TTS_DASHSCOPE_API_KEY=<dashscope-tts-key>
 ## 安装与模型
 
 ```bash title="终端"
-uv sync --extra dev --extra models --extra local-audio --extra local-cosyvoice-service --extra quicktalk-cuda --python 3.11
+uv sync --extra dev --extra models --extra local-audio --extra quicktalk-cuda --python 3.11
 python scripts/download_local_audio_models.py \
   --root ./models/local-audio \
   --model sensevoice-small \
   --model fun-cosyvoice3-0.5b-2512
 ```
+
+主 `.venv` 只负责 OpenTalking、SenseVoice 和 QuickTalk。CosyVoice runtime
+准备好后，创建独立 sidecar venv。
+
+CosyVoice3 主权重来源和可选 fp16 TensorRT ONNX 文件见 [TTS 部署](../tts.md)。
 
 QuickTalk 权重按 [QuickTalk Local](../quicktalk/local.md) 页面准备。CosyVoice runtime 放在模型目录下即可：
 
@@ -74,6 +79,9 @@ mkdir -p ./models/local-audio/runtime
 git clone https://github.com/FunAudioLLM/CosyVoice.git ./models/local-audio/runtime/CosyVoice
 cd ./models/local-audio/runtime/CosyVoice
 git submodule update --init --recursive
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
+  bash scripts/prepare_cosyvoice_venv.sh
 ```
 
 ## 启动
@@ -81,8 +89,7 @@ git submodule update --init --recursive
 先启动本地 TTS service：
 
 ```bash title="终端"
-OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD=1 \
-python scripts/local_cosyvoice_service.py --host 127.0.0.1 --port 19090
+bash scripts/quickstart/start_local_cosyvoice.sh --port 19090
 ```
 
 再启动 OpenTalking：

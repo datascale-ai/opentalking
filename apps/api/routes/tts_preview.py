@@ -24,6 +24,7 @@ router = APIRouter(prefix="/tts", tags=["tts"])
 logger = logging.getLogger(__name__)
 
 MAX_PREVIEW_TEXT_CHARS = 1000
+LOCAL_COSYVOICE_PREVIEW_SECONDS = 3.0
 _INDEXTTS_PROVIDERS = {"indextts", "local_indextts", "omnirt_indextts"}
 PreviewUploadFile = UploadFile | StarletteUploadFile
 
@@ -34,6 +35,12 @@ class TTSPreviewRequest(BaseModel):
     tts_provider: str | None = None
     tts_model: str | None = None
     indextts_config: dict[str, Any] | None = None
+
+
+def _preview_sample_limit(provider: str | None, sample_rate: int) -> int | None:
+    if provider == "local_cosyvoice":
+        return max(1, int(sample_rate * LOCAL_COSYVOICE_PREVIEW_SECONDS))
+    return None
 
 
 def _wav_bytes(chunks: list[np.ndarray], sample_rate: int) -> bytes:
@@ -215,12 +222,17 @@ async def preview_tts(request: Request) -> Response:
     )
     chunks: list[np.ndarray] = []
     effective_sample_rate = sample_rate
+    sample_limit = _preview_sample_limit(provider, sample_rate)
+    total_samples = 0
     try:
         async for chunk in tts.synthesize_stream(text, voice=voice):
             arr = np.asarray(chunk.data, dtype=np.int16).reshape(-1)
             if arr.size:
                 chunks.append(arr.copy())
+                total_samples += int(arr.size)
             effective_sample_rate = int(chunk.sample_rate or effective_sample_rate)
+            if sample_limit is not None and total_samples >= sample_limit:
+                break
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"TTS preview failed: {exc}") from exc
     finally:

@@ -246,6 +246,45 @@ def test_tts_preview_form_passes_indextts_emotion_audio_file(monkeypatch):
     assert calls[0]["emotion_audio_bytes"] == b"RIFFemotion"
 
 
+
+def test_tts_preview_local_cosyvoice_returns_after_enough_preview_audio(monkeypatch):
+    from apps.api.routes import tts_preview
+
+    yielded: list[int] = []
+
+    class FakeTTS:
+        async def synthesize_stream(self, text: str, voice: str | None = None):
+            for i in range(20):
+                yielded.append(i)
+                yield AudioChunk(
+                    data=np.ones(16000, dtype=np.int16),
+                    sample_rate=16000,
+                    duration_ms=1000.0,
+                )
+
+    def fake_build_tts_adapter(**kwargs):
+        return FakeTTS()
+
+    monkeypatch.setattr(tts_preview, 'build_tts_adapter', fake_build_tts_adapter)
+
+    app = FastAPI()
+    app.include_router(tts_preview.router)
+    client = TestClient(app)
+
+    response = client.post(
+        '/tts/preview',
+        json={
+            'text': '你好，我正在测试音色。',
+            'voice': 'local-office-serena',
+            'tts_provider': 'local_cosyvoice',
+            'tts_model': 'FunAudioLLM/Fun-CosyVoice3-0.5B-2512',
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.content.startswith(b'RIFF')
+    assert 1 <= len(yielded) < 20
+
 def test_tts_preview_rejects_empty_text():
     from apps.api.routes import tts_preview
 

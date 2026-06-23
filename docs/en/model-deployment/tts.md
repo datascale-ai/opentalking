@@ -60,11 +60,40 @@ export UV_DEFAULT_INDEX="${UV_DEFAULT_INDEX:-https://pypi.tuna.tsinghua.edu.cn/s
 export UV_INDEX_URL="${UV_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 export UV_LINK_MODE=copy
-uv sync --extra dev --extra models --extra local-audio --extra local-cosyvoice-service --python 3.11
+uv sync --extra dev --extra models --extra local-audio --python 3.11
 .venv/bin/python scripts/download_local_audio_models.py \
   --root ./models/local-audio \
   --model fun-cosyvoice3-0.5b-2512
 ```
+
+This downloads the base CosyVoice3 model from ModelScope:
+
+| Asset | Source | Destination |
+|---|---|---|
+| Base CosyVoice3 weights | ModelScope `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` | `./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512/` |
+
+The base model directory must include the files used by the sidecar runtime,
+including `cosyvoice3.yaml`, `llm.pt`, `flow.pt`, `hift.pt`,
+`speech_tokenizer_v3.onnx`, `speech_tokenizer_v3.batch.onnx`, `campplus.onnx`,
+and `flow.decoder.estimator.fp32.onnx`. The built-in zero-shot voice also needs
+a prompt wav configured by `OPENTALKING_TTS_LOCAL_COSYVOICE_PROMPT_AUDIO`; cloned
+voices store their own prompt wav under the local voice directory.
+
+For fp16 TensorRT, download the extra ONNX assets from Hugging Face and place
+them in the same base model directory:
+
+| Asset | Source | Required for |
+|---|---|---|
+| `flow.decoder.estimator.autocast_fp16.onnx` | Hugging Face `yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX` | `FP16 + LOAD_TRT=1`; OpenTalking builds `flow.decoder.estimator.autocast_fp16.mygpu.plan` from it. |
+| `flow.decoder.estimator.streaming.autocast_fp16.onnx` | Hugging Face `yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX` | Optional streaming fp16 ONNX asset; keep beside the estimator ONNX for runtime compatibility. |
+
+The generated `*.mygpu.plan` files are machine-specific TensorRT engines. Do not
+copy them between different GPU / TensorRT / CUDA environments; rebuild them on
+the target host from the ONNX files.
+
+This main `.venv` is for OpenTalking, SenseVoice, and the video backend. Keep
+CosyVoice in its own sidecar venv so its `transformers==4.51.3` runtime does not
+conflict with OpenTalking's `transformers>=4.57,<6`.
 
 Prepare the CosyVoice runtime:
 
@@ -75,18 +104,50 @@ cd ./models/local-audio/runtime/CosyVoice
 git submodule update --init --recursive
 ```
 
+Create or update the CosyVoice sidecar venv:
+
+```bash title="Terminal"
+OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
+  bash scripts/prepare_cosyvoice_venv.sh
+```
+
+If you need TensorRT, install the TRT dependencies into the CosyVoice sidecar venv, not into OpenTalking's main `.venv`:
+
+```bash title="Terminal"
+PIP_EXTRA_INDEX_URL=https://pypi.nvidia.com/ OPENTALKING_COSYVOICE_INSTALL_TENSORRT=1 \
+  OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice bash scripts/prepare_cosyvoice_venv.sh
+```
+
 Start the local TTS service:
 
 ```bash title="Terminal"
-OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD=1 \
-python scripts/local_cosyvoice_service.py --host 127.0.0.1 --port 19090
+bash scripts/quickstart/start_local_cosyvoice.sh --port 19090
 ```
 
 In prior GPU validation, the main CosyVoice3 issue was not a single TTFA number but seed-dependent output-length drift. The local CosyVoice service therefore keeps two stability guards on by default: `OPENTALKING_TTS_LOCAL_COSYVOICE_MASK_STOP_TOKENS=1` masks every stop token exposed by the CosyVoice LLM, and `OPENTALKING_TTS_LOCAL_COSYVOICE_MAX_TOKEN_TEXT_RATIO=6` bounds the token/text ratio so long prompts do not occasionally produce runaway audio. Keep these guards enabled for realtime use.
 
 TensorRT is optional. Enable it only after the current CosyVoice runtime, CUDA, onnxruntime-gpu/TensorRT engines, and model directory are compatible:
 
-```env title=".env"
+```bash title="Terminal"
+.venv-cosyvoice/bin/python -c "import tensorrt as trt; print(trt.__version__)"
+test -f ./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512/flow.decoder.estimator.fp32.onnx
+```
+
+For CosyVoice3 fp16 TRT, prefer the official autocast fp16 ONNX asset. A TRT engine can be built from `flow.decoder.estimator.fp32.onnx`, but some GPU/TensorRT combinations can produce NaNs or silent audio. Before enabling `FP16 + LOAD_TRT`, place `flow.decoder.estimator.autocast_fp16.onnx` in the same model directory. If the server needs a proxy for Hugging Face, inject proxy variables only for the download command; do not add them to the OpenTalking service env:
+
+```bash title="Terminal"
+env ALL_PROXY=socks5h://127.0.0.1:7890 HTTPS_PROXY=socks5h://127.0.0.1:7890 \
+  HF_ENDPOINT=https://huggingface.co .venv-cosyvoice/bin/python - <<'PY'
+from huggingface_hub import hf_hub_download
+repo = "yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX"
+target = "./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512"
+for name in ["flow.decoder.estimator.autocast_fp16.onnx", "flow.decoder.estimator.streaming.autocast_fp16.onnx"]:
+    hf_hub_download(repo_id=repo, filename=name, repo_type="model", local_dir=target)
+PY
+```
+
+```env title="scripts/quickstart/env"
+OPENTALKING_TTS_LOCAL_COSYVOICE_FP16=auto
 OPENTALKING_TTS_LOCAL_COSYVOICE_LOAD_TRT=1
 OPENTALKING_TTS_LOCAL_COSYVOICE_TRT_CONCURRENT=1
 OPENTALKING_TTS_LOCAL_COSYVOICE_TOKEN_HOP_LEN=8
@@ -94,11 +155,25 @@ OPENTALKING_TTS_LOCAL_COSYVOICE_TOKEN_MAX_HOP_LEN=16
 OPENTALKING_TTS_LOCAL_COSYVOICE_STREAM_SCALE_FACTOR=1
 ```
 
-After startup, check the sidecar health payload and verify `runtime_flags.load_trt`, `streaming`, `llm_token_ratio`, and `llm_stop_token_patch`:
+`start_local_cosyvoice.sh` automatically adds the sidecar venv's `site-packages/tensorrt_libs` directory to `LD_LIBRARY_PATH`. On first startup with `FP16 + LOAD_TRT=1`, if `flow.decoder.estimator.autocast_fp16.onnx` exists in the model directory, OpenTalking builds the GPU-specific `flow.decoder.estimator.autocast_fp16.mygpu.plan` from it; this can take longer than a normal startup. SenseVoice still runs in the OpenTalking main `.venv` and should not follow the CosyVoice TRT settings.
+
+After startup, check the sidecar health payload and verify `runtime_flags.load_trt`, `runtime.trt_autocast_fp16`, `streaming`, `llm_token_ratio`, and `llm_stop_token_patch`:
 
 ```bash title="Terminal"
 curl -fsS http://127.0.0.1:19090/health | python3 -m json.tool
 ```
+
+Measured on a Linux server with an NVIDIA RTX 3090, CosyVoice3 sidecar venv,
+`FP16 + LOAD_TRT=1`, and the autocast fp16 TensorRT plan loaded. The benchmark
+called the sidecar `/synthesize` endpoint directly and measured first PCM byte
+arrival as TTFB:
+
+| Text length | TTFB | Wall time | Audio duration | RTF |
+|---:|---:|---:|---:|---:|
+| 43 chars | 0.683 s | 6.215 s | 7.200 s | 0.863 |
+| 42 chars | 0.642 s | 5.858 s | 6.960 s | 0.842 |
+| 29 chars | 0.639 s | 5.771 s | 6.520 s | 0.885 |
+| **Average** | **0.655 s** | **5.948 s** | **6.893 s** | **0.863** |
 
 For the full local speech input, speech synthesis, and QuickTalk video chain, see [Local STT/TTS + QuickTalk](recipes/local-quicktalk-audio.md).
 

@@ -126,7 +126,7 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 | 快速体验 | `mock` | CPU / 无 GPU | 不下载模型权重，先验证 API、LLM、TTS、WebRTC 与浏览器播放链路 | [快速开始](docs/zh/user-guide/quickstart.md) |
 | 入门验证 | `quicktalk` / `wav2lip` | RTX 3050 Laptop、RTX 3060、RTX 4060 | 能跑通真实视频渲染，适合功能演示和部署验证；低显存设备建议降低分辨率 | [QuickTalk](docs/zh/model-deployment/quicktalk.md) / [Wav2Lip](docs/zh/model-deployment/wav2lip-local.md) |
 | 消费级显卡单机 | `quicktalk` / `wav2lip` / `musetalk` | RTX 3090、RTX 4090 | 更接近实时体验，适合本地 demo、私有化验证和轻量生产前评估 | [模型部署](docs/zh/model-deployment/index.md) |
-| 全本地私有化 | `sensevoice` + `local_cosyvoice` + `quicktalk` | RTX 3090 / 4090 或同级 GPU | STT、TTS、视频驱动都走本地模型，减少外部依赖 | [本地 STT/TTS + QuickTalk](docs/zh/model-deployment/local-quicktalk-audio.md) |
+| 全本地私有化 | `sensevoice` + `local_cosyvoice` + `quicktalk` | RTX 3090 / 4090 或同级 GPU | STT、TTS、视频驱动都走本地；OpenTalking 使用主 `.venv`，CosyVoice 使用独立 sidecar venv | [本地 STT/TTS + QuickTalk](docs/zh/model-deployment/local-quicktalk-audio.md) |
 | 高质量远端推理 | `flashtalk` / `flashhead` / `fasterliveportrait` + OmniRT | 多卡 GPU、Ascend 910B2、远端 GPU 服务 | 多卡、GPU/NPU、生产隔离、更高画质或视频克隆 | [FlashTalk](docs/zh/model-deployment/flashtalk.md) / [FasterLivePortrait](docs/zh/model-deployment/fasterliveportrait.md) |
 | Docker / 生产部署 | API、Web、Worker、外部模型服务分离 | 单机 GPU、远端 GPU、分布式集群 | 服务化部署、远端 GPU、分布式和生产验证 | [部署文档](docs/zh/user-guide/deployment.md) |
 
