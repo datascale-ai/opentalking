@@ -88,6 +88,7 @@ plugins:
             Emotional Companion: 情绪安抚与实时陪伴
             Private Digital Human Assistant: 私有数字人助手
             Huangshan Scenic Area Digital Human: 黄山景区数字人
+            WeChat Chat History Import: 微信聊天记录导入
             Custom Avatar: 自定义 Avatar
             Voice and TTS: 音色与 TTS
             Command Line Tools: 命令行工具
@@ -230,6 +231,7 @@ nav:
           - Course and News Presenter: examples/course-news-presenter.md
           - Private Digital Human Assistant: examples/private-assistant.md
           - Huangshan Scenic Area Digital Human: examples/huangshan-digital-human-guide.md
+          - WeChat Chat History Import: examples/Wechat_import.md
       - Model Support:
           - Model Support Overview: model-support/index.md
           - Model and Backend Selection: model-support/selection.md
@@ -312,6 +314,7 @@ nav:
       - Course and News Presenter: examples/course-news-presenter.md
       - Private Digital Human Assistant: examples/private-assistant.md
       - Huangshan Scenic Area Digital Human: examples/huangshan-digital-human-guide.md
+      - WeChat Chat History Import: examples/Wechat_import.md
   - Model Support:
       - Model Support Overview: model-support/index.md
       - Model and Backend Selection: model-support/selection.md
