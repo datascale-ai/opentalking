@@ -15,3 +15,15 @@ def test_frontend_prefers_backend_default_model_before_avatar_model() -> None:
     assert default_idx < avatar_idx
 
     assert "mo.default_model" in source
+
+
+
+def test_frontend_keeps_persona_selected_when_model_changes() -> None:
+    source = Path("apps/web/src/App.tsx").read_text(encoding="utf-8")
+    start = source.index("  const handleModelChange = useCallback((newModel: string) => {")
+    end = source.index("  }, [clearSubtitleState, releaseSession, resetLiveState]);", start)
+    block = source[start:end]
+    assert 'setSelectedPersonaId("")' not in block
+    assert 'window.localStorage.removeItem(SELECTED_PERSONA_STORAGE_KEY)' not in block
+    assert 'clearSubtitleState();' in block
+    assert 'setModel(newModel);' in block

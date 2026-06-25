@@ -2739,12 +2739,6 @@ export default function App() {
 
   const handleModelChange = useCallback((newModel: string) => {
     clearSubtitleState();
-    setSelectedPersonaId("");
-    try {
-      window.localStorage.removeItem(SELECTED_PERSONA_STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
     setModel(newModel);
     void (async () => {
       const sid = sessionIdRef.current;
