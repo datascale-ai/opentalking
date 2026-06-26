@@ -143,7 +143,7 @@ Choose one of the two quickstart paths first:
 
 If you want to try the OpenTalking + OmniRT + QuickTalk real-time digital-human path before setting up everything manually, use the community image we published on Compshare:
 
-- Image URL: <https://www.compshare.cn/images/TdDwmKZUZebI>
+- Image URL: [image link](https://www.compshare.cn/images/TdDwmKZUZebI?referral_code=Hid5KUhcqlZEptmMEwKy2F)
 - Exposed port: `5173` (WebUI; API traffic is proxied internally)
 - Guide: [Compshare image quick experience](docs/en/quick-start/compshare-image.md)
 
@@ -262,6 +262,18 @@ OpenTalking uses an OpenAI-compatible interface for LLMs. Point `OPENTALKING_LLM
   Productize the asset library, knowledge bases, memory, multi-session scheduling, tool calling, and OpenClaw / external Agent integrations, then fill in observability, safety, licensed voices, and synthetic-content labeling.
 
 ### Recent Progress
+
+- **2026-06-25: WeChat memory import and persona workflow**
+  Added WeChat memory persona import, documentation, and the related persona workflow. The frontend no longer treats persona selection and driving-model selection as mutually exclusive, so users can combine imported memory/persona context with the selected avatar driver.
+
+- **2026-06-23: Local CosyVoice TRT sidecar deployment**
+  Added the local CosyVoice sidecar deployment path with TensorRT / FP16 acceleration notes, runtime tuning, dedicated environment isolation, startup checks, and measured deployment guidance for pairing local TTS with QuickTalk.
+
+- **2026-06-22: Runtime configuration, memory refresh, and immersive scenes**
+  Added the runtime API configuration page, improved mem0 provider release during runtime refresh, and expanded the scene asset pipeline: scene asset APIs, asset-library integration, immersive conversation mode, scene/avatar anchoring, transparent background handling, and realtime media preservation across view switches.
+
+- **2026-06-18/19: Quickstart split, LightRAG runtime config, and scenario guides**
+  Split the quickstart into Compshare image and self-deployment paths, added LightRAG runtime configuration and quickstart updates, fixed dependency notes for mem0 / Hugging Face download tooling, and added the Huangshan digital-human guide.
 
 - **2026-06-12: QuickTalk local asset fixes and Apple Silicon support**
   Organized QuickTalk local weights, HuBERT, InsightFace paths, missing-asset checks, cache preparation, and health checks. Added Apple Silicon deployment docs for validating `quicktalk-cpu` with MPS / CPU on macOS arm64.

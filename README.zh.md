@@ -143,7 +143,7 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 如果你只是想先体验 OpenTalking + OmniRT + QuickTalk 的实时数字人链路，可以直接使用我们在优云智算发布的社区镜像：
 
-- 镜像地址：<https://www.compshare.cn/images/TdDwmKZUZebI>
+- 镜像地址：[镜像链接](https://www.compshare.cn/images/TdDwmKZUZebI?referral_code=Hid5KUhcqlZEptmMEwKy2F)
 - 对外端口：`5173`（WebUI，内部自动代理 API）
 - 操作文档：[优云智算镜像快速体验](docs/zh/quick-start/compshare-image.md)
 
@@ -262,6 +262,15 @@ OpenTalking 的 LLM 走 OpenAI-compatible 接口，把 `OPENTALKING_LLM_BASE_URL
   继续产品化资产库、知识库、记忆、多会话调度、工具调用和 OpenClaw / 外部 Agent 对接，并逐步补齐观测指标、安全合规、授权音色和合成内容标识。
 
 ### 近期进展
+
+- **2026-06-25：微信记忆导入与角色工作流**
+  新增微信记忆角色导入能力、配套操作文档和角色工作流；前端不再把 persona 选择和驱动模型选择视为互斥，用户可以把导入的记忆 / 角色上下文与当前选择的 Avatar 驱动模型组合使用。
+
+- **2026-06-23：本地 CosyVoice TRT sidecar 部署**
+  补齐本地 CosyVoice sidecar 部署路线，包含 TensorRT / FP16 加速说明、运行时参数调优、独立环境隔离、启动检查，以及本地 TTS 搭配 QuickTalk 的实测部署说明。
+
+- **2026-06-22：运行时配置、记忆刷新与沉浸式场景**
+  新增 runtime API 配置页，优化 runtime refresh 时 mem0 provider 的释放逻辑，并扩展场景资产链路：场景资产 API、资产库集成、沉浸式对话模式、场景 / Avatar 锚点、透明背景处理，以及切换视图时的实时媒体保持。
 
 - **2026-06-12：QuickTalk 本地资产修复与 Apple Silicon 支持**
   梳理 QuickTalk 本地权重、HuBERT、InsightFace 等资产路径，补充缺失资产检查、缓存准备和健康检查；新增 Apple Silicon 部署文档，支持在 macOS arm64 上使用 `quicktalk-cpu` 与 MPS / CPU 路线验证。
