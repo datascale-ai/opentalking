@@ -78,6 +78,7 @@ examples/avatars/*/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a
 machine.md
 
 # Internal dev specs (not for public repo)
+AGENTS.md
 docs/superpowers/
 .worktrees/
 

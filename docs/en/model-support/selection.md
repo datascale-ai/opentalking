@@ -11,7 +11,9 @@ Choose `mock` when you only need to verify WebUI, API, TTS, events, and WebRTC.
 Choose `wav2lip` or `quicktalk` with `backend=local`. They are the lightest
 paths for validating a real avatar and talking-head output.
 
-Use [Model Deployment / Local Audio + QuickTalk](../model-deployment/recipes/local-quicktalk-audio.md) when you also need to validate local STT, local TTS, and QuickTalk together.
+Use [Local Audio + QuickTalk](../recipes/local-quicktalk-audio.md) when you also need to validate local STT, local TTS, and QuickTalk together.
+
+Choose `fasterliveportrait` with `backend=omnirt` when you want camera or uploaded-video driving for avatar expression and head motion.
 
 ### High-quality Model
 
@@ -31,7 +33,7 @@ inference.
 | Hardware | Recommended path |
 | --- | --- |
 | CPU | `mock` only, or non-realtime experiments |
-| Single NVIDIA GPU | Wav2Lip local, QuickTalk local, MuseTalk local, or one OmniRT model service |
+| Single NVIDIA GPU | Wav2Lip local, QuickTalk local, MuseTalk local, or one OmniRT model service such as FasterLivePortrait |
 | Multi-GPU | Split heavyweight model services or bind different models to different GPUs |
 | Ascend NPU | Use OmniRT for models that have an Ascend runtime |
 | Remote inference service | Use `omnirt` or `direct_ws` so OpenTalking does not own model weights |
@@ -51,6 +53,7 @@ inference.
 | Install validation | Mock | `mock` | Confirm environment and page flow |
 | First real path | Wav2Lip / QuickTalk | `local` | Validate avatar and lip sync |
 | Local audio validation | SenseVoiceSmall + CosyVoice3 + QuickTalk | `local` | Validate local STT/TTS/Video |
+| Camera video driving | FasterLivePortrait | `omnirt` | Drive a source avatar with camera frames or uploaded driving video |
 | Single-machine quality validation | MuseTalk | `local` | Evaluate MuseTalk quality with official preprocessing |
 | High-quality service demo | FlashTalk / FlashHead | `omnirt` / `direct_ws` | Validate heavyweight output |
 | Production | Multi-model stack | `omnirt` + worker | Stable, scalable, observable deployment |

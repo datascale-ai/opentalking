@@ -21,7 +21,7 @@ Body type: `list[AvatarSummary]`.
 |-------|------|-------------|
 | `id` | string | Globally unique avatar identifier. |
 | `name` | string \| null | Display name. Defaults to `id`. |
-| `model_type` | string | One of `wav2lip`, `musetalk`, `quicktalk`, `flashtalk`, `flashhead`, `mock`. |
+| `model_type` | string | Legacy manifest type field; new avatar flows should not use it as a model-binding requirement. |
 | `width` | integer | Output video width in pixels. |
 | `height` | integer | Output video height in pixels. |
 | `is_custom` | boolean | `true` when the avatar was created via `POST /avatars/custom` and may be deleted. |
@@ -43,7 +43,7 @@ curl -s http://localhost:8000/avatars | jq
   {
     "id": "custom-alice-20260513-153012-001",
     "name": "Alice",
-    "model_type": "wav2lip",
+    "model_type": "generic",
     "width": 1024,
     "height": 1024,
     "is_custom": true
@@ -124,7 +124,7 @@ user-supplied portrait image. The newly created avatar is tagged
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | string | Yes | Display name for the new avatar. |
-| `base_avatar_id` | string | Yes | Identifier of an existing avatar to use as manifest template. The base avatar must have `model_type=wav2lip`. |
+| `base_avatar_id` | string | Yes | Identifier of an existing avatar to use as manifest template. The avatar does not need to be bound to a specific talking-head model. |
 | `image` | file | Yes | Portrait image, maximum 10 MB. Acceptable formats: JPEG, PNG, WebP. |
 
 **Behavior**
@@ -142,7 +142,7 @@ Body type: `AvatarSummary` of the newly created avatar.
 ```bash title="curl"
 curl -X POST http://localhost:8000/avatars/custom \
   -F name="Alice" \
-  -F base_avatar_id=demo-wav2lip \
+  -F base_avatar_id=demo-avatar \
   -F image=@portrait.jpg
 ```
 
@@ -150,7 +150,7 @@ curl -X POST http://localhost:8000/avatars/custom \
 {
   "id": "custom-alice-20260513-153012-001",
   "name": "Alice",
-  "model_type": "wav2lip",
+  "model_type": "generic",
   "width": 1024,
   "height": 1024,
   "is_custom": true

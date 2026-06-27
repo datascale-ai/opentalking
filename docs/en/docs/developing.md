@@ -91,7 +91,7 @@ bash scripts/quickstart/start_all.sh
 
 The frontend model selector lists `wav2lip` after OmniRT is reachable.
 For model-specific weight downloads and startup commands, see
-[Models](../model-deployment/index.md).
+[Models](../deployment/index.md).
 
 ### API and Worker split with local Redis
 

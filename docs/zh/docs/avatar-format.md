@@ -1,8 +1,8 @@
 # Avatar 资产格式
 
 Avatar bundle 定义数字人的视觉形象与音频对齐所需的元数据。OpenTalking 在会话创建时
-读取 avatar bundle，与配置的合成模型（`wav2lip`、`musetalk`、`flashtalk`、`flashhead`、
-`quicktalk`）配对，并由流式音频输入驱动视频生成。
+读取 avatar bundle，并将其作为通用形象交给当前 talking-head 模型使用；模型需要的缓存、
+模板或预处理产物由对应部署流程生成。
 
 本页说明目录结构、`manifest.json` schema、用于生成 avatar bundle 的脚本以及验证接口。
 
@@ -29,15 +29,16 @@ examples/avatars/
         └── ...
 ```
 
-各模型类型的目录约定：
+常见目录约定：
 
-| `model_type` | 必需子目录 | 内容 |
-|--------------|-----------|------|
-| `wav2lip` | `frames/` | 有序图像序列（PNG 或 JPG），按文件名排序。 |
-| `musetalk` | `full_frames/` | 有序图像序列。后续可能扩展 `mask/` 与 `latent/`。 |
-| `quicktalk` | _无_ | 通过 `metadata.asset_root` 与 `metadata.template_video` 引用外部资产。 |
-| `flashtalk` | _无_ | 参考形象由模型服务端管理。 |
-| `flashhead` | _无_ | 参考形象由模型服务端管理。 |
+| 内容 | 必需性 | 说明 |
+|------|--------|------|
+| `manifest.json` | 必需 | avatar 基础信息和可选 metadata。 |
+| `preview.png` | 推荐 | 前端形象库预览图。 |
+| `frames/` | 可选 | 有序图像序列，常用于 Wav2Lip 等参考帧流程。 |
+| `full_frames/` | 可选 | 视频帧序列，常用于 MuseTalk 预处理流程。 |
+| `prepared/` | 可选 | MuseTalk 等模型生成的预处理产物。 |
+| 模板视频 | 可选 | QuickTalk 等模型可在运行时使用的派生或外部资产。 |
 
 建议提供 `preview.png`；前端使用该图填充 avatar 选择器。
 
@@ -47,17 +48,17 @@ examples/avatars/
 |------|------|------|------|
 | `id` | string | 是 | 全局唯一标识符，由客户端引用。 |
 | `name` | string | 否 | 展示名，默认为 `id`。 |
-| `model_type` | enum | 是 | 取值：`wav2lip`、`musetalk`、`quicktalk`、`flashtalk`、`flashhead`。 |
+| `model_type` | string | 否 | 兼容旧 manifest 的类型字段；不要依赖它把 avatar 绑定到某个模型。 |
 | `fps` | number | 是 | 目标输出帧率，典型值 25。 |
 | `sample_rate` | number | 是 | 与 TTS 输出对齐的音频采样率，典型值 16000。 |
 | `width` | number | 是 | 输出视频宽度（像素）。 |
 | `height` | number | 是 | 输出视频高度（像素）。 |
 | `version` | string | 否 | 资产版本字符串。 |
-| `metadata` | object | 否 | 任意附加字段，按 model_type 约定使用。 |
+| `metadata` | object | 否 | 任意附加字段，用于记录上传来源、派生产物或模型运行时信息。 |
 
-## Wav2Lip `metadata`
+## 口型 `metadata`
 
-wav2lip avatar 的 `metadata` 应包含嘴部定位信息：
+如果 avatar 提供嘴部定位信息，可在 `metadata.animation` 中记录：
 
 ```json
 {
@@ -72,28 +73,24 @@ wav2lip avatar 的 `metadata` 应包含嘴部定位信息：
 }
 ```
 
-坐标采用图像尺寸归一化。通过 `/avatars/custom` 上传单图 wav2lip avatar 时，OpenTalking
-本地使用 MediaPipe 完成嘴部检测；检测失败时上传仍会成功但缺失 `animation` 字段，此时
-OmniRT wav2lip 后端回退至内置对齐逻辑。`wav2lip_postprocess_mode` 控制服务端后处理模式。
+坐标采用图像尺寸归一化。通过 `/avatars/custom` 上传单图 avatar 时，OpenTalking
+本地使用 MediaPipe 完成嘴部检测；检测失败时上传仍会成功但缺失 `animation` 字段，模型
+后端会按自身能力回退至内置对齐逻辑。`wav2lip_postprocess_mode` 控制 Wav2Lip 服务端后处理模式。
 OpenTalking local Wav2Lip 默认使用 `easy_improved`；`easy_enhanced` 保留为后端/API 可用模式，
 但需要安装 GFPGAN 依赖并准备对应 checkpoint。
 
-## QuickTalk manifest 示例
+## 通用 manifest 示例
 
 ```json
 {
-  "id": "quicktalk-daytime",
-  "name": "QuickTalk Daytime",
-  "model_type": "quicktalk",
+  "id": "demo-avatar",
+  "name": "Demo Avatar",
   "fps": 25,
   "sample_rate": 16000,
   "width": 512,
   "height": 512,
   "version": "1.0",
-  "metadata": {
-    "asset_root": "/path/to/quicktalk/assets",
-    "template_video": "/path/to/template.mp4"
-  }
+  "metadata": {}
 }
 ```
 

@@ -42,7 +42,7 @@ scripts/run_opentalking_e2e_benchmark.sh
 进入 OpenTalking：
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 ```
 
@@ -95,7 +95,7 @@ bash scripts/run_opentalking_e2e_benchmark.sh \
 查找结果：
 
 ```bash
-find /root/test/opentalking -name "result.json" -o -name "result.csv" -o -name "report.md" -o -name "*.tar.gz"
+find $DIGITAL_HUMAN_HOME/opentalking -name "result.json" -o -name "result.csv" -o -name "report.md" -o -name "*.tar.gz"
 ```
 
 ### 说明

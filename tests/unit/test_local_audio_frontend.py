@@ -673,8 +673,8 @@ def test_avatar_grid_does_not_render_global_prewarm_failure_on_every_card():
 
 def test_tts_docs_include_indextts_omnirt_backend_env():
     env = Path(".env.example").read_text(encoding="utf-8")
-    zh = Path("docs/zh/model-deployment/tts.md").read_text(encoding="utf-8")
-    en = Path("docs/en/model-deployment/tts.md").read_text(encoding="utf-8")
+    zh = Path("docs/zh/speech_models/tts/indextts.md").read_text(encoding="utf-8")
+    en = Path("docs/en/speech_models/tts/indextts.md").read_text(encoding="utf-8")
 
     for doc in (env, zh, en):
         assert "OPENTALKING_TTS_DEFAULT_PROVIDER=indextts" in doc
@@ -687,8 +687,8 @@ def test_tts_docs_include_indextts_omnirt_backend_env():
 
 
 def test_indextts_local_deployment_docs_start_sidecar_from_opentalking_root():
-    zh = Path("docs/zh/model-deployment/tts.md").read_text(encoding="utf-8")
-    en = Path("docs/en/model-deployment/tts.md").read_text(encoding="utf-8")
+    zh = Path("docs/zh/speech_models/tts/indextts.md").read_text(encoding="utf-8")
+    en = Path("docs/en/speech_models/tts/indextts.md").read_text(encoding="utf-8")
 
     for doc in (zh, en):
         assert "cd \"$OPENTALKING_HOME\"" in doc
@@ -712,8 +712,8 @@ def test_local_audio_docs_use_public_runtime_status_route():
 
 
 def test_indextts_local_deployment_docs_include_api_start_and_status_check():
-    zh = Path("docs/zh/model-deployment/tts.md").read_text(encoding="utf-8")
-    en = Path("docs/en/model-deployment/tts.md").read_text(encoding="utf-8")
+    zh = Path("docs/zh/speech_models/tts/indextts.md").read_text(encoding="utf-8")
+    en = Path("docs/en/speech_models/tts/indextts.md").read_text(encoding="utf-8")
 
     for doc in (zh, en):
         assert "bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8000 --web-port 5173" in doc

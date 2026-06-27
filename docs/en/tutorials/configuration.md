@@ -54,11 +54,10 @@ and does not require an API key.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENTALKING_TTS_DEFAULT_PROVIDER` | `edge` | One of `edge`, `dashscope`, `local_cosyvoice`, `indextts`, `cosyvoice`, `elevenlabs`, `openai_compatible`, `xiaomi_mimo`. |
-| `OPENTALKING_TTS_ENABLED_PROVIDERS` | _empty_ | TTS providers shown in the frontend and status page, for example `edge,dashscope,local_cosyvoice,indextts`. |
+| `OPENTALKING_TTS_DEFAULT_PROVIDER` | `edge` | One of `edge`, `dashscope`, `local_cosyvoice`, `cosyvoice`, `elevenlabs`. |
+| `OPENTALKING_TTS_ENABLED_PROVIDERS` | _empty_ | TTS providers shown in the frontend and status page, for example `edge,dashscope,local_cosyvoice`. |
 | `OPENTALKING_TTS_DASHSCOPE_MODEL` | _empty_ | TTS model id; DashScope Qwen realtime TTS commonly uses `qwen3-tts-flash-realtime`. |
 | `OPENTALKING_TTS_DASHSCOPE_API_KEY` | _empty_ | TTS module API key. It is not populated from LLM or STT fallback keys. |
-| `OPENTALKING_TTS_INDEXTTS_BACKEND` | `local` | Backend used by `indextts`: `local` connects to a same-host IndexTTS HTTP sidecar; `omnirt` connects to an OmniRT resident service. |
 | `OPENTALKING_TTS_EDGE_VOICE` | `zh-CN-XiaoxiaoNeural` | Edge TTS voice. |
 | `OPENTALKING_TTS_DASHSCOPE_VOICE` | `Cherry` | DashScope Qwen realtime TTS voice. |
 | `OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL` | _empty_ | Local CosyVoice service HTTP URL, for example `http://127.0.0.1:19090/synthesize`. |
@@ -72,7 +71,7 @@ Configuration for DashScope realtime TTS and ElevenLabs is documented in
 The variables in this section are consulted only when the client selects `wav2lip`,
 `musetalk`, `flashtalk`, or `flashhead`. The `mock` backend ignores all entries here.
 For weight downloads and model-specific startup commands, see
-[Models](../model-deployment/index.md).
+[Models](../deployment/index.md).
 
 OpenTalking selects the inference entry point per model through `backend`; it is not
 tied to one inference platform. Recommended defaults:
@@ -224,7 +223,7 @@ infrastructure:
   worker_url: http://127.0.0.1:9001
 flashtalk:
   mode: off
-  ckpt_dir: ./models/SoulX-FlashTalk-14B
+  ckpt_dir: ./avatar_models/SoulX-FlashTalk-14B
   port: 8765
 flashhead:
   ws_url: ""

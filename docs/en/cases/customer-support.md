@@ -84,8 +84,8 @@ See [Sessions API](../docs/api/sessions.md) and [Events and Streaming](../docs/a
 
 | Goal | Recommended path |
 |------|------------------|
-| Quick lip-sync on a consumer GPU | [QuickTalk](../model-deployment/quicktalk.md) or [Wav2Lip](../model-deployment/wav2lip.md) |
-| Higher quality through a remote model service | [FlashTalk](../model-deployment/flashtalk.md) + [OmniRT](../model-deployment/deployment.md) |
+| Quick lip-sync on a consumer GPU | [QuickTalk](../avatar_models/quicktalk.md) or [Wav2Lip](../avatar_models/wav2lip.md) |
+| Higher quality through a remote model service | [FlashTalk](../../avatar_models/flashtalk.md) + [OmniRT](../deployment/index.md) |
 | API or frontend development | Keep `mock` until the business flow is stable |
 
 The frontend and API flow remain the same. Select the new `model` and a matching avatar

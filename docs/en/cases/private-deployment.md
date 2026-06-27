@@ -38,7 +38,7 @@ flowchart TB
 ## Prerequisites
 
 - Finish [Quickstart](../tutorials/quickstart.md).
-- Read [Configuration](../tutorials/configuration.md) and [Deployment](../model-deployment/deployment.md).
+- Read [Configuration](../tutorials/configuration.md) and [Deployment](../deployment/index.md).
 - Prefer a private LLM with an OpenAI-compatible `/v1/chat/completions` endpoint.
 - Use OmniRT, `direct_ws`, or a local adapter for avatar inference.
 

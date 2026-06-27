@@ -10,7 +10,7 @@ can move to `local`.
 
 - [Mock E2E](mock-e2e.md) has passed.
 - `wav2lip384.pth` and `s3fd.pth` are downloaded as described in
-  [Talking-head Models → Wav2Lip](../../model-deployment/wav2lip/local.md).
+  [Talking-head Models → Wav2Lip](../../avatar_models/wav2lip.md).
 - An OmniRT checkout exists next to `opentalking/`.
 
 ## Steps
@@ -40,8 +40,8 @@ bash scripts/quickstart/start_all.sh --omnirt http://127.0.0.1:9000
 curl -fsS http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="wav2lip")'
 ```
 
-The status should report `backend: omnirt` and `connected: true`. In the browser, choose a
-Wav2Lip-compatible avatar before starting the session.
+The status should report `backend: omnirt` and `connected: true`. In the browser,
+choose an available avatar before starting the session.
 
 ## Troubleshooting
 
@@ -49,4 +49,4 @@ Wav2Lip-compatible avatar before starting the session.
 |---------|--------|
 | `/models` reports `not_configured` | Check `OMNIRT_ENDPOINT` in the active `.env` and restart OpenTalking. |
 | OmniRT exits during startup | Inspect the script log path and verify the Wav2Lip/S3FD weight filenames. |
-| Avatar mismatch | Use an avatar with `model_type: wav2lip` or regenerate assets with `scripts/prepare_wav2lip_*_asset.py`. |
+| Avatar asset unavailable | Check that the avatar is uploaded, readable, and the session configuration is complete. |

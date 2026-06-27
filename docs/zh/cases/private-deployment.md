@@ -37,7 +37,7 @@ flowchart TB
 ## 前置条件
 
 - 已完成 [快速上手](../tutorials/quickstart.md)。
-- 已阅读 [配置](../tutorials/configuration.md) 和 [部署](../model-deployment/deployment.md)。
+- 已阅读 [配置](../tutorials/configuration.md) 和 [部署](../deployment/index.md)。
 - 私有 LLM 最好提供 OpenAI-compatible `/v1/chat/completions` 接口。
 - Avatar 推理服务可选择 OmniRT、`direct_ws` 或本地 adapter。
 

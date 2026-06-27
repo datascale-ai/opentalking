@@ -6,7 +6,7 @@ goal, recommended pipeline, configuration points, validation steps, and integrat
 
 If you are new to the project, finish the [Quickstart](../tutorials/quickstart.md) first.
 If a case uses a real talking-head model, make sure the corresponding backend and weights
-are ready in [Model Deployment](../model-deployment/index.md).
+are ready in [Model Deployment](../deployment/index.md).
 
 ## Pick a Case
 
@@ -47,7 +47,7 @@ are ready in [Model Deployment](../model-deployment/index.md).
 |------|------|
 | Understand what business scenarios are possible | This Use Cases section |
 | Run the project for the first time | [Quickstart](../tutorials/quickstart.md) |
-| Deploy Wav2Lip, QuickTalk, or FlashTalk | [Model Deployment](../model-deployment/index.md) |
+| Deploy Wav2Lip, QuickTalk, or FlashTalk | [Model Deployment](../deployment/index.md) |
 | Call an API endpoint | [API Interfaces](../docs/api/index.md) |
 | Add a new model backend | [Model Adapter](../docs/model-adapter.md) |
 

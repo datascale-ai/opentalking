@@ -1079,6 +1079,18 @@ def _torch_cuda_supports_device(device: str) -> tuple[bool, str]:
         wanted = f"sm_{major}{minor}"
         arch_list = set(torch.cuda.get_arch_list() or [])
         if arch_list and wanted not in arch_list:
+            try:
+                torch.cuda.set_device(index)
+                a = torch.ones((1,), device=device)
+                b = a + 1
+                torch.cuda.synchronize(index)
+                if float(b.item()) == 2.0:
+                    return True, ""
+            except Exception as smoke_exc:
+                return False, (
+                    f"device capability {wanted} is not in torch arch list {sorted(arch_list)}; "
+                    f"CUDA smoke test failed: {type(smoke_exc).__name__}: {smoke_exc}"
+                )
             return False, f"device capability {wanted} is not in torch arch list {sorted(arch_list)}"
     except Exception as exc:
         return False, f"failed to inspect torch CUDA support: {type(exc).__name__}: {exc}"

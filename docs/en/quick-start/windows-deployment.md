@@ -17,7 +17,7 @@ Windows Host
 Recommended directory structure:
 
 ```text
-/root/test/
+$DIGITAL_HUMAN_HOME/
 ├── opentalking/
 │   ├── .venv/
 │   ├── apps/
@@ -28,10 +28,10 @@ Recommended directory structure:
 │   ├── .venv/
 │   └── models/quicktalk/
 └── models/
-    └── quicktalk -> /root/test/opentalking/models/quicktalk
+    └── quicktalk -> $DIGITAL_HUMAN_HOME/opentalking/models/quicktalk
 ```
 
-Place code in WSL2's own Linux filesystem (e.g., `/root/test` or `/home/<user>/test`), not directly under `/mnt/d/...`.
+Place code in WSL2's own Linux filesystem (e.g., `$WSL_HOME/test` or `/home/<user>/test`), not directly under `/mnt/d/...`.
 
 ---
 
@@ -99,47 +99,6 @@ If WSL2 can see the RTX 3050, the CUDA inference prerequisites are met.
 
 ---
 
-### 1.3 WSL2 Network Mode Selection
-
-WSL2 supports two network modes that directly impact OpenTalking's WebRTC real-time audio/video streaming and browser microphone access.
-
-**.wslconfig** (located at `%USERPROFILE%\.wslconfig` on Windows):
-
-```ini
-[wsl2]
-networkingMode=NAT        # default mode
-# networkingMode=Mirrored
-```
-
-After making changes, run `wsl --shutdown` and reopen the WSL2 terminal for changes to take effect.
-
-**Comparison**:
-
-| | NAT (default) | Mirrored |
-|---|---|---|
-| WebRTC ICE connectivity | ✅ Working (when accessed via WSL2 IP) | ⚠️ ICE candidates may fail |
-| Browser access | `http://<WSL2-IP>:5280` | `http://localhost:5280` |
-| Microphone permission | Requires adding insecure origin whitelist in browser | localhost works directly |
-| Service startup compatibility | ✅ Normal | ⚠️ May fail in some scenarios |
-
-**Recommendation**:
-
-- Use **NAT mode** for daily development and debugging. Get the WSL2 IP with `hostname -I` and access via that address.
-- If the WSL2 IP changes after a restart, run `hostname -I` again.
-- For one-click install scripts or first-time setup, prefer **NAT mode**.
-
-**Enabling microphone in NAT mode**:
-
-Non-localhost HTTP origins are not treated as secure contexts by browsers, so `getUserMedia` access is blocked. Choose one of these workarounds:
-
-- **Edge**: Navigate to `edge://flags/#unsafely-treat-insecure-origin-as-secure`, enter `http://<WSL2-IP>:5280`, set to Enabled, and restart.
-- **Chrome**: Close all Chrome windows, then run in PowerShell:
-  ```powershell
-  & "C:\Program Files\Google\Chrome\Application\chrome.exe" --unsafely-treat-insecure-origin-as-secure="http://<WSL2-IP>:5280" --user-data-dir="%TEMP%\chrome-opentalking"
-  ```
-
----
-
 ## 2. WSL2 Base Dependencies
 
 The following commands run inside WSL2 Ubuntu. If running as root, `sudo` is not needed; otherwise prepend `sudo` to `apt` commands.
@@ -174,8 +133,8 @@ nvidia-smi
 Enter the working directory:
 
 ```bash
-mkdir -p /root/test
-cd /root/test
+mkdir -p $WSL_HOME/test
+cd $WSL_HOME/test
 ```
 
 Clone both repositories:
@@ -188,15 +147,15 @@ git clone https://github.com/datascale-ai/omnirt.git
 The final structure should be:
 
 ```text
-/root/test/opentalking
-/root/test/omnirt
+$DIGITAL_HUMAN_HOME/opentalking
+$DIGITAL_HUMAN_HOME/omnirt
 ```
 
 Verify:
 
 ```bash
-ls /root/test/opentalking
-ls /root/test/omnirt
+ls $DIGITAL_HUMAN_HOME/opentalking
+ls $DIGITAL_HUMAN_HOME/omnirt
 ```
 
 ### Path Notes
@@ -204,15 +163,15 @@ ls /root/test/omnirt
 If the code already exists on Windows, copy it to WSL2:
 
 ```bash
-rsync -a --info=progress2 /mnt/d/test_opentalking/opentalking/ /root/test/opentalking/
-rsync -a --info=progress2 /mnt/d/test_opentalking/omnirt/ /root/test/omnirt/
+rsync -a --info=progress2 /mnt/d/test_opentalking/opentalking/ $DIGITAL_HUMAN_HOME/opentalking/
+rsync -a --info=progress2 /mnt/d/test_opentalking/omnirt/ $DIGITAL_HUMAN_HOME/omnirt/
 ```
 
 If the code is already downloaded on a server, sync it to WSL2:
 
 ```bash
-rsync -avP root@<your-server-ip>:/root/lyf/temp/opentalking/ /root/test/opentalking/
-rsync -avP root@<your-server-ip>:/root/lyf/temp/omnirt/ /root/test/omnirt/
+rsync -avP <user>@<server-host>:$DIGITAL_HUMAN_HOME/opentalking/ $DIGITAL_HUMAN_HOME/opentalking/
+rsync -avP <user>@<server-host>:$DIGITAL_HUMAN_HOME/omnirt/ $DIGITAL_HUMAN_HOME/omnirt/
 ```
 
 ---
@@ -261,7 +220,7 @@ source ~/.bashrc
 Enter OpenTalking:
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 ```
 
 Create an isolated virtual environment:
@@ -280,7 +239,7 @@ which python
 Expected:
 
 ```text
-/root/test/opentalking/.venv/bin/python
+$DIGITAL_HUMAN_HOME/opentalking/.venv/bin/python
 ```
 
 Install base packages:
@@ -331,7 +290,7 @@ Installing CUDA PyTorch on Linux/WSL2 will pull `nvidia-cudnn-cu12`, `nvidia-cub
 QuickTalk weights should be placed at:
 
 ```text
-/root/test/opentalking/models/quicktalk/checkpoints/
+$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk/checkpoints/
 ```
 
 The complete structure should look like:
@@ -354,7 +313,7 @@ checkpoints/
 Check key files:
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 
 ls -lh models/quicktalk/checkpoints/quicktalk.pth
 ls -lh models/quicktalk/checkpoints/repair.npy
@@ -369,14 +328,14 @@ ls -lh models/quicktalk/checkpoints/auxiliary/models/buffalo_l/2d106det.onnx
 When starting QuickTalk in OmniRT, point directly to the `checkpoints` directory:
 
 ```bash
-export OMNIRT_QUICKTALK_MODEL_ROOT=/root/test/opentalking/models/quicktalk/checkpoints
+export OMNIRT_QUICKTALK_MODEL_ROOT=$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk/checkpoints
 ```
 
-If the benchmark script expects `/root/test/models/quicktalk`, create a symlink:
+If the benchmark script expects `$DIGITAL_HUMAN_HOME/models/quicktalk`, create a symlink:
 
 ```bash
-mkdir -p /root/test/models
-ln -sfn /root/test/opentalking/models/quicktalk /root/test/models/quicktalk
+mkdir -p $DIGITAL_HUMAN_HOME/models
+ln -sfn $DIGITAL_HUMAN_HOME/opentalking/models/quicktalk $DIGITAL_HUMAN_HOME/models/quicktalk
 ```
 
 ---
@@ -386,7 +345,7 @@ ln -sfn /root/test/opentalking/models/quicktalk /root/test/models/quicktalk
 Enter OmniRT:
 
 ```bash
-cd /root/test/omnirt
+cd $DIGITAL_HUMAN_HOME/omnirt
 ```
 
 Create an isolated virtual environment:
@@ -405,7 +364,7 @@ which python
 Expected:
 
 ```text
-/root/test/omnirt/.venv/bin/python
+$DIGITAL_HUMAN_HOME/omnirt/.venv/bin/python
 ```
 
 Install dependencies:
@@ -438,16 +397,16 @@ omnirt --help
 Expected:
 
 ```text
-/root/test/omnirt/.venv/bin/omnirt
+$DIGITAL_HUMAN_HOME/omnirt/.venv/bin/omnirt
 ```
 
 Sync models to OmniRT:
 
 ```bash
-mkdir -p /root/test/omnirt/models/quicktalk
+mkdir -p $DIGITAL_HUMAN_HOME/omnirt/models/quicktalk
 rsync -a --info=progress2 \
-  /root/test/opentalking/models/quicktalk/ \
-  /root/test/omnirt/models/quicktalk/
+  $DIGITAL_HUMAN_HOME/opentalking/models/quicktalk/ \
+  $DIGITAL_HUMAN_HOME/omnirt/models/quicktalk/
 ```
 
 ---
@@ -457,7 +416,7 @@ rsync -a --info=progress2 \
 Enter OpenTalking:
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 cp -n .env.example .env
 ```
 
@@ -489,7 +448,7 @@ LLM, TTS, and STT are independent providers. Edge TTS does not require a key and
 Open a new WSL2 terminal and enter OmniRT:
 
 ```bash
-cd /root/test/omnirt
+cd $DIGITAL_HUMAN_HOME/omnirt
 source .venv/bin/activate
 ```
 
@@ -500,7 +459,7 @@ export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb=128
 
 export OMNIRT_QUICKTALK_RUNTIME=1
-export OMNIRT_QUICKTALK_MODEL_ROOT=/root/test/opentalking/models/quicktalk/checkpoints
+export OMNIRT_QUICKTALK_MODEL_ROOT=$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk/checkpoints
 export OMNIRT_QUICKTALK_DEVICE=cuda:0
 export OMNIRT_QUICKTALK_HUBERT_DEVICE=cuda:0
 ```
@@ -532,7 +491,7 @@ Key parameters:
 Open another WSL2 terminal and enter OpenTalking:
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 ```
 
@@ -578,12 +537,12 @@ nvidia-smi --query-gpu=memory.used --format=csv,noheader
 
 | Location | Correct approach |
 | --- | --- |
-| Code directory | Place in `/root/test/opentalking` and `/root/test/omnirt` |
-| OpenTalking venv | `/root/test/opentalking/.venv` |
-| OmniRT venv | `/root/test/omnirt/.venv` |
-| QuickTalk weights | `/root/test/opentalking/models/quicktalk/checkpoints` |
+| Code directory | Place in `$DIGITAL_HUMAN_HOME/opentalking` and `$DIGITAL_HUMAN_HOME/omnirt` |
+| OpenTalking venv | `$DIGITAL_HUMAN_HOME/opentalking/.venv` |
+| OmniRT venv | `$DIGITAL_HUMAN_HOME/omnirt/.venv` |
+| QuickTalk weights | `$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk/checkpoints` |
 | OmniRT QuickTalk root | Point to `.../checkpoints` |
-| Benchmark compatibility path | `ln -sfn /root/test/opentalking/models/quicktalk /root/test/models/quicktalk` |
+| Benchmark compatibility path | `ln -sfn $DIGITAL_HUMAN_HOME/opentalking/models/quicktalk $DIGITAL_HUMAN_HOME/models/quicktalk` |
 | Low-VRAM config | `resolution=160/128`, `batch=1`, `HuBERT=cpu` |
 
 ---
@@ -597,7 +556,7 @@ Before running the benchmark, verify each item:
 nvidia-smi
 
 # OpenTalking environment
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
 
@@ -607,7 +566,7 @@ ls -lh models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
 ls -lh models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
 
 # OmniRT environment
-cd /root/test/omnirt
+cd $DIGITAL_HUMAN_HOME/omnirt
 source .venv/bin/activate
 which omnirt
 omnirt --help
@@ -621,7 +580,7 @@ npm --version
 If all checks pass, run:
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 bash scripts/run_opentalking_e2e_benchmark.sh \
   --tester xxx \

@@ -70,7 +70,7 @@ python scripts/download_local_audio_models.py \
 Use the main `.venv` for OpenTalking, SenseVoice, and QuickTalk. Create a
 separate CosyVoice sidecar venv after the runtime checkout.
 
-For CosyVoice3 model sources and the optional fp16 TensorRT ONNX files, see [TTS deployment](../tts.md#local-cosyvoice3-05b).
+For CosyVoice3 model sources and the optional fp16 TensorRT ONNX files, see [TTS deployment](../../speech_models/tts/cosyvoice.md).
 
 Prepare QuickTalk weights as described in [QuickTalk Local](../quicktalk/local.md). Put the CosyVoice runtime under the model directory:
 

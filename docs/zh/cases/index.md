@@ -4,7 +4,7 @@
 而是把业务目标、推荐链路、配置重点、验证方式和下一步集成放在一起。
 
 如果你刚接触项目，建议先完成 [快速上手](../tutorials/quickstart.md)，再按目标选择案例。
-如果你要接入真实 talking-head 模型，先确认 [模型部署](../model-deployment/index.md) 中的
+如果你要接入真实 talking-head 模型，先确认 [模型部署](../deployment/index.md) 中的
 backend 与权重准备已经完成。
 
 ## 选择一个案例
@@ -44,7 +44,7 @@ backend 与权重准备已经完成。
 |----------------|------------|
 | 我想知道能做哪些业务场景 | 本节场景案例 |
 | 我想第一次把项目跑起来 | [快速上手](../tutorials/quickstart.md) |
-| 我想部署 Wav2Lip、QuickTalk、FlashTalk | [模型部署](../model-deployment/index.md) |
+| 我想部署 Wav2Lip、QuickTalk、FlashTalk | [模型部署](../deployment/index.md) |
 | 我想知道某个接口怎么调 | [API 接口](../docs/api/index.md) |
 | 我想扩展一个新的模型 backend | [模型适配器](../docs/model-adapter.md) |
 

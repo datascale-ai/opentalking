@@ -35,7 +35,7 @@ flowchart LR
 
 - 已完成 [AI 客服数字人](customer-support.md) 或至少跑通 `mock`。
 - 已准备一个适合展示的 avatar。自定义流程见 [自定义 Avatar 案例](../tutorials/cases/custom-avatar.md)。
-- 如果需要真实口型效果，先完成 [模型部署](../model-deployment/index.md) 中至少一个 talking-head backend。
+- 如果需要真实口型效果，先完成 [模型部署](../deployment/index.md) 中至少一个 talking-head backend。
 
 ## 1. 准备商品资料
 
@@ -112,5 +112,5 @@ bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt http:/
 | 口播太机械 | 缩短单次文本，给 prompt 增加停顿和口语化要求。 |
 | LLM 容易离题 | 由业务层传入结构化商品资料，并要求只基于资料回答。 |
 | 首帧等待较长 | 对真实模型做预热，或在直播前提前创建会话。 |
-| 直播间需要多路并发 | 使用 API/Worker 分离和外部 Redis，见 [部署](../model-deployment/deployment.md)。 |
+| 直播间需要多路并发 | 使用 API/Worker 分离和外部 Redis，见 [部署](../deployment/index.md)。 |
 

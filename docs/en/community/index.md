@@ -26,7 +26,7 @@ GitHub, the QQ group, and documentation feedback.
 ## Good First Tasks
 
 - Add screenshots, common errors, and environment notes to tutorials.
-- Add mirror links and checksum notes to `model-deployment` pages.
+- Add mirror links and checksum notes to `deployment` pages.
 - Add reproducible records to the Benchmark section.
 - Improve request and response examples in API docs.
 - Add avatar asset validation examples.

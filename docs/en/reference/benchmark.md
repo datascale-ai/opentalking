@@ -22,7 +22,7 @@ This script reads input assets according to the benchmark configuration, starts 
 Enter OpenTalking:
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 ```
 
@@ -75,7 +75,7 @@ bash scripts/run_opentalking_e2e_benchmark.sh \
 Find results:
 
 ```bash
-find /root/test/opentalking -name "result.json" -o -name "result.csv" -o -name "report.md" -o -name "*.tar.gz"
+find $DIGITAL_HUMAN_HOME/opentalking -name "result.json" -o -name "result.csv" -o -name "report.md" -o -name "*.tar.gz"
 ```
 
 ### Notes

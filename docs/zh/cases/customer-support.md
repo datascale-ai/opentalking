@@ -86,8 +86,8 @@ mock 验证通过后，按硬件和质量选择 backend：
 
 | 目标 | 推荐路线 |
 |------|----------|
-| 消费级 GPU 快速看到口型效果 | [QuickTalk](../model-deployment/quicktalk.md) 或 [Wav2Lip](../model-deployment/wav2lip.md) |
-| 更高质量、远端模型服务 | [FlashTalk](../model-deployment/flashtalk.md) + [OmniRT](../model-deployment/deployment.md) |
+| 消费级 GPU 快速看到口型效果 | [QuickTalk](../avatar_models/quicktalk.md) 或 [Wav2Lip](../avatar_models/wav2lip.md) |
+| 更高质量、远端模型服务 | [FlashTalk](../../avatar_models/flashtalk.md) + [OmniRT](../deployment/index.md) |
 | 仍在开发 API 或前端 | 继续使用 `mock`，先稳定业务流程 |
 
 切换后，前端与 API 调用方式保持一致，只需要在会话中选择新的 `model` 与匹配的 avatar。

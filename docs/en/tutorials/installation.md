@@ -18,13 +18,13 @@ streamlined first-run procedure, see the [Quickstart](quickstart.md).
 | Evaluation on Ascend NPU | Huawei 910B (CANN 8.0+) | Source install on the host CANN environment | [From source → Ascend 910B](install-from-source.md#ascend-910b) |
 | Continuous integration | CPU | Source install or Docker Compose, depending on reproducibility needs | [From source](install-from-source.md#development-cpu-mock-synthesis) or [Docker Compose → CPU profile](install-with-docker.md#cpu-profile) |
 | Production single-host deployment | Linux + GPU or NPU | Source install or Docker, depending on operations preference | [From source → Production](install-from-source.md#production-deployment) or [Docker Compose](install-with-docker.md) |
-| Production multi-host deployment with horizontal Worker scaling | Linux + GPU or NPU | Source install, API/Worker split, external Redis | [From source → API and Worker split](install-from-source.md#api-and-worker-split) and [Deployment](../model-deployment/deployment.md) |
+| Production multi-host deployment with horizontal Worker scaling | Linux + GPU or NPU | Source install, API/Worker split, external Redis | [From source → API and Worker split](install-from-source.md#api-and-worker-split) and [Deployment](../deployment/index.md) |
 
 ## Platform support matrix
 
 | Platform | Synthesis backends | Notes |
 |----------|-------------------|-------|
-| macOS (Apple Silicon and Intel) | `mock`, experimental `quicktalk` local on Apple Silicon | Suitable for orchestration and frontend development. QuickTalk local can be tested on Apple Silicon with `quicktalk-cpu`; see [QuickTalk on Apple Silicon](../model-deployment/quicktalk/apple-silicon.md) for the full path. Realtime production paths still target Linux GPU/NPU or OmniRT. |
+| macOS (Apple Silicon and Intel) | `mock` | Suitable for orchestration and frontend development. Real talking-head models are not supported on macOS. |
 | Linux x86_64 + CUDA 12 | `mock`, `wav2lip`, `musetalk`, `flashtalk`, `flashhead`, `quicktalk` | Primary deployment target. |
 | Linux aarch64 + Ascend 910B (CANN 8.0+) | `mock`, `wav2lip`, `flashtalk` | NPU production deployment path. |
 | Windows | `mock` (WSL2 recommended) | Not part of the continuous integration matrix. |
@@ -70,4 +70,4 @@ curl -s http://127.0.0.1:8000/models | jq
 - [From source](install-from-source.md) — install from a git checkout. Covers development, production, and Ascend variants.
 - [Docker Compose](install-with-docker.md) — install with the packaged Docker stack for reproducible deployments.
 - [Configuration](configuration.md) — required environment configuration after installation.
-- [Deployment](../model-deployment/deployment.md) — selecting a runtime topology.
+- [Deployment](../deployment/index.md) — selecting a runtime topology.

@@ -6,6 +6,7 @@ repo_name: datascale-ai/opentalking
 edit_uri: edit/main/docs/
 
 exclude_docs: |
+  superpowers/
   requirements.txt
   */design/architecture-review.md
   */design/realtime-digital-human-research.md
@@ -21,6 +22,7 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
+    - navigation.expand
     - navigation.top
     - navigation.indexes
     - navigation.tracking
@@ -48,8 +50,6 @@ theme:
     repo: fontawesome/brands/github
 
 extra:
-  version:
-    provider: mike
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/datascale-ai/opentalking
@@ -70,7 +70,6 @@ plugins:
             Home: 首页
             Quick Start: 快速开始
             Platform Notes: 平台说明
-            Compshare Image Quick Experience: 优云智算镜像快速体验
             Docker Deployment: Docker 部署
             Windows Deployment: Windows 部署
             Usage: 使用指南
@@ -79,18 +78,15 @@ plugins:
             Basic Usage: 基础使用
             Command Line Usage: 命令行使用
             Examples: 案例教程
-            Video Creation: 视频创作
-            Video Clone: 视频克隆
             Examples Overview: 案例概览
             AI Customer Support: AI 客服数字人
             Product Demo and Live Sales: 商品讲解与直播导购
             Course and News Presenter: 课程与新闻口播
             Emotional Companion: 情绪安抚与实时陪伴
             Private Digital Human Assistant: 私有数字人助手
-            Huangshan Scenic Area Digital Human: 黄山景区数字人
-            WeChat Chat History Import: 微信聊天记录导入
             Custom Avatar: 自定义 Avatar
             Voice and TTS: 音色与 TTS
+            Video Clone: 视频克隆
             Command Line Tools: 命令行工具
             Advanced CLI Arguments: 命令行进阶参数
             Model Support: 模型支持
@@ -112,10 +108,6 @@ plugins:
             Product Demo and Live Sales: 商品讲解与直播导购
             Private Deployment: 企业私有化部署
             Model Deployment: 模型部署
-            Deployment Guide: 部署指南
-            Deployment Basics: 部署基础
-            Deployment Overview: 部署概览
-            Deployment Topology: 部署拓扑
             Docs: 文档
             Concepts and API: 概念与 API
             API Interfaces: API 接口
@@ -129,18 +121,18 @@ plugins:
             Models: 模型
             Support Matrix: 支持矩阵
             LLM and STT: LLM 与 STT
-            Mem0 Memory Engine: Mem0 记忆引擎
-            TTS: TTS
+            Speech Models: 语音模型
+            Speech Models Overview: 语音模型概览
+            Speech Recognition Models: 语音识别模型
+            Speech Generation Models: 语音生成模型
+            SenseVoice: SenseVoice
+            CosyVoice: CosyVoice
+            IndexTTS: IndexTTS
+            Qwen3-TTS: Qwen3-TTS
             Text-to-Speech: 语音合成
-            Backend Modes: 后端模式
-            Local: Local
-            Recipes: 部署配方
-            Wav2Lip Local: Wav2Lip Local
             Local Audio + QuickTalk: 本地语音 + QuickTalk
-            V100 + FasterLivePortrait + FlashHead: V100 + FasterLivePortrait + FlashHead
             Avatar Assets: Avatar 资产
             Talking-Head Models: Talking-head 模型
-            Talking-Head Model Deployment: 数字人模型部署
             Mock: Mock
             Wav2Lip: Wav2Lip
             MuseTalk: MuseTalk
@@ -148,6 +140,16 @@ plugins:
             FlashTalk: FlashTalk
             FlashHead: FlashHead
             FasterLivePortrait: FasterLivePortrait
+            Deployment Guide: 部署指南
+            Deployment Guide Overview: 部署指南概览
+            Deployment Recipes: 部署配方
+            Deployment Recipes Overview: 部署配方概览
+            Speech Generation Model Deployment: 语音生成模型部署
+            Talking-Head Model Deployment: 数字人模型部署
+            Avatar Models: Avatar 模型
+            Avatar Models Overview: Avatar 模型概览
+            Speech Generation Models: 语音生成模型
+            Speech Generation Models Overview: 语音生成模型概览
             Deployment: 部署
             Avatar Format: Avatar 资产格式
             Render Pipeline: 渲染管线
@@ -156,7 +158,6 @@ plugins:
             Model Adapter: 模型适配器
             Contributing: 贡献指南
             Community: 社区
-            Docs Publishing: 文档发布
             Overview: 概览
             Metrics: 指标定义
             Runbook: 运行方法
@@ -209,7 +210,6 @@ nav:
       - Quick Start:
           - Quick Start: quick-start/index.md
           - Platform Notes: quick-start/platform-notes.md
-          - Compshare Image Quick Experience: quick-start/compshare-image.md
           - Docker Deployment: quick-start/docker-deployment.md
           - Windows Deployment: quick-start/windows-deployment.md
       - Usage:
@@ -219,10 +219,9 @@ nav:
               - Advanced CLI Arguments: usage/cli-advanced.md
           - WebUI Usage:
               - Basic Usage: usage/webui/basic.md
-              - Video Creation: usage/webui/video-creation.md
-              - Video Clone: usage/webui/video-clone.md
               - Custom Avatar: usage/webui/custom-avatar.md
               - Voice and TTS: usage/webui/voice-and-tts.md
+              - Video Clone: usage/webui/video-clone.md
       - Examples:
           - Examples Overview: examples/index.md
           - Emotional Companion: examples/companion.md
@@ -230,11 +229,10 @@ nav:
           - Product Demo and Live Sales: examples/product-demo-live-sales.md
           - Course and News Presenter: examples/course-news-presenter.md
           - Private Digital Human Assistant: examples/private-assistant.md
-          - Huangshan Scenic Area Digital Human: examples/huangshan-digital-human-guide.md
-          - WeChat Chat History Import: examples/Wechat_import.md
       - Model Support:
           - Model Support Overview: model-support/index.md
           - Model and Backend Selection: model-support/selection.md
+          - Local Audio + QuickTalk: model-support/local-audio-quicktalk.md
           - Runtime Backends:
               - Mock Backend: model-support/runtime-backends/mock.md
               - Local Adapter: model-support/runtime-backends/local-adapter.md
@@ -246,45 +244,44 @@ nav:
               - MuseTalk: model-support/models/musetalk.md
               - FlashTalk: model-support/models/flashtalk.md
               - FlashHead: model-support/models/flashhead.md
-              - FasterLivePortrait: model-support/models/fasterliveportrait.md
       - Deployment Guide:
-          - Deployment Basics:
-              - Deployment Overview: model-deployment/index.md
-              - Deployment Topology: model-deployment/deployment.md
-              - Avatar Assets: model-deployment/avatar.md
-          - Backend Modes:
-              - Overview: model-deployment/backends/index.md
-              - Local Adapter: model-deployment/backends/local.md
-              - OmniRT: model-deployment/backends/omnirt.md
+          - Deployment Guide Overview: deployment/index.md
+          - Support Matrix: deployment/support-matrix.md
+          - Avatar Assets: avatar_models/avatar.md
+          - Speech Models:
+              - Overview: speech_models/index.md
+              - Speech Recognition Models:
+                  - Overview: speech_models/stt.md
+                  - SenseVoice: speech_models/stt/sensevoice.md
+              - Speech Generation Models:
+                  - Overview: speech_models/tts.md
+                  - CosyVoice: speech_models/tts/cosyvoice.md
+                  - IndexTTS: speech_models/tts/indextts.md
+                  - Qwen3-TTS: speech_models/tts/qwen3-tts.md
           - Talking-Head Model Deployment:
-              - Talking-Head Model Deployment: model-deployment/talking-head/index.md
-              - Mock Backend: model-deployment/mock.md
+              - Overview: avatar_models/index.md
+              - Mock Backend: avatar_models/mock.md
               - QuickTalk:
-                  - Overview: model-deployment/quicktalk.md
-                  - Local: model-deployment/quicktalk/local.md
-                  - Apple Silicon: model-deployment/quicktalk/apple-silicon.md
-                  - OmniRT: model-deployment/quicktalk/omnirt.md
+                  - Overview: avatar_models/quicktalk.md
+                  - Local: avatar_models/deployment/quicktalk-local.md
+                  - Apple Silicon: avatar_models/deployment/quicktalk-apple-silicon.md
+                  - OmniRT: avatar_models/deployment/quicktalk-omnirt.md
               - Wav2Lip:
-                  - Overview: model-deployment/wav2lip.md
-                  - Local: model-deployment/wav2lip/local.md
-                  - OmniRT: model-deployment/wav2lip/omnirt.md
+                  - Overview: avatar_models/wav2lip.md
+                  - Local: avatar_models/deployment/wav2lip-local.md
+                  - OmniRT: avatar_models/deployment/wav2lip-omnirt.md
               - MuseTalk:
-                  - Overview: model-deployment/musetalk.md
-                  - Local: model-deployment/musetalk/local.md
-                  - OmniRT: model-deployment/musetalk/omnirt.md
-              - FlashTalk: model-deployment/flashtalk.md
-              - FlashHead: model-deployment/flashhead.md
-              - FasterLivePortrait: model-deployment/fasterliveportrait.md
-          - Recipes:
-              - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
-              - V100 + FasterLivePortrait + FlashHead: model-deployment/recipes/v100-fasterliveportrait-flashhead.md
-          - LLM and STT: model-deployment/llm-stt.md
-          - Mem0 Memory Engine: model-deployment/mem0-memory.md
-          - TTS: model-deployment/tts.md
-          - Support Matrix: model-deployment/support-matrix.md
+                  - Overview: avatar_models/musetalk.md
+                  - Local: avatar_models/deployment/musetalk-local.md
+                  - OmniRT: avatar_models/deployment/musetalk-omnirt.md
+              - FasterLivePortrait: avatar_models/fasterliveportrait.md
+              - FlashTalk: avatar_models/flashtalk.md
+              - FlashHead: avatar_models/flashhead.md
+          - Deployment Recipes:
+              - Deployment Recipes Overview: recipes/index.md
+              - Local Audio + QuickTalk: recipes/local-quicktalk-audio.md
       - Reference Materials:
           - Reference Materials Overview: reference/index.md
-          - Docs Publishing: community/publishing-docs.md
           - Benchmark: reference/benchmark.md
           - Changelog: reference/changelog.md
       - FAQ:
@@ -292,7 +289,6 @@ nav:
   - Quick Start:
       - Quick Start: quick-start/index.md
       - Platform Notes: quick-start/platform-notes.md
-      - Compshare Image Quick Experience: quick-start/compshare-image.md
       - Docker Deployment: quick-start/docker-deployment.md
       - Windows Deployment: quick-start/windows-deployment.md
   - Usage:
@@ -302,10 +298,9 @@ nav:
           - Advanced CLI Arguments: usage/cli-advanced.md
       - WebUI Usage:
           - Basic Usage: usage/webui/basic.md
-          - Video Creation: usage/webui/video-creation.md
-          - Video Clone: usage/webui/video-clone.md
           - Custom Avatar: usage/webui/custom-avatar.md
           - Voice and TTS: usage/webui/voice-and-tts.md
+          - Video Clone: usage/webui/video-clone.md
   - Examples:
       - Examples Overview: examples/index.md
       - Emotional Companion: examples/companion.md
@@ -313,11 +308,10 @@ nav:
       - Product Demo and Live Sales: examples/product-demo-live-sales.md
       - Course and News Presenter: examples/course-news-presenter.md
       - Private Digital Human Assistant: examples/private-assistant.md
-      - Huangshan Scenic Area Digital Human: examples/huangshan-digital-human-guide.md
-      - WeChat Chat History Import: examples/Wechat_import.md
   - Model Support:
       - Model Support Overview: model-support/index.md
       - Model and Backend Selection: model-support/selection.md
+      - Local Audio + QuickTalk: model-support/local-audio-quicktalk.md
       - Runtime Backends:
           - Mock Backend: model-support/runtime-backends/mock.md
           - Local Adapter: model-support/runtime-backends/local-adapter.md
@@ -329,42 +323,42 @@ nav:
           - MuseTalk: model-support/models/musetalk.md
           - FlashTalk: model-support/models/flashtalk.md
           - FlashHead: model-support/models/flashhead.md
-          - FasterLivePortrait: model-support/models/fasterliveportrait.md
   - Deployment Guide:
-      - Deployment Basics:
-          - Deployment Overview: model-deployment/index.md
-          - Deployment Topology: model-deployment/deployment.md
-          - Avatar Assets: model-deployment/avatar.md
-      - Backend Modes:
-          - Overview: model-deployment/backends/index.md
-          - Local Adapter: model-deployment/backends/local.md
-          - OmniRT: model-deployment/backends/omnirt.md
+      - Deployment Guide Overview: deployment/index.md
+      - Support Matrix: deployment/support-matrix.md
+      - Avatar Assets: avatar_models/avatar.md
+      - Speech Models:
+          - Overview: speech_models/index.md
+          - Speech Recognition Models:
+              - Overview: speech_models/stt.md
+              - SenseVoice: speech_models/stt/sensevoice.md
+          - Speech Generation Models:
+              - Overview: speech_models/tts.md
+              - CosyVoice: speech_models/tts/cosyvoice.md
+              - IndexTTS: speech_models/tts/indextts.md
+              - Qwen3-TTS: speech_models/tts/qwen3-tts.md
       - Talking-Head Model Deployment:
-          - Talking-Head Model Deployment: model-deployment/talking-head/index.md
-          - Mock Backend: model-deployment/mock.md
+          - Overview: avatar_models/index.md
+          - Mock Backend: avatar_models/mock.md
           - QuickTalk:
-              - Overview: model-deployment/quicktalk.md
-              - Local: model-deployment/quicktalk/local.md
-              - Apple Silicon: model-deployment/quicktalk/apple-silicon.md
-              - OmniRT: model-deployment/quicktalk/omnirt.md
+              - Overview: avatar_models/quicktalk.md
+              - Local: avatar_models/deployment/quicktalk-local.md
+              - Apple Silicon: avatar_models/deployment/quicktalk-apple-silicon.md
+              - OmniRT: avatar_models/deployment/quicktalk-omnirt.md
           - Wav2Lip:
-              - Overview: model-deployment/wav2lip.md
-              - Local: model-deployment/wav2lip/local.md
-              - OmniRT: model-deployment/wav2lip/omnirt.md
+              - Overview: avatar_models/wav2lip.md
+              - Local: avatar_models/deployment/wav2lip-local.md
+              - OmniRT: avatar_models/deployment/wav2lip-omnirt.md
           - MuseTalk:
-              - Overview: model-deployment/musetalk.md
-              - Local: model-deployment/musetalk/local.md
-              - OmniRT: model-deployment/musetalk/omnirt.md
-          - FlashTalk: model-deployment/flashtalk.md
-          - FlashHead: model-deployment/flashhead.md
-          - FasterLivePortrait: model-deployment/fasterliveportrait.md
-      - Recipes:
-          - Local Audio + QuickTalk: model-deployment/recipes/local-quicktalk-audio.md
-          - V100 + FasterLivePortrait + FlashHead: model-deployment/recipes/v100-fasterliveportrait-flashhead.md
-      - LLM and STT: model-deployment/llm-stt.md
-      - Mem0 Memory Engine: model-deployment/mem0-memory.md
-      - TTS: model-deployment/tts.md
-      - Support Matrix: model-deployment/support-matrix.md
+              - Overview: avatar_models/musetalk.md
+              - Local: avatar_models/deployment/musetalk-local.md
+              - OmniRT: avatar_models/deployment/musetalk-omnirt.md
+          - FasterLivePortrait: avatar_models/fasterliveportrait.md
+          - FlashTalk: avatar_models/flashtalk.md
+          - FlashHead: avatar_models/flashhead.md
+      - Deployment Recipes:
+          - Deployment Recipes Overview: recipes/index.md
+          - Local Audio + QuickTalk: recipes/local-quicktalk-audio.md
   - Reference Materials:
       - Reference Materials Overview: reference/index.md
       - Benchmark: reference/benchmark.md

@@ -70,7 +70,7 @@ python scripts/download_local_audio_models.py \
 主 `.venv` 只负责 OpenTalking、SenseVoice 和 QuickTalk。CosyVoice runtime
 准备好后，创建独立 sidecar venv。
 
-CosyVoice3 主权重来源和可选 fp16 TensorRT ONNX 文件见 [TTS 部署](../tts.md)。
+CosyVoice3 主权重来源和可选 fp16 TensorRT ONNX 文件见 [TTS 部署](../../speech_models/tts/cosyvoice.md)。
 
 QuickTalk 权重按 [QuickTalk Local](../quicktalk/local.md) 页面准备。CosyVoice runtime 放在模型目录下即可：
 

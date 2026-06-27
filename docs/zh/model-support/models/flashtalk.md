@@ -31,8 +31,8 @@ OpenTalking 负责 WebUI、会话、TTS、WebRTC、录制和状态管理。Flash
 FlashTalk 权重通常放在 OmniRT 服务侧。OpenTalking 默认配置中保留了：
 
 ```bash
-OPENTALKING_FLASHTALK_CKPT_DIR=./models/SoulX-FlashTalk-14B
-OPENTALKING_FLASHTALK_WAV2VEC_DIR=./models/chinese-wav2vec2-base
+OPENTALKING_FLASHTALK_CKPT_DIR=./avatar_models/SoulX-FlashTalk-14B
+OPENTALKING_FLASHTALK_WAV2VEC_DIR=./avatar_models/chinese-wav2vec2-base
 ```
 
 实际生产更推荐让 OmniRT 管理这些路径。

@@ -57,8 +57,8 @@ curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 - [QuickTalk with OmniRT](../quicktalk/omnirt.md)
 - [Wav2Lip with OmniRT](../wav2lip/omnirt.md)
 - [MuseTalk with OmniRT](../musetalk/omnirt.md)
-- [FasterLivePortrait](../fasterliveportrait.md)
-- [FlashTalk](../flashtalk.md)
+- [FasterLivePortrait](../../avatar_models/fasterliveportrait.md)
+- [FlashTalk](../../avatar_models/flashtalk.md)
 
 ## 前端入口
 

@@ -42,7 +42,7 @@ curl -fsS http://127.0.0.1:9000/v1/audio2video/models | python3 -m json.tool
 - [Local Adapter](local.md)
 - [OmniRT](omnirt.md)
 - [Talking-Head Models](../talking-head/index.md)
-- [Support Matrix](../support-matrix.md)
+- [Support Matrix](../../deployment/support-matrix.md)
 
 ## Frontend Entry
 
