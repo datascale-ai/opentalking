@@ -1,0 +1,7 @@
+services:
+  flashtalk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flashtalk
+    ports:
+      - "8765:8765"

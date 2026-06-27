@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "id": "customer-support-zh",
+  "name": "中文售前客服",
+  "description": "面向私有化部署场景的中文产品答疑数字人 Persona。",
+  "locale": "zh-CN",
+  "avatar": {
+    "id": "singer",
+    "model": "mock"
+  },
+  "voice": {
+    "provider": "edge",
+    "voice_id": "zh-CN-XiaoxiaoNeural"
+  },
+  "agent": {
+    "system_prompt": "prompts/system.md",
+    "style_prompt": "prompts/style.md",
+    "memory_enabled": true,
+    "knowledge_enabled": true
+  },
+  "runtime": {
+    "stt_provider": "sensevoice",
+    "tts_provider": "edge",
+    "preferred_backend": "mock"
+  },
+  "safety": {
+    "authorized_avatar": true,
+    "authorized_voice": true,
+    "content_label_required": true
+  }
+}

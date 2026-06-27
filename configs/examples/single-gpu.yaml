@@ -1,0 +1,6 @@
+flashtalk:
+  mode: local
+  device: cuda
+  gpu_count: 1
+model:
+  torch_device: cuda

@@ -1,0 +1,1007 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { BailianVoiceClone } from "./BailianVoiceClone";
+import type { FasterLivePortraitConfig } from "./SettingsPanel";
+import {
+  ApiError,
+  buildApiDownloadUrl,
+  buildApiUrl,
+  createVideoCreationJob,
+  apiPostForm,
+  type AvatarSummary,
+  type ExportVideoItem,
+  type IndexTTSConfig,
+  type VoiceCatalogItem,
+} from "../lib/api";
+import type { VoiceCloneApplication } from "../lib/voiceCloneApply";
+import { EDGE_ZH_VOICES } from "../constants/edgeZhVoices";
+import type { TtsProviderExtended } from "../constants/ttsBailian";
+import { buildTTSPreviewPayload, requestTTSPreview } from "../lib/ttsPreview";
+
+export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone";
+type VideoCreationMode = "spoken_video" | "reference_video";
+
+type VoiceOpt = { id: string; label: string; targetModel?: string | null };
+
+type VideoCreationWorkspaceProps = {
+  avatars: AvatarSummary[];
+  avatarId: string;
+  models: string[];
+  onAvatarChange: (id: string) => void;
+  onAvatarUploaded: (avatar: AvatarSummary) => void;
+  onVoiceCloned: (application: VoiceCloneApplication) => void | Promise<void>;
+  onExportCreated?: (item: ExportVideoItem) => void;
+  onGoAssetLibrary?: () => void;
+  onNotify?: (message: string, tone?: "info" | "success" | "error") => void;
+  ttsProvider: TtsProviderExtended;
+  onTtsProviderChange: (provider: TtsProviderExtended) => void;
+  qwenModel: string;
+  onQwenModelChange: (modelId: string) => void;
+  qwenModelOptions: { id: string; label: string }[];
+  qwenVoice: string;
+  onQwenVoiceChange: (voiceId: string) => void;
+  qwenVoiceOptions: VoiceOpt[];
+  edgeVoice: string;
+  onEdgeVoiceChange: (voiceId: string) => void;
+  voiceCatalog: VoiceCatalogItem[];
+  fasterliveportraitConfig: FasterLivePortraitConfig;
+  onFasterLivePortraitConfigChange: (config: FasterLivePortraitConfig) => void;
+};
+
+const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = [
+  { id: "upload", label: "上传音频" },
+  { id: "tts_text", label: "文本合成" },
+  { id: "voice_clone", label: "复刻音色" },
+];
+
+const REFERENCE_DURATION_OPTIONS = [
+  { value: 10, label: "10s" },
+  { value: 30, label: "30s" },
+  { value: 60, label: "1min" },
+] as const;
+
+const VIDEO_CREATION_MODELS = ["flashtalk", "flashhead", "fasterliveportrait", "musetalk", "quicktalk", "wav2lip"];
+const VIDEO_CREATION_MODEL_LABELS: Record<string, string> = {
+  flashtalk: "FlashTalk",
+  flashhead: "FlashHead",
+  fasterliveportrait: "FasterLivePortrait",
+  musetalk: "MuseTalk",
+  quicktalk: "QuickTalk",
+  wav2lip: "Wav2Lip",
+};
+const VIDEO_CREATION_SCRIPT_MAX_CHARS = 1000;
+const FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS: { id: FasterLivePortraitConfig["animation_region"]; label: string }[] = [
+  { id: "lip", label: "嘴部" },
+  { id: "all", label: "全表情" },
+  { id: "exp", label: "表情" },
+  { id: "pose", label: "姿态" },
+  { id: "eyes", label: "眼睛" },
+];
+export const DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG = {
+  head_motion_multiplier: 0.3,
+  pose_motion_multiplier: 0.35,
+  yaw_multiplier: 0.85,
+  pitch_multiplier: 1.0,
+  roll_multiplier: 0.85,
+  animation_region: "lip",
+  expression_multiplier: 1.0,
+  mouth_open_multiplier: 0.9,
+  mouth_corner_multiplier: 0.85,
+  cheek_jaw_multiplier: 0.9,
+  driving_multiplier: 1.0,
+  cfg_scale: 3.0,
+  flag_stitching: true,
+  flag_pasteback: true,
+  flag_relative_motion: true,
+  flag_normalize_lip: false,
+  flag_lip_retargeting: false,
+} as const satisfies FasterLivePortraitConfig;
+const FASTERLIVEPORTRAIT_SLIDERS: {
+  key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">;
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+}[] = [
+  { key: "head_motion_multiplier", label: "整体头部", min: 0, max: 2, step: 0.05 },
+  { key: "pose_motion_multiplier", label: "姿态晃动", min: 0, max: 2, step: 0.05 },
+  { key: "yaw_multiplier", label: "左右摇头", min: 0, max: 2, step: 0.05 },
+  { key: "pitch_multiplier", label: "上下点头", min: 0, max: 2, step: 0.05 },
+  { key: "roll_multiplier", label: "左右歪头", min: 0, max: 2, step: 0.05 },
+  { key: "expression_multiplier", label: "表情唇形", min: 0, max: 3, step: 0.05 },
+  { key: "mouth_open_multiplier", label: "张嘴开合", min: 0, max: 4, step: 0.05 },
+  { key: "mouth_corner_multiplier", label: "嘴角牵动", min: 0, max: 3, step: 0.05 },
+  { key: "cheek_jaw_multiplier", label: "脸颊下颌", min: 0, max: 3, step: 0.05 },
+  { key: "driving_multiplier", label: "整体驱动", min: 0, max: 2, step: 0.05 },
+  { key: "cfg_scale", label: "音频跟随", min: 0, max: 10, step: 0.25 },
+];
+const FASTERLIVEPORTRAIT_SWITCHES: {
+  key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">;
+  label: string;
+}[] = [
+  { key: "flag_stitching", label: "Stitching" },
+  { key: "flag_pasteback", label: "拼回原图" },
+  { key: "flag_relative_motion", label: "相对运动" },
+  { key: "flag_normalize_lip", label: "唇形归一" },
+  { key: "flag_lip_retargeting", label: "唇形重定向" },
+];
+
+const INDEXTTS_PROVIDER_SET = new Set<TtsProviderExtended>(["indextts"]);
+
+const DEFAULT_INDEXTTS_CONFIG: IndexTTSConfig = {
+  emotion_mode: "voice",
+  emo_alpha: 0.6,
+  emo_text: "",
+  emo_vector: [0, 0, 0, 0, 0, 0, 0, 0],
+  use_random: false,
+  interval_silence_ms: 0,
+};
+
+function buildIndexTTSQualityConfig(config: IndexTTSConfig): IndexTTSConfig {
+  return {
+    ...config,
+    streaming_mode: "segment",
+    max_text_tokens_per_segment: 80,
+    quick_streaming_tokens: 4,
+  };
+}
+
+const INDEXTTS_EMOTION_VECTOR_CONTROLS: { key: string; label: string; index: number }[] = [
+  { key: "happy", label: "快乐", index: 0 },
+  { key: "angry", label: "愤怒", index: 1 },
+  { key: "sad", label: "悲伤", index: 2 },
+  { key: "afraid", label: "恐惧", index: 3 },
+  { key: "disgusted", label: "厌恶", index: 4 },
+  { key: "melancholic", label: "忧郁", index: 5 },
+  { key: "surprised", label: "惊讶", index: 6 },
+  { key: "calm", label: "平静", index: 7 },
+];
+
+type IndexTTSEmotionPreset = {
+  label: string;
+  config: IndexTTSConfig & { emotion_mode: "vector" };
+};
+
+const INDEXTTS_EMOTION_PRESETS: IndexTTSEmotionPreset[] = [
+  { label: "表达增强", config: { emotion_mode: "vector", emo_alpha: 1, emo_vector: [0.75, 0, 0, 0, 0, 0, 0.35, 0], use_random: false, interval_silence_ms: 0 } },
+  { label: "快乐", config: { emotion_mode: "vector", emo_alpha: 1, emo_vector: [1, 0, 0, 0, 0, 0, 0, 0], use_random: false, interval_silence_ms: 0 } },
+  { label: "愤怒", config: { emotion_mode: "vector", emo_alpha: 1, emo_vector: [0, 1, 0, 0, 0, 0, 0, 0], use_random: false, interval_silence_ms: 0 } },
+  { label: "悲伤", config: { emotion_mode: "vector", emo_alpha: 1, emo_vector: [0, 0, 0.9, 0, 0, 0.3, 0, 0], use_random: false, interval_silence_ms: 0 } },
+  { label: "惊讶", config: { emotion_mode: "vector", emo_alpha: 1, emo_vector: [0.15, 0, 0, 0.1, 0, 0, 1, 0], use_random: false, interval_silence_ms: 0 } },
+  { label: "平静", config: { emotion_mode: "vector", emo_alpha: 1, emo_vector: [0, 0, 0, 0, 0, 0, 0, 0.8], use_random: false, interval_silence_ms: 0 } },
+];
+
+function freshIndexTTSConfig(): IndexTTSConfig {
+  return { ...DEFAULT_INDEXTTS_CONFIG, emo_vector: [...(DEFAULT_INDEXTTS_CONFIG.emo_vector ?? [])] };
+}
+
+export function indexTTSEmotionPresetConfig(preset: IndexTTSEmotionPreset): IndexTTSConfig & {
+  emotion_mode: "vector";
+  emo_alpha: 1;
+  emo_vector: number[];
+  use_random: false;
+} {
+  const vector = preset.config.emo_vector ?? DEFAULT_INDEXTTS_CONFIG.emo_vector ?? [];
+  return {
+    ...preset.config,
+    emotion_mode: "vector",
+    emo_alpha: 1,
+    emo_vector: [...vector],
+    use_random: false,
+    interval_silence_ms: numberOr(preset.config.interval_silence_ms, 0),
+  };
+}
+
+export function indexTTSEmotionModeConfig(current: IndexTTSConfig, mode: IndexTTSConfig["emotion_mode"]): IndexTTSConfig {
+  if (mode === "voice") {
+    return {
+      ...current,
+      emotion_mode: "voice",
+      emo_alpha: 0.6,
+    };
+  }
+  return {
+    ...current,
+    emotion_mode: mode,
+    emo_alpha: 1,
+  };
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function indexTTSRequestConfig(config: IndexTTSConfig): IndexTTSConfig {
+  const emotionMode = config.emotion_mode;
+  const out: IndexTTSConfig = {
+    emotion_mode: emotionMode,
+    emo_alpha: numberOr(config.emo_alpha, 0.6),
+    use_random: Boolean(config.use_random),
+    interval_silence_ms: numberOr(config.interval_silence_ms, 0),
+  };
+  if (emotionMode === "text") {
+    out.emo_text = (config.emo_text ?? "").trim();
+  }
+  if (emotionMode === "vector") {
+    out.emo_vector = (config.emo_vector ?? DEFAULT_INDEXTTS_CONFIG.emo_vector ?? []).map((value) => numberOr(value, 0));
+  }
+  return out;
+}
+
+function providerLabel(provider: TtsProviderExtended): string {
+  if (provider === "edge") return "Edge TTS";
+  if (provider === "dashscope") return "Qwen TTS";
+  if (provider === "cosyvoice") return "CosyVoice";
+  if (provider === "sambert") return "Sambert";
+  if (provider === "indextts") return "Local IndexTTS";
+  if (provider === "xiaomi_mimo") return "小米 MiMo";
+  if (provider === "openai_compatible") return "OpenAI-compatible TTS";
+  return "Local CosyVoice";
+}
+
+function avatarNameFromFile(file: File): string {
+  const stem = file.name.replace(/\.[^.]+$/, "").trim();
+  return stem ? `视频创作 ${stem}` : "视频创作形象";
+}
+
+export function VideoCreationWorkspace({
+  avatars,
+  avatarId,
+  models,
+  onAvatarChange,
+  onAvatarUploaded,
+  onVoiceCloned,
+  onExportCreated,
+  onGoAssetLibrary,
+  onNotify,
+  ttsProvider,
+  onTtsProviderChange,
+  qwenModel,
+  onQwenModelChange,
+  qwenModelOptions,
+  qwenVoice,
+  onQwenVoiceChange,
+  qwenVoiceOptions,
+  edgeVoice,
+  onEdgeVoiceChange,
+  voiceCatalog,
+  fasterliveportraitConfig,
+  onFasterLivePortraitConfigChange,
+}: VideoCreationWorkspaceProps) {
+  const selectedAvatar = avatars.find((avatar) => avatar.id === avatarId) ?? avatars[0] ?? null;
+  const [creationMode, setCreationMode] = useState<VideoCreationMode>("spoken_video");
+  const [referenceDurationSec, setReferenceDurationSec] = useState<(typeof REFERENCE_DURATION_OPTIONS)[number]["value"]>(10);
+  const [model, setModel] = useState(() => VIDEO_CREATION_MODELS.find((item) => models.includes(item)) ?? "fasterliveportrait");
+  const [audioSource, setAudioSource] = useState<VideoCreationAudioSource>("upload");
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [sourceAssetBusy, setSourceAssetBusy] = useState(false);
+  const [text, setText] = useState("欢迎使用 OpenTalking 视频创作。请选择数字人形象和音色，生成一段离线口播视频。");
+  const [title, setTitle] = useState("数字人口播视频");
+  const [generating, setGenerating] = useState(false);
+  const [result, setResult] = useState<ExportVideoItem | null>(null);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [ttsPreviewing, setTtsPreviewing] = useState(false);
+  const [indexttsConfig, setIndexttsConfig] = useState<IndexTTSConfig>(() => freshIndexTTSConfig());
+  const [indexttsEmotionAudioFile, setIndexttsEmotionAudioFile] = useState<File | null>(null);
+  const [activeIndexTTSPresetLabel, setActiveIndexTTSPresetLabel] = useState<string | null>(null);
+  const sourceUploadRef = useRef<HTMLInputElement>(null);
+  const ttsPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsPreviewUrlRef = useRef<string | null>(null);
+
+  const availableVideoModels = useMemo(() => VIDEO_CREATION_MODELS.filter((item) => models.includes(item)), [models]);
+  const effectiveModel = availableVideoModels.includes(model) ? model : availableVideoModels[0] ?? model;
+  const selectedVoiceLabel = ttsProvider === "edge"
+    ? EDGE_ZH_VOICES.find((voice) => voice.id === edgeVoice)?.label ?? edgeVoice
+    : ttsProvider === "openai_compatible"
+      ? "后端默认音色"
+      : qwenVoiceOptions.find((voice) => voice.id === qwenVoice)?.label ?? qwenVoice;
+  const cloneVoiceCount = voiceCatalog.filter((item) => item.source === "clone").length;
+  const isReferenceVideoMode = creationMode === "reference_video";
+  const canPreviewTts = !isReferenceVideoMode && audioSource !== "upload";
+  const showIndexTTSControls = !isReferenceVideoMode && audioSource !== "upload" && INDEXTTS_PROVIDER_SET.has(ttsProvider);
+  const effectiveIndexTTSConfig = showIndexTTSControls ? buildIndexTTSQualityConfig(indexTTSRequestConfig(indexttsConfig)) : undefined;
+  const showIndexTTSEmotionStrength = indexttsConfig.emotion_mode !== "voice";
+
+  const updateFasterLivePortraitNumber = useCallback((
+    key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
+    value: string,
+  ) => {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    onFasterLivePortraitConfigChange({ ...fasterliveportraitConfig, [key]: next });
+  }, [fasterliveportraitConfig, onFasterLivePortraitConfigChange]);
+
+  const updateFasterLivePortraitSwitch = useCallback((
+    key: Extract<keyof FasterLivePortraitConfig, "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
+    checked: boolean,
+  ) => {
+    onFasterLivePortraitConfigChange({ ...fasterliveportraitConfig, [key]: checked });
+  }, [fasterliveportraitConfig, onFasterLivePortraitConfigChange]);
+
+  const updateIndexTTSNumber = useCallback((key: "emo_alpha" | "interval_silence_ms", value: string) => {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    setActiveIndexTTSPresetLabel(null);
+    setIndexttsConfig((current) => ({ ...current, [key]: next }));
+  }, []);
+
+  const updateIndexTTSVector = useCallback((index: number, value: string) => {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    setIndexttsConfig((current) => {
+      setActiveIndexTTSPresetLabel(null);
+      const vector = [...(current.emo_vector ?? DEFAULT_INDEXTTS_CONFIG.emo_vector ?? [])];
+      vector[index] = next;
+      return { ...current, emo_vector: vector };
+    });
+  }, []);
+
+  const applyIndexTTSEmotionPreset = useCallback((preset: IndexTTSEmotionPreset) => {
+    setIndexttsConfig(indexTTSEmotionPresetConfig(preset));
+    setActiveIndexTTSPresetLabel(preset.label);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (ttsPreviewUrlRef.current) {
+        URL.revokeObjectURL(ttsPreviewUrlRef.current);
+        ttsPreviewUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleSourceAsset = useCallback(async (file: File | null) => {
+    if (!file || !selectedAvatar) return;
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+    if (!isImage && !isVideo) {
+      onNotify?.("请上传图片或视频作为数字人形象。", "error");
+      return;
+    }
+    setSourceAssetBusy(true);
+    try {
+      const form = new FormData();
+      form.set("base_avatar_id", selectedAvatar.id);
+      form.set("name", avatarNameFromFile(file));
+      form.set("model", effectiveModel);
+      if (isVideo) {
+        form.set("video", file);
+      } else {
+        form.set("image", file);
+      }
+      const created = await apiPostForm<AvatarSummary>("/avatars/custom", form);
+      onAvatarUploaded(created);
+      onNotify?.(`已加入数字人资产：${created.name ?? created.id}`, "success");
+    } catch (error) {
+      console.warn("video creation source asset upload failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      onNotify?.(detail ? `上传形象失败：${detail}` : "上传形象失败。", "error");
+    } finally {
+      setSourceAssetBusy(false);
+    }
+  }, [effectiveModel, onAvatarUploaded, onNotify, selectedAvatar]);
+
+  const handleVoiceCloned = useCallback(async (application: VoiceCloneApplication) => {
+    await onVoiceCloned(application);
+    onTtsProviderChange(application.provider);
+    onQwenModelChange(application.model);
+    onQwenVoiceChange(application.voice);
+    setCloneOpen(false);
+    setAudioSource("voice_clone");
+  }, [onQwenModelChange, onQwenVoiceChange, onTtsProviderChange, onVoiceCloned]);
+
+  const handlePreviewTts = useCallback(async () => {
+    const previewText = text.trim();
+    if (!previewText) {
+      onNotify?.("请输入要试听的口播文本。", "info");
+      return;
+    }
+    const voice = ttsProvider === "edge" ? edgeVoice : ttsProvider === "sambert" || ttsProvider === "openai_compatible" ? "" : qwenVoice;
+    if (ttsProvider !== "edge" && ttsProvider !== "sambert" && ttsProvider !== "openai_compatible" && !voice.trim()) {
+      onNotify?.("当前模型没有可用音色，请先复刻音色或切换模型。", "info");
+      return;
+    }
+    if (showIndexTTSControls && indexttsConfig.emotion_mode === "audio" && !indexttsEmotionAudioFile) {
+      onNotify?.("请先上传 IndexTTS 情绪音频。", "info");
+      return;
+    }
+    setTtsPreviewing(true);
+    try {
+      const blob = await requestTTSPreview(
+        buildTTSPreviewPayload({
+          text: previewText,
+          voice,
+          provider: ttsProvider,
+          model: qwenModel,
+          indexttsConfig: effectiveIndexTTSConfig,
+          indexttsEmotionAudioFile,
+        }),
+      );
+      if (ttsPreviewUrlRef.current) {
+        URL.revokeObjectURL(ttsPreviewUrlRef.current);
+      }
+      const url = URL.createObjectURL(blob);
+      ttsPreviewUrlRef.current = url;
+      const audio = ttsPreviewAudioRef.current ?? new Audio();
+      ttsPreviewAudioRef.current = audio;
+      audio.src = url;
+      await audio.play();
+      onNotify?.("正在播放试听音频。", "success");
+    } catch (error) {
+      console.warn("video creation tts preview failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      onNotify?.(detail ? `试听失败：${detail}` : "试听失败，请确认音色、模型和后端密钥配置。", "error");
+    } finally {
+      setTtsPreviewing(false);
+    }
+  }, [edgeVoice, effectiveIndexTTSConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, onNotify, qwenModel, qwenVoice, showIndexTTSControls, text, ttsProvider]);
+
+  const handleGenerate = useCallback(async () => {
+    if (!selectedAvatar) {
+      onNotify?.("请先选择数字人资产。", "info");
+      return;
+    }
+    if (isReferenceVideoMode && !models.includes("flashtalk")) {
+      onNotify?.("当前环境没有可用 FlashTalk 模型，无法生成参考视频。", "info");
+      return;
+    }
+    if (!isReferenceVideoMode && audioSource === "upload" && !audioFile) {
+      onNotify?.("请先上传音频文件。", "info");
+      return;
+    }
+    if (!isReferenceVideoMode && audioSource !== "upload" && !text.trim()) {
+      onNotify?.("请输入要合成的口播文本。", "info");
+      return;
+    }
+    if (showIndexTTSControls && indexttsConfig.emotion_mode === "audio" && !indexttsEmotionAudioFile) {
+      onNotify?.("请先上传 IndexTTS 情绪音频。", "info");
+      return;
+    }
+    setGenerating(true);
+    setResult(null);
+    try {
+      if (isReferenceVideoMode) {
+        const response = await createVideoCreationJob({
+          model: "flashtalk",
+          avatarId: selectedAvatar.id,
+          title,
+          audioSource: "reference_video",
+          durationSec: referenceDurationSec,
+        });
+        setResult(response.export_video);
+        onExportCreated?.(response.export_video);
+        onNotify?.(`参考视频已保存到资产库：${response.export_video.title}`, "success");
+        return;
+      }
+      const response = await createVideoCreationJob({
+        model: effectiveModel,
+        avatarId: selectedAvatar.id,
+        title,
+        audioSource,
+        audioFile,
+        text,
+        ttsProvider,
+        ttsModel: ttsProvider === "edge" || ttsProvider === "openai_compatible" ? undefined : qwenModel,
+        voice: ttsProvider === "edge" ? edgeVoice : ttsProvider === "openai_compatible" ? undefined : qwenVoice,
+        fasterliveportraitConfig: effectiveModel === "fasterliveportrait" ? fasterliveportraitConfig : undefined,
+        indexttsConfig: effectiveIndexTTSConfig,
+        indexttsEmotionAudioFile,
+      });
+      setResult(response.export_video);
+      onExportCreated?.(response.export_video);
+      onNotify?.(`视频创作已保存到资产库：${response.export_video.title}`, "success");
+    } catch (error) {
+      console.warn("video creation job failed", error);
+      const detail = error instanceof ApiError ? error.detail : null;
+      onNotify?.(detail ? `视频创作失败：${detail}` : "视频创作失败，请查看后端日志。", "error");
+    } finally {
+      setGenerating(false);
+    }
+  }, [audioFile, audioSource, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, isReferenceVideoMode, models, onExportCreated, onNotify, qwenModel, qwenVoice, referenceDurationSec, selectedAvatar, showIndexTTSControls, text, title, ttsProvider]);
+
+  return (
+    <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[20rem_minmax(0,1fr)_22rem]">
+        <section className="min-h-0 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-slate-500">Source</p>
+              <h1 className="mt-1 text-base font-semibold text-slate-950">视频创作</h1>
+            </div>
+            <button
+              type="button"
+              onClick={() => sourceUploadRef.current?.click()}
+              disabled={sourceAssetBusy || !selectedAvatar}
+              className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sourceAssetBusy ? "上传中..." : "上传图片/视频"}
+            </button>
+            <input
+              ref={sourceUploadRef}
+              type="file"
+              accept="image/*,video/*"
+              className="hidden"
+              onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                const input = event.currentTarget;
+                void handleSourceAsset(input.files?.[0] ?? null).finally(() => {
+                  input.value = "";
+                });
+              }}
+            />
+          </div>
+          <div className="mt-4 space-y-2">
+            {avatars.map((avatar) => {
+              const selected = selectedAvatar?.id === avatar.id;
+              return (
+                <button
+                  key={avatar.id}
+                  type="button"
+                  onClick={() => onAvatarChange(avatar.id)}
+                  className={`flex w-full items-center gap-3 rounded-lg border p-2 text-left transition ${selected ? "border-cyan-300 bg-cyan-50" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                >
+                  {avatar.has_preview_video ? (
+                    <video
+                      src={buildApiUrl(`/avatars/${encodeURIComponent(avatar.id)}/preview-video`)}
+                      className="h-12 w-12 rounded-md border border-slate-200 object-cover"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
+                    <img src={buildApiUrl(`/avatars/${encodeURIComponent(avatar.id)}/preview`)} alt={avatar.name ?? avatar.id} className="h-12 w-12 rounded-md border border-slate-200 object-cover" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-900">{avatar.name ?? avatar.id}</span>
+                    <span className="block truncate text-xs text-slate-500">{avatar.width}x{avatar.height}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="flex min-h-[30rem] min-w-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <p className="text-xs font-medium text-slate-500">Offline Generation</p>
+            <h2 className="text-base font-semibold text-slate-950">离线数字人口播</h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setCreationMode("spoken_video")}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${creationMode === "spoken_video" ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+              >
+                离线数字人口播
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCreationMode("reference_video");
+                  setModel("flashtalk");
+                }}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${creationMode === "reference_video" ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+              >
+                图片生成参考视频
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="grid gap-4 lg:grid-cols-2">
+              <label className="block text-sm font-medium text-slate-700">
+                生成模型
+                <select value={isReferenceVideoMode ? "flashtalk" : effectiveModel} onChange={(event) => setModel(event.target.value)} disabled={isReferenceVideoMode} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
+                  {VIDEO_CREATION_MODELS.map((item) => (
+                    <option key={item} value={item} disabled={!models.includes(item)}>{VIDEO_CREATION_MODEL_LABELS[item] ?? item}{models.includes(item) ? "" : "（不可用）"}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                标题
+                <input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+              </label>
+            </div>
+
+            {!isReferenceVideoMode && effectiveModel === "fasterliveportrait" ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800">FasterLivePortrait 参数</p>
+                  <button
+                    type="button"
+                    onClick={() => onFasterLivePortraitConfigChange({ ...DEFAULT_VIDEO_CREATION_FASTLIVEPORTRAIT_CONFIG })}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-700"
+                  >
+                    恢复默认
+                  </button>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => onFasterLivePortraitConfigChange({ ...fasterliveportraitConfig, animation_region: option.id })}
+                      className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${fasterliveportraitConfig.animation_region === option.id ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {FASTERLIVEPORTRAIT_SLIDERS.map((control) => {
+                    const value = Number(fasterliveportraitConfig[control.key]);
+                    return (
+                      <label key={control.key} className="block rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                        <span className="flex items-center justify-between gap-2">
+                          <span>{control.label}</span>
+                          <input
+                            type="number"
+                            min={control.min}
+                            max={control.max}
+                            step={control.step}
+                            value={value}
+                            onChange={(event) => updateFasterLivePortraitNumber(control.key, event.target.value)}
+                            className="h-7 w-20 rounded-md border border-slate-200 bg-slate-50 px-2 text-right text-xs font-semibold text-slate-700 outline-none focus:border-cyan-300"
+                          />
+                        </span>
+                        <input
+                          type="range"
+                          min={control.min}
+                          max={control.max}
+                          step={control.step}
+                          value={value}
+                          onChange={(event) => updateFasterLivePortraitNumber(control.key, event.target.value)}
+                          className="mt-2 w-full accent-cyan-600"
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {FASTERLIVEPORTRAIT_SWITCHES.map((control) => (
+                    <label key={control.key} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                      <span className="truncate">{control.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(fasterliveportraitConfig[control.key])}
+                        onChange={(event) => updateFasterLivePortraitSwitch(control.key, event.target.checked)}
+                        className="h-4 w-4 shrink-0 accent-cyan-600"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {!isReferenceVideoMode ? (
+              <div className="mt-5">
+                <p className="text-sm font-semibold text-slate-800">音频来源</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {AUDIO_SOURCE_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setAudioSource(option.id)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${audioSource === option.id ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-800">参考视频时长</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {REFERENCE_DURATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setReferenceDurationSec(option.value)}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${referenceDurationSec === option.value ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                  {selectedAvatar ? (
+                    <>
+                      <img src={buildApiUrl(`/avatars/${encodeURIComponent(selectedAvatar.id)}/preview`)} alt={selectedAvatar.name ?? selectedAvatar.id} className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-slate-900">{selectedAvatar.name ?? selectedAvatar.id}</span>
+                        <span className="block text-xs text-slate-500">FlashTalk 使用内部低能量驱动音频生成参考视频</span>
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm font-medium text-slate-500">请先在左侧选择或上传参考图片</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isReferenceVideoMode && audioSource === "upload" ? (
+              <label className="mt-4 block rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-700">
+                <span className="font-semibold">上传音频</span>
+                <span className="mt-1 block text-xs text-slate-500">支持 wav/mp3/m4a/webm 等 ffmpeg 可解码格式，服务端限制文件大小。</span>
+                <input type="file" accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg" className="mt-3 block w-full text-xs" onChange={(event) => setAudioFile(event.currentTarget.files?.[0] ?? null)} />
+                {audioFile ? <span className="mt-2 block text-xs font-medium text-cyan-700">已选择：{audioFile.name}</span> : null}
+              </label>
+            ) : !isReferenceVideoMode ? (
+              <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <label className="block text-sm font-medium text-slate-700">
+                  <span className="flex items-center justify-between gap-3">
+                    <span>口播文本</span>
+                    <span className="text-xs font-medium text-slate-400">{text.trim().length}/{VIDEO_CREATION_SCRIPT_MAX_CHARS}</span>
+                  </span>
+                  <textarea value={text} onChange={(event) => setText(event.target.value)} rows={5} maxLength={VIDEO_CREATION_SCRIPT_MAX_CHARS} className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                </label>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <label className="block text-sm font-medium text-slate-700">
+                    TTS
+                    <select value={ttsProvider} onChange={(event) => onTtsProviderChange(event.target.value as TtsProviderExtended)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                      {(["edge", "dashscope", "cosyvoice", "sambert", "local_cosyvoice", "indextts", "xiaomi_mimo", "openai_compatible"] as TtsProviderExtended[]).map((item) => <option key={item} value={item}>{providerLabel(item)}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700">
+                    模型
+                    <select disabled={ttsProvider === "edge" || ttsProvider === "openai_compatible"} value={ttsProvider === "edge" || ttsProvider === "openai_compatible" ? "" : qwenModel} onChange={(event) => onQwenModelChange(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-slate-100">
+                      {qwenModelOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-slate-700">
+                    音色
+                    {ttsProvider === "edge" ? (
+                      <select value={edgeVoice} onChange={(event) => onEdgeVoiceChange(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                        {EDGE_ZH_VOICES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                      </select>
+                    ) : ttsProvider === "openai_compatible" ? (
+                      <input disabled value="后端 .env 默认音色" className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-500" />
+                    ) : (
+                      <select value={qwenVoice} onChange={(event) => onQwenVoiceChange(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                        {qwenVoiceOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                      </select>
+                    )}
+                  </label>
+                </div>
+                {showIndexTTSControls ? (
+                  <div className="border-t border-slate-200 pt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">IndexTTS 语音情绪</p>
+                        <p className="mt-1 text-xs text-slate-500">控制语气、韵律和能量；音色仍由参考音频决定，视频表情由口型模型驱动。</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIndexttsConfig(freshIndexTTSConfig());
+                          setIndexttsEmotionAudioFile(null);
+                          setActiveIndexTTSPresetLabel(null);
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-700"
+                      >
+                        恢复默认
+                      </button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {([
+                        { id: "voice", label: "跟随音色" },
+                        { id: "text", label: "文本情绪" },
+                        { id: "vector", label: "手动向量" },
+                        { id: "audio", label: "情绪音频" },
+                      ] as const).map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            setIndexttsConfig((current) => indexTTSEmotionModeConfig(current, option.id));
+                            setActiveIndexTTSPresetLabel(null);
+                          }}
+                          className={`rounded-lg border px-2 py-2 text-xs font-semibold transition ${indexttsConfig.emotion_mode === option.id ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={`mt-3 grid gap-3 ${showIndexTTSEmotionStrength ? "md:grid-cols-2" : ""}`}>
+                      {showIndexTTSEmotionStrength ? (
+                        <label className="block rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                          <span className="flex items-center justify-between gap-2">
+                            <span>情绪强度</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={1}
+                              step={0.05}
+                              value={numberOr(indexttsConfig.emo_alpha, 0.6)}
+                              onChange={(event) => updateIndexTTSNumber("emo_alpha", event.target.value)}
+                              className="h-7 w-20 rounded-md border border-slate-200 bg-slate-50 px-2 text-right text-xs font-semibold text-slate-700 outline-none focus:border-cyan-300"
+                            />
+                          </span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            value={numberOr(indexttsConfig.emo_alpha, 0.6)}
+                            onChange={(event) => updateIndexTTSNumber("emo_alpha", event.target.value)}
+                            className="mt-2 w-full accent-cyan-600"
+                          />
+                        </label>
+                      ) : null}
+                      <label className="block rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                        <span className="flex items-center justify-between gap-2">
+                          <span>段间静音 ms</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={2000}
+                            step={20}
+                            value={numberOr(indexttsConfig.interval_silence_ms, 0)}
+                            onChange={(event) => updateIndexTTSNumber("interval_silence_ms", event.target.value)}
+                            className="h-7 w-20 rounded-md border border-slate-200 bg-slate-50 px-2 text-right text-xs font-semibold text-slate-700 outline-none focus:border-cyan-300"
+                          />
+                        </span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={500}
+                          step={20}
+                          value={Math.min(500, numberOr(indexttsConfig.interval_silence_ms, 0))}
+                          onChange={(event) => updateIndexTTSNumber("interval_silence_ms", event.target.value)}
+                          className="mt-2 w-full accent-cyan-600"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {INDEXTTS_EMOTION_PRESETS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => applyIndexTTSEmotionPreset(preset)}
+                          className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${preset.label === activeIndexTTSPresetLabel ? "border-cyan-300 bg-cyan-50 text-cyan-700" : "border-slate-200 bg-white text-slate-600 hover:border-cyan-200 hover:text-cyan-700"}`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    {indexttsConfig.emotion_mode === "text" ? (
+                      <label className="mt-3 block text-sm font-medium text-slate-700">
+                        情绪文本
+                        <textarea
+                          value={indexttsConfig.emo_text ?? ""}
+                          onChange={(event) => {
+                            setIndexttsConfig((current) => ({ ...current, emo_text: event.target.value }));
+                            setActiveIndexTTSPresetLabel(null);
+                          }}
+                          rows={2}
+                          maxLength={240}
+                          className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        />
+                      </label>
+                    ) : null}
+                    {indexttsConfig.emotion_mode === "audio" ? (
+                      <label className="mt-3 block rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-700">
+                        情绪音频
+                        <input
+                          type="file"
+                          accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg"
+                          className="mt-2 block w-full text-xs"
+                          onChange={(event) => {
+                            setIndexttsEmotionAudioFile(event.currentTarget.files?.[0] ?? null);
+                            setActiveIndexTTSPresetLabel(null);
+                          }}
+                        />
+                        {indexttsEmotionAudioFile ? (
+                          <span className="mt-2 block truncate text-xs font-medium text-cyan-700">已选择：{indexttsEmotionAudioFile.name}</span>
+                        ) : null}
+                      </label>
+                    ) : null}
+                    {indexttsConfig.emotion_mode === "vector" ? (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {INDEXTTS_EMOTION_VECTOR_CONTROLS.map((control) => {
+                          const value = numberOr(indexttsConfig.emo_vector?.[control.index], 0);
+                          return (
+                            <label key={control.key} className="block rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
+                              <span className="flex items-center justify-between gap-2">
+                                <span>{control.label}</span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={1}
+                                  step={0.05}
+                                  value={value}
+                                  onChange={(event) => updateIndexTTSVector(control.index, event.target.value)}
+                                  className="h-7 w-20 rounded-md border border-slate-200 bg-slate-50 px-2 text-right text-xs font-semibold text-slate-700 outline-none focus:border-cyan-300"
+                                />
+                              </span>
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.05}
+                                value={value}
+                                onChange={(event) => updateIndexTTSVector(control.index, event.target.value)}
+                                className="mt-2 w-full accent-cyan-600"
+                              />
+                            </label>
+                          );
+                        })}
+                        <label className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                          <span>随机风格</span>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(indexttsConfig.use_random)}
+                            onChange={(event) => {
+                              setIndexttsConfig((current) => ({ ...current, use_random: event.target.checked }));
+                              setActiveIndexTTSPresetLabel(null);
+                            }}
+                            className="h-4 w-4 shrink-0 accent-cyan-600"
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {audioSource === "voice_clone" ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
+                    <span>复刻音色：已有 {cloneVoiceCount} 个复刻音色，当前使用 {selectedVoiceLabel || "未选择"}</span>
+                    <button type="button" onClick={() => setCloneOpen(true)} className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500">录制/上传复刻</button>
+                  </div>
+                ) : null}
+                {canPreviewTts ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <span className="text-xs font-medium text-slate-500">试听当前文本、模型和音色后再生成视频。</span>
+                    <button
+                      type="button"
+                      onClick={() => void handlePreviewTts()}
+                      disabled={ttsPreviewing || !text.trim()}
+                      className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {ttsPreviewing ? "试听中..." : "试听口播"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button type="button" disabled={generating || !selectedAvatar || !availableVideoModels.length} onClick={() => void handleGenerate()} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                {generating ? "生成中..." : "生成并保存"}
+              </button>
+              {result ? <span className="text-sm font-medium text-emerald-700">已保存到资产库</span> : null}
+            </div>
+          </div>
+        </section>
+
+        <aside className="flex min-h-0 flex-col rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium text-slate-500">Result</p>
+          <h2 className="mt-1 text-base font-semibold text-slate-950">生成结果</h2>
+          {result ? (
+            <div className="mt-4 space-y-3">
+              <video src={buildApiDownloadUrl(result.download_url)} className="aspect-video w-full rounded-lg bg-slate-950 object-contain" controls preload="metadata" />
+              <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                <p className="font-semibold text-slate-800">{result.title}</p>
+                <p className="mt-1 break-all font-mono text-[11px]">{result.path}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a href={buildApiDownloadUrl(result.download_url)} download className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500">下载</a>
+                <button type="button" onClick={onGoAssetLibrary} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-cyan-200 hover:text-cyan-700">去资产库查看</button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 flex min-h-[18rem] items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-sm font-medium text-slate-500">生成后显示视频预览</div>
+          )}
+        </aside>
+      </div>
+
+      {cloneOpen ? (
+        <>
+          <button type="button" className="fixed inset-0 z-[55] bg-slate-900/20 backdrop-blur-[2px]" aria-label="关闭音色复刻" onClick={() => setCloneOpen(false)} />
+          <aside className="fixed inset-y-0 right-0 z-[56] flex w-[min(100vw,28rem)] shadow-2xl shadow-slate-300/70">
+            <div className="h-full max-h-[100dvh] flex-1 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4 sm:p-5">
+              <BailianVoiceClone onSuccess={handleVoiceCloned} onClose={() => setCloneOpen(false)} />
+            </div>
+          </aside>
+        </>
+      ) : null}
+    </main>
+  );
+}

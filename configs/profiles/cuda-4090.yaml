@@ -1,0 +1,15 @@
+hardware:
+  vendor: nvidia
+  device: cuda-4090
+  vram_gb: 24
+defaults:
+  synthesis: musetalk
+  tts: edge
+  llm: openai_compatible
+  stt: dashscope
+fallback_chain:
+  synthesis: [musetalk, wav2lip]
+omnirt:
+  backend: cuda
+  required_models: [musetalk-1.5, wav2lip]
+  optional_models: [soulx-flashtalk-14b]

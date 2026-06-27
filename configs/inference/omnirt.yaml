@@ -1,0 +1,23 @@
+# omnirt endpoint catalog. Avatar manifests reference these by key under
+# appearance.synthesis.endpoint_ref. Variables resolved from .env at runtime.
+endpoints:
+  flashtalk:
+    base_url: ${OMNIRT_ENDPOINT}
+    task: audio2video
+    model: soulx-flashtalk-14b
+  musetalk:
+    base_url: ${OMNIRT_ENDPOINT}
+    task: audio2video
+    model: musetalk-1.5
+  wav2lip:
+    base_url: ${OMNIRT_ENDPOINT}
+    task: audio2video
+    model: wav2lip
+  fasterliveportrait:
+    base_url: ${OMNIRT_ENDPOINT}
+    task: audio2video
+    model: fasterliveportrait
+  cosyvoice:
+    base_url: ${OMNIRT_ENDPOINT}
+    task: streaming_tts
+    model: cosyvoice-2.0

@@ -1,0 +1,4 @@
+flashtalk:
+  mode: off
+model:
+  torch_device: cpu

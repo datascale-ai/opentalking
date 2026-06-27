@@ -1,0 +1,207 @@
+{
+  "id": "singer",
+  "name": "歌手",
+  "model_type": "wav2lip",
+  "fps": 30,
+  "sample_rate": 16000,
+  "width": 830,
+  "height": 1108,
+  "version": "1.0",
+  "metadata": {
+    "description": "Built-in video-frame Wav2Lip trial asset generated from a short source video.",
+    "idle_mode": "loop",
+    "reference_mode": "frames",
+    "frame_dir": "frames",
+    "source_video": "source/c801cf075604a635ca34e46c3c227c6c.mp4",
+    "source_fps": 30.0,
+    "source_frame_count": 150,
+    "extracted_frame_count": 125,
+    "source_image_path": "reference.png",
+    "source_image_hash": "e331db1a8ec3f3dae170186f5a17b8fee8aec68b2eb8acb88d7f157617ff1e19",
+    "mouth_polygon_source": "mediapipe",
+    "face_box": [
+      0.29398,
+      0.01625,
+      0.75663,
+      0.48556
+    ],
+    "animation": {
+      "mouth_center": [
+        0.5253,
+        0.29783
+      ],
+      "mouth_rx": 0.03855,
+      "mouth_ry": 0.01173,
+      "outer_lip": [
+        [
+          0.48675,
+          0.29783
+        ],
+        [
+          0.49036,
+          0.30144
+        ],
+        [
+          0.49639,
+          0.30505
+        ],
+        [
+          0.50482,
+          0.30866
+        ],
+        [
+          0.51566,
+          0.31137
+        ],
+        [
+          0.52771,
+          0.31047
+        ],
+        [
+          0.53855,
+          0.30866
+        ],
+        [
+          0.54819,
+          0.30505
+        ],
+        [
+          0.55542,
+          0.29964
+        ],
+        [
+          0.56024,
+          0.29513
+        ],
+        [
+          0.56386,
+          0.29152
+        ],
+        [
+          0.55904,
+          0.29061
+        ],
+        [
+          0.55422,
+          0.29061
+        ],
+        [
+          0.54699,
+          0.28881
+        ],
+        [
+          0.53614,
+          0.28791
+        ],
+        [
+          0.5253,
+          0.29061
+        ],
+        [
+          0.51446,
+          0.28971
+        ],
+        [
+          0.50361,
+          0.29242
+        ],
+        [
+          0.49639,
+          0.29513
+        ],
+        [
+          0.49036,
+          0.29693
+        ]
+      ],
+      "inner_mouth": [
+        [
+          0.49036,
+          0.29783
+        ],
+        [
+          0.49639,
+          0.29874
+        ],
+        [
+          0.5012,
+          0.29874
+        ],
+        [
+          0.50843,
+          0.29874
+        ],
+        [
+          0.51687,
+          0.29874
+        ],
+        [
+          0.52651,
+          0.29874
+        ],
+        [
+          0.53494,
+          0.29783
+        ],
+        [
+          0.54337,
+          0.29603
+        ],
+        [
+          0.5494,
+          0.29513
+        ],
+        [
+          0.55422,
+          0.29332
+        ],
+        [
+          0.56024,
+          0.29242
+        ],
+        [
+          0.55422,
+          0.29332
+        ],
+        [
+          0.5494,
+          0.29513
+        ],
+        [
+          0.54337,
+          0.29603
+        ],
+        [
+          0.53494,
+          0.29783
+        ],
+        [
+          0.52651,
+          0.29874
+        ],
+        [
+          0.51687,
+          0.29874
+        ],
+        [
+          0.50843,
+          0.29874
+        ],
+        [
+          0.5012,
+          0.29874
+        ],
+        [
+          0.49639,
+          0.29874
+        ]
+      ]
+    },
+    "frame_metadata": "frames/mouth_metadata.json",
+    "frame_metadata_source": "mediapipe",
+    "frame_metadata_count": 125,
+    "frame_metadata_missing_count": 0,
+    "preprocessed": true,
+    "preprocess_version": 1
+  }
+}

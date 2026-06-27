@@ -1,0 +1,26 @@
+FROM python:3.11-slim-bookworm
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md LICENSE ./
+COPY src ./src
+COPY apps ./apps
+COPY configs ./configs
+COPY examples ./examples
+
+RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && pip install --no-cache-dir -e .
+
+ENV OPENTALKING_REDIS_URL=redis://redis:6379/0
+ENV OPENTALKING_WORKER_URL=http://worker:9001
+ENV OPENTALKING_AVATARS_DIR=/app/examples/avatars
+ENV OPENTALKING_API_HOST=0.0.0.0
+ENV OPENTALKING_API_PORT=8000
+
+EXPOSE 8000
+
+CMD ["opentalking-api"]

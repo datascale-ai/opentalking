@@ -1,0 +1,13 @@
+{
+  "voice_id": "indextts-xiaoyi-cn",
+  "display_label": "IndexTTS 晓伊女声",
+  "provider": "local_indextts",
+  "providers": [
+    "local_indextts",
+    "omnirt_indextts"
+  ],
+  "target_model": "IndexTeam/IndexTTS-2",
+  "prompt_text": "你好，我是晓伊。接下来我会用年轻明亮、节奏轻快的声音，演示一段适合短视频介绍的中文口播。",
+  "source": "system",
+  "source_voice": "zh-CN-XiaoyiNeural"
+}

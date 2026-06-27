@@ -1,0 +1,19 @@
+services:
+  unified:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    command: ["opentalking-unified"]
+    environment:
+      OPENTALKING_AVATARS_DIR: /app/examples/avatars
+      OPENTALKING_FLASHTALK_MODE: remote
+      OPENTALKING_FLASHTALK_WS_URL: ws://flashtalk:8765
+    ports:
+      - "8000:8000"
+
+  flashtalk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flashtalk
+    ports:
+      - "8765:8765"

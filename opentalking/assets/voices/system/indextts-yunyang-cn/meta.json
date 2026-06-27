@@ -1,0 +1,13 @@
+{
+  "voice_id": "indextts-yunyang-cn",
+  "display_label": "IndexTTS 云扬播报男声",
+  "provider": "local_indextts",
+  "providers": [
+    "local_indextts",
+    "omnirt_indextts"
+  ],
+  "target_model": "IndexTeam/IndexTTS-2",
+  "prompt_text": "你好，我是云扬。欢迎收看本次技术播报，我会用稳重清晰、适合新闻解说的声音，介绍系统运行状态。",
+  "source": "system",
+  "source_voice": "zh-CN-YunyangNeural"
+}

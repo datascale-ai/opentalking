@@ -1,0 +1,97 @@
+log_level: INFO
+api:
+  host: 0.0.0.0
+  port: 8000
+  cors_origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+infrastructure:
+  redis_url: redis://localhost:6379/0
+  avatars_dir: ./examples/avatars
+  models_dir: ./models
+  worker_url: http://127.0.0.1:9001
+flashtalk:
+  mode: off
+  ws_url: ""
+  ckpt_dir: ./models/SoulX-FlashTalk-14B
+  wav2vec_dir: ./models/chinese-wav2vec2-base
+  port: 8765
+  device: auto
+  gpu_count: 8
+  jpeg_quality: 40
+flashhead:
+  ws_url: ""
+  base_url: ""
+  model: soulx-flashhead-1.3b
+  shared_local_dir: /tmp/opentalking_flashhead_io
+  shared_remote_dir: /tmp/opentalking_flashhead_io
+  output_local_dir: ""
+  output_remote_dir: ""
+  output_base_url: ""
+  timeout_sec: 600
+  fps: 25
+  sample_rate: 16000
+  width: 512
+  height: 512
+  frame_num: 29
+  chunk_samples: 17920
+llm:
+  base_url: ""
+  api_key: ""
+  model: qwen-flash
+  system_prompt: You are a friendly digital human assistant.
+tts:
+  voice: zh-CN-XiaoxiaoNeural
+  sample_rate: 16000
+  streaming_decode: true
+  local_cosyvoice_model: FunAudioLLM/Fun-CosyVoice3-0.5B-2512
+  local_cosyvoice_device: auto
+  local_cosyvoice_fp16: auto
+  local_cosyvoice_load_trt: false
+  local_cosyvoice_load_jit: false
+  local_cosyvoice_load_vllm: false
+  local_cosyvoice_trt_concurrent: 1
+  local_cosyvoice_max_token_text_ratio: 6.0
+  local_cosyvoice_min_token_text_ratio: 0.0
+  local_cosyvoice_mask_stop_tokens: true
+memory:
+  provider: mem0
+  enabled: false
+  default_profile_id: default
+  default_library_id: default
+  recall_limit: 5
+  recall_min_score: 0.0
+  recall_timeout_ms: 2000
+  recall_backend: hybrid
+  write_mode: hybrid
+  decision_mode: hybrid
+  decision_timeout_ms: 2000
+  smart_write_enabled: true
+  summary_enabled: true
+  summary_turn_window: 8
+  summary_max_items: 3
+  sqlite_path: ./data/opentalking_memory.sqlite3
+model:
+  torch_device: cpu
+  default_model: wav2lip
+models:
+  mock:
+    backend: mock
+  wav2lip:
+    backend: local
+    stream_batch_size: 8
+    pads: [0, 10, 0, 0]
+  musetalk:
+    backend: omnirt
+    context_ms: 320.0
+    silence_gate: 0.04
+  flashtalk:
+    backend: omnirt
+    frame_num: 33
+    sample_steps: 2
+  fasterliveportrait:
+    backend: omnirt
+  flashhead:
+    backend: direct_ws
+  quicktalk:
+    backend: omnirt

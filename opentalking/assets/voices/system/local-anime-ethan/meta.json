@@ -1,0 +1,19 @@
+{
+  "voice_id": "local-anime-ethan",
+  "display_label": "动漫男声 Ethan（本地）",
+  "provider": "local_cosyvoice",
+  "target_model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  "mode": "zero_shot",
+  "source": "system",
+  "prompt_audio": "/data2/zhongyi/model/opentalking-local-audio/voices/system/local-anime-ethan/prompt.wav",
+  "prompt_text": "你好，欢迎来到OpenTalking。我会用自然清晰的声音，为你介绍今天的内容。",
+  "prompt_source": "generated_once_from_dashscope_qwen_tts",
+  "qwen_reference_voice": "Ethan",
+  "avatar_hint": "动漫帅哥",
+  "role": "anime-handsome-guy",
+  "style": "年轻、明亮、适合轻量互动和二次元角色",
+  "duration_sec": 5.12,
+  "sample_rate": 24000,
+  "bytes": 245804,
+  "storage_note": "prompt.wav is a local Qwen-generated reference sample; kept small as one WAV per built-in local voice."
+}

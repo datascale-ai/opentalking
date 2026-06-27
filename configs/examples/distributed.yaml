@@ -1,0 +1,9 @@
+api:
+  port: 8000
+infrastructure:
+  redis_url: redis://redis:6379/0
+flashtalk:
+  mode: remote
+  ws_url: ws://flashtalk:8765
+model:
+  torch_device: cuda

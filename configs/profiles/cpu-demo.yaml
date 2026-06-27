@@ -1,0 +1,11 @@
+hardware:
+  vendor: cpu
+  device: generic
+defaults:
+  synthesis: wav2lip
+  tts: edge
+  llm: openai_compatible
+  stt: dashscope
+omnirt:
+  backend: cpu
+  required_models: [wav2lip]

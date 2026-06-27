@@ -1,0 +1,11 @@
+hardware:
+  vendor: huawei
+  device: ascend-910b
+defaults:
+  synthesis: flashtalk
+  tts: edge
+  llm: openai_compatible
+  stt: dashscope
+omnirt:
+  backend: ascend
+  required_models: [soulx-flashtalk-14b]

@@ -1,0 +1,13 @@
+{
+  "voice_id": "indextts-yunjian-cn",
+  "display_label": "IndexTTS 云健运动男声",
+  "provider": "local_indextts",
+  "providers": [
+    "local_indextts",
+    "omnirt_indextts"
+  ],
+  "target_model": "IndexTeam/IndexTTS-2",
+  "prompt_text": "你好，我是云健。接下来我会用饱满有力、适合运动解说和产品发布的声音，演示一段数字人口播。",
+  "source": "system",
+  "source_voice": "zh-CN-YunjianNeural"
+}

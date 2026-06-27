@@ -1,0 +1,25 @@
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python-is-python3 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md LICENSE ./
+COPY src ./src
+COPY apps ./apps
+COPY configs ./configs
+COPY examples ./examples
+COPY scripts ./scripts
+
+RUN python -m pip install --no-cache-dir -U pip setuptools wheel \
+    && python -m pip install --no-cache-dir -e ".[engine]"
+
+EXPOSE 8765
+
+CMD ["bash", "scripts/start_server.sh"]

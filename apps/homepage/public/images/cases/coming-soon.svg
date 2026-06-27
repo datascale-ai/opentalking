@@ -1,0 +1,19 @@
+<svg width="1200" height="760" viewBox="0 0 1200 760" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="760" fill="#F8FAFC"/>
+  <rect x="74" y="64" width="1052" height="632" rx="34" fill="white"/>
+  <rect x="74" y="64" width="1052" height="632" rx="34" stroke="#E0E7FF" stroke-width="2"/>
+  <circle cx="1010" cy="156" r="76" fill="#EEF2FF"/>
+  <circle cx="188" cy="604" r="92" fill="#ECFEFF"/>
+  <circle cx="958" cy="594" r="118" fill="#FFF1F2"/>
+  <rect x="170" y="150" width="476" height="36" rx="18" fill="#E0F2FE"/>
+  <rect x="170" y="214" width="690" height="28" rx="14" fill="#EEF2FF"/>
+  <rect x="170" y="264" width="560" height="28" rx="14" fill="#F1F5F9"/>
+  <rect x="170" y="344" width="860" height="188" rx="28" fill="#F8FAFC" stroke="#E0E7FF" stroke-width="2"/>
+  <rect x="220" y="394" width="170" height="88" rx="18" fill="#ECFEFF" stroke="#CFFAFE" stroke-width="2"/>
+  <rect x="430" y="394" width="170" height="88" rx="18" fill="#EEF2FF" stroke="#E0E7FF" stroke-width="2"/>
+  <rect x="640" y="394" width="170" height="88" rx="18" fill="#FFF1F2" stroke="#FFE4E6" stroke-width="2"/>
+  <path d="M889 398c26.51 0 48 21.49 48 48s-21.49 48-48 48-48-21.49-48-48 21.49-48 48-48Z" fill="white" stroke="#A5B4FC" stroke-width="3"/>
+  <path d="M874 446h30M889 431v30" stroke="#6366F1" stroke-width="8" stroke-linecap="round"/>
+  <text x="170" y="624" fill="#0F172A" font-family="Inter, Arial, sans-serif" font-size="54" font-weight="700">Coming soon</text>
+  <text x="170" y="670" fill="#64748B" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="500">Scenario resource is being prepared</text>
+</svg>

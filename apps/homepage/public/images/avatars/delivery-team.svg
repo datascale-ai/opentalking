@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Enterprise delivery team avatar">
+  <rect width="160" height="160" rx="40" fill="#fff7ed"/>
+  <circle cx="80" cy="78" r="48" fill="#fde68a"/>
+  <path d="M42 70c8-26 25-39 50-36 20 3 32 18 31 39-11-6-24-9-39-9-17 0-31 2-42 6Z" fill="#0f172a"/>
+  <path d="M53 85c0 24 12 40 30 40 19 0 32-16 32-40 0-14-12-25-31-25S53 71 53 85Z" fill="#f8d9bd"/>
+  <rect x="61" y="83" width="17" height="10" rx="5" fill="#ffffff" stroke="#1e1b4b" stroke-width="3"/>
+  <rect x="90" y="83" width="17" height="10" rx="5" fill="#ffffff" stroke="#1e1b4b" stroke-width="3"/>
+  <path d="M78 88h12" stroke="#1e1b4b" stroke-width="3" stroke-linecap="round"/>
+  <path d="M72 106c7 5 16 5 24 0" fill="none" stroke="#1e1b4b" stroke-width="5" stroke-linecap="round"/>
+  <path d="M38 118c9-15 24-23 43-23 20 0 34 8 43 23v19H38v-19Z" fill="#6366f1"/>
+  <path d="M51 126h58" stroke="#c7d2fe" stroke-width="5" stroke-linecap="round"/>
+  <rect x="111" y="36" width="26" height="22" rx="7" fill="#f59e0b"/>
+  <path d="M118 47h12" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+</svg>

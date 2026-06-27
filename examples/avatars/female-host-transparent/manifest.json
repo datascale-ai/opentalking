@@ -1,0 +1,20 @@
+{
+  "id": "female-host-transparent",
+  "name": "女主持（透明背景）",
+  "model_type": "wav2lip",
+  "fps": 25,
+  "sample_rate": 16000,
+  "width": 1024,
+  "height": 1024,
+  "version": "1.0",
+  "metadata": {
+    "description": "Built-in female host avatar asset with a transparent background.",
+    "idle_mode": "static",
+    "reference_mode": "image",
+    "frame_dir": "frames",
+    "source_image": "source/source.png",
+    "source_image_path": "reference.png",
+    "source_image_hash": "712c1cd47f32a18042a2908893f81128ba5176be6f896c8e31fb6ae4e5321f9b",
+    "matting_status": "transparent_ready"
+  }
+}

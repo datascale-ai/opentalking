@@ -1,0 +1,54 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    depends_on:
+      - redis
+    environment:
+      OPENTALKING_REDIS_URL: redis://redis:6379/0
+      OPENTALKING_WORKER_URL: http://worker:9001
+      OPENTALKING_AVATARS_DIR: /app/examples/avatars
+      OPENTALKING_CORS_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    depends_on:
+      - redis
+    environment:
+      OPENTALKING_REDIS_URL: redis://redis:6379/0
+      OPENTALKING_AVATARS_DIR: /app/examples/avatars
+      OPENTALKING_TORCH_DEVICE: cpu
+      OPENTALKING_FLASHTALK_MODE: remote
+      OPENTALKING_FLASHTALK_WS_URL: ws://flashtalk:8765
+    ports:
+      - "9001:9001"
+
+  flashtalk:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.flashtalk
+    environment:
+      OPENTALKING_FLASHTALK_PORT: 8765
+    ports:
+      - "8765:8765"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+      args:
+        VITE_API_BASE: /api
+    depends_on:
+      - api
+    ports:
+      - "8080:80"

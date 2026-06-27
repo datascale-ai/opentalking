@@ -1,0 +1,13 @@
+{
+  "voice_id": "indextts-yunxi-cn",
+  "display_label": "IndexTTS 云希男声",
+  "provider": "local_indextts",
+  "providers": [
+    "local_indextts",
+    "omnirt_indextts"
+  ],
+  "target_model": "IndexTeam/IndexTTS-2",
+  "prompt_text": "你好，我是云希。现在我会用清爽自然、稍有少年感的男声，讲解这套实时数字人和视频创作流程。",
+  "source": "system",
+  "source_voice": "zh-CN-YunxiNeural"
+}

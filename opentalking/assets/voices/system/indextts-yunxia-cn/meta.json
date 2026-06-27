@@ -1,0 +1,13 @@
+{
+  "voice_id": "indextts-yunxia-cn",
+  "display_label": "IndexTTS 云霞轻快男声",
+  "provider": "local_indextts",
+  "providers": [
+    "local_indextts",
+    "omnirt_indextts"
+  ],
+  "target_model": "IndexTeam/IndexTTS-2",
+  "prompt_text": "你好，我是云霞。现在我会用轻快活泼、带一点亲切感的声音，介绍视频创作和实时互动体验。",
+  "source": "system",
+  "source_voice": "zh-CN-YunxiaNeural"
+}

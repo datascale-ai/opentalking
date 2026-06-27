@@ -1,0 +1,23 @@
+# Override applied with `docker compose --profile gpu up`. Wires api/worker
+# to talk to the real omnirt service instead of the in-process mock.
+#
+# Usage:
+#   docker compose --profile gpu \
+#     -f docker-compose.yml -f docker-compose.gpu.yml up
+#
+# (the `up.sh` shortcut handles this; users only need to remember --profile gpu)
+
+services:
+  api:
+    environment:
+      OPENTALKING_INFERENCE_MOCK: "0"
+      OMNIRT_ENDPOINT: http://omnirt:9000
+    depends_on:
+      omnirt: { condition: service_healthy }
+
+  worker:
+    environment:
+      OPENTALKING_INFERENCE_MOCK: "0"
+      OMNIRT_ENDPOINT: http://omnirt:9000
+    depends_on:
+      omnirt: { condition: service_healthy }

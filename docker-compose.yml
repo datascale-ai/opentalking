@@ -1,0 +1,72 @@
+# OpenTalking — single-host all-in-one stack.
+#
+# Default (no profile): redis + opentalking api/worker/web with MOCK synthesis.
+#   `docker compose up`
+#   No GPU required; you can click around the UI and exercise the full pipeline
+#   except the actual lip-sync model. Useful for first-run UX and frontend dev.
+#
+# GPU profile: also pulls and runs omnirt for real synthesis.
+#   `docker compose --profile gpu up`
+#   Requires: NVIDIA driver + nvidia-container-toolkit on the host.
+#
+# Stop everything: `docker compose down`
+#
+# This file lives at repo root so users do not need to remember a -f path.
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  omnirt:
+    profiles: ["gpu"]
+    image: ghcr.io/datascale-ai/omnirt:cuda-latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ports: ["9000:9000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"]
+      interval: 10s
+      retries: 12
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    env_file: .env
+    environment:
+      OPENTALKING_REDIS_URL: redis://redis:6379/0
+      # OPENTALKING_INFERENCE_MOCK is set per-profile below via override files.
+      # Default profile: mock=1; GPU profile: mock=0 + OMNIRT_ENDPOINT.
+      OPENTALKING_INFERENCE_MOCK: ${OPENTALKING_INFERENCE_MOCK:-1}
+      OMNIRT_ENDPOINT: ${OMNIRT_ENDPOINT:-}
+    depends_on:
+      redis: { condition: service_healthy }
+    ports: ["8000:8000"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    env_file: .env
+    environment:
+      OPENTALKING_REDIS_URL: redis://redis:6379/0
+      OPENTALKING_INFERENCE_MOCK: ${OPENTALKING_INFERENCE_MOCK:-1}
+      OMNIRT_ENDPOINT: ${OMNIRT_ENDPOINT:-}
+    depends_on:
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    ports: ["5173:80"]
+    depends_on: [api]

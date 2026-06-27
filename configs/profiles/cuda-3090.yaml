@@ -1,0 +1,14 @@
+hardware:
+  vendor: nvidia
+  device: cuda-3090
+  vram_gb: 24
+defaults:
+  synthesis: wav2lip
+  tts: edge
+  llm: openai_compatible
+  stt: dashscope
+fallback_chain:
+  synthesis: [wav2lip, musetalk]
+omnirt:
+  backend: cuda
+  required_models: [wav2lip, musetalk-1.5]

@@ -1,0 +1,31 @@
+width: 448
+height: 900
+fps: 25
+chunk_samples: 16000
+emit_frames_per_chunk: 25
+render_keyframes_per_chunk: 25
+disable_frame_interpolation: true
+head_motion_multiplier: 0.3
+pose_motion_multiplier: 0.35
+yaw_multiplier: 0.85
+pitch_multiplier: 1.0
+roll_multiplier: 0.85
+animation_region: lip
+expression_multiplier: 1.0
+mouth_open_multiplier: 1.25
+mouth_corner_multiplier: 0.85
+cheek_jaw_multiplier: 0.9
+driving_multiplier: 1.0
+cfg_scale: 4.0
+cfg_cond:
+  - audio
+flag_stitching: true
+flag_normalize_lip: true
+flag_relative_motion: true
+flag_lip_retargeting: false
+lip_retargeting_multiplier: 1.0
+lip_retargeting_min: 0.02
+lip_retargeting_max: 0.40
+lip_retargeting_noise_floor: 0.012
+head_only_pasteback: false
+lookahead_ms: 320

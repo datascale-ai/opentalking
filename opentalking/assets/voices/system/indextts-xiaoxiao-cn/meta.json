@@ -1,0 +1,13 @@
+{
+  "voice_id": "indextts-xiaoxiao-cn",
+  "display_label": "IndexTTS 晓晓女声",
+  "provider": "local_indextts",
+  "providers": [
+    "local_indextts",
+    "omnirt_indextts"
+  ],
+  "target_model": "IndexTeam/IndexTTS-2",
+  "prompt_text": "你好，我是晓晓。今天阳光很好，我会用自然清晰、亲切温柔的声音，为你介绍 OpenTalking 的数字人口播能力。",
+  "source": "system",
+  "source_voice": "zh-CN-XiaoxiaoNeural"
+}

@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install System Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install -U pip setuptools wheel
+          pip install -e ".[dev]"
+
+      - name: Lint
+        run: >
+          ruff check
+          opentalking/core
+          opentalking/events
+          opentalking/avatar
+          apps/api
+          apps/unified
+          apps/cli
+          tests
+
+      - name: Type Check
+        run: >
+          mypy
+          opentalking/core
+          opentalking/events
+          opentalking/avatar
+          apps/api
+          apps/unified
+          apps/cli
+          --ignore-missing-imports
+
+      - name: Test
+        run: pytest apps/api/tests tests
+
+  package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build Python Package
+        run: |
+          python -m pip install -U pip build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Check Package Contents
+        run: |
+          python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          wheel = next(Path("dist").glob("*.whl"))
+          sdist = next(Path("dist").glob("*.tar.gz"))
+
+          with zipfile.ZipFile(wheel) as archive:
+              wheel_tests = [
+                  name for name in archive.namelist()
+                  if name.startswith("apps/api/tests/")
+              ]
+
+          with tarfile.open(sdist) as archive:
+              sdist_tests = [
+                  name for name in archive.getnames()
+                  if "/apps/api/tests/" in name
+              ]
+
+          if wheel_tests or sdist_tests:
+              raise SystemExit(
+                  "Package artifacts must not include apps/api/tests files."
+              )
+          PY
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  docs:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install -U pip setuptools wheel
+          pip install -e ".[dev]"
+          pip install -r docs/requirements.txt
+
+      - name: Build Docs
+        run: python -m mkdocs build --strict --clean

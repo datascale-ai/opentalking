@@ -1,0 +1,9 @@
+{
+  "voice_id": "cosyvoice-official-zero-shot",
+  "display_label": "官方示例女声（本地）",
+  "provider": "local_cosyvoice",
+  "target_model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  "mode": "zero_shot",
+  "source": "system",
+  "provenance": "FunAudioLLM/CosyVoice runtime asset prompt"
+}
