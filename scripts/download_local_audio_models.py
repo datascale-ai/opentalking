@@ -18,6 +18,8 @@ DEFAULT_REUSE_ROOTS = (
 MODELS: dict[str, tuple[str, str]] = {
     "sensevoice-small": ("modelscope", "iic/SenseVoiceSmall"),
     "fun-cosyvoice3-0.5b-2512": ("modelscope", "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"),
+    "f5-tts-v1-base": ("hf", "SWivid/F5-TTS"),
+    "f5-tts-vocos": ("hf", "charactr/vocos-mel-24khz"),
     "indextts2": ("modelscope", "IndexTeam/IndexTTS-2"),
     "indextts2-w2v-bert": ("hf", "facebook/w2v-bert-2.0"),
     "indextts2-maskgct": ("hf", "amphion/MaskGCT"),
@@ -26,6 +28,12 @@ MODELS: dict[str, tuple[str, str]] = {
 }
 
 HF_ALLOW_PATTERNS: dict[str, list[str]] = {
+    "f5-tts-v1-base": [
+        "README.md",
+        "F5TTS_v1_Base/model_1250000.safetensors",
+        "F5TTS_v1_Base/vocab.txt",
+    ],
+    "f5-tts-vocos": ["config.yaml", "pytorch_model.bin"],
     # IndexTTS2 only needs the feature extractor, model weights, and conformer shim.
     "indextts2-w2v-bert": [
         "README.md",
@@ -65,6 +73,8 @@ HF_ALLOW_PATTERNS: dict[str, list[str]] = {
 
 MODEL_HINTS: dict[str, tuple[str, ...]] = {
     "sensevoice-small": ("iic__SenseVoiceSmall", "sensevoice", "SenseVoiceSmall"),
+    "f5-tts-v1-base": ("SWivid__F5-TTS__F5TTS_v1_Base", "F5TTS_v1_Base", "SWivid__F5-TTS"),
+    "f5-tts-vocos": ("charactr__vocos-mel-24khz", "vocos-mel-24khz"),
     "fun-cosyvoice3-0.5b-2512": (
         "FunAudioLLM__Fun-CosyVoice3-0.5B-2512",
         "Fun-CosyVoice3-0.5B-2512",
@@ -79,6 +89,8 @@ MODEL_HINTS: dict[str, tuple[str, ...]] = {
 
 MODEL_REQUIRED_FILES: dict[str, tuple[str, ...]] = {
     "sensevoice-small": ("model.pt", "config.yaml", "configuration.json"),
+    "f5-tts-v1-base": ("model_1250000.safetensors",),
+    "f5-tts-vocos": ("config.yaml", "pytorch_model.bin"),
     "fun-cosyvoice3-0.5b-2512": ("cosyvoice3.yaml", "flow.pt", "hift.pt", "llm.pt"),
     "indextts2": ("config.yaml", "model.pt"),
     "indextts2-w2v-bert": ("model.safetensors", "conformer_shaw.pt"),
@@ -96,7 +108,9 @@ def local_audio_model_ids() -> tuple[str, ...]:
     return tuple(model_id for _, model_id in MODELS.values())
 
 
-def _target(root: Path, model_id: str) -> Path:
+def _target(root: Path, model_id: str, *, model_key: str | None = None) -> Path:
+    if model_key == "f5-tts-v1-base":
+        return root / "SWivid__F5-TTS__F5TTS_v1_Base"
     return root / model_id.replace("/", "__")
 
 
@@ -167,12 +181,26 @@ def _download_hf(model_id: str, target: Path, *, model_key: str) -> None:
     from huggingface_hub import snapshot_download
 
     endpoint = os.environ.get("HF_ENDPOINT", "").strip()
-    kwargs = {"repo_id": model_id, "local_dir": str(target)}
+    download_dir = target.parent / "SWivid__F5-TTS" if model_key == "f5-tts-v1-base" else target
+    kwargs = {"repo_id": model_id, "local_dir": str(download_dir)}
     if endpoint:
         kwargs["endpoint"] = endpoint
     if patterns := HF_ALLOW_PATTERNS.get(model_key):
         kwargs["allow_patterns"] = patterns
     snapshot_download(**kwargs)
+    if model_key == "f5-tts-v1-base":
+        nested = download_dir / "F5TTS_v1_Base"
+        if nested.exists() and not _is_model_ready(target, model_key=model_key):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists() and target.is_dir() and not any(target.iterdir()):
+                target.rmdir()
+            if not target.exists():
+                try:
+                    target.symlink_to(nested, target_is_directory=True)
+                except Exception:
+                    shutil.copytree(nested, target)
+            else:
+                shutil.copytree(nested, target, dirs_exist_ok=True)
 
 
 def _git_lfs_pull_if_needed(target: Path) -> None:
@@ -207,7 +235,7 @@ def main() -> None:
     failures: list[tuple[str, str]] = []
     for key in selected:
         source, model_id = MODELS[key]
-        target = _target(root, model_id)
+        target = _target(root, model_id, model_key=key)
         print(f"[{key}] {source}:{model_id} -> {target}", flush=True)
         target.mkdir(parents=True, exist_ok=True)
         try:

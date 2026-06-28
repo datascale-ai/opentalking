@@ -24,6 +24,7 @@ from opentalking.providers.tts.voice_assets import (
     INDEXTTS_PROVIDER,
     INDEXTTS_PROVIDERS,
     LOCAL_COSYVOICE_PROVIDER,
+    LOCAL_F5_TTS_PROVIDER,
     bundled_system_voice_root,
     iter_voice_assets,
     local_audio_model_root,
@@ -117,6 +118,19 @@ def _write_local_cosyvoice_prompt(
     return voice_dir
 
 
+def _write_local_f5_tts_prompt(*, voice_id: str, wav: bytes, prompt_text: str, display_label: str, target_model: str, validation: dict[str, Any] | None = None) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
+        raise ValueError("invalid local voice id")
+    voice_dir = _local_audio_model_root() / "voices" / "clones" / voice_id
+    voice_dir.mkdir(parents=True, exist_ok=True)
+    clean_prompt_text = prompt_text.strip()
+    (voice_dir / "prompt.wav").write_bytes(wav)
+    if clean_prompt_text:
+        (voice_dir / "prompt.txt").write_text(clean_prompt_text, encoding="utf-8")
+    (voice_dir / "meta.json").write_text(json.dumps({"voice_id": voice_id, "display_label": display_label, "provider": LOCAL_F5_TTS_PROVIDER, "target_model": target_model, "prompt_audio": str(voice_dir / "prompt.wav"), "prompt_text": clean_prompt_text, "validation": validation or {}, "source": "clone"}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return voice_dir
+
+
 def _write_local_indextts_prompt(
     *,
     provider: str,
@@ -185,6 +199,15 @@ def _wav_audio_stats(wav: bytes) -> dict[str, float]:
         "active_sec": float(active_sec),
         "rms_dbfs": float(rms_dbfs),
     }
+
+
+def _validate_local_f5_tts_prompt(wav: bytes) -> dict[str, Any]:
+    stats = _wav_audio_stats(wav)
+    if stats["duration_sec"] < 1.0:
+        raise HTTPException(status_code=400, detail="F5-TTS 参考音频过短，请录制 3-15 秒清晰人声。")
+    if stats["active_sec"] < 0.5 or stats["rms_dbfs"] < LOCAL_COSYVOICE_MIN_RMS_DBFS:
+        raise HTTPException(status_code=400, detail="F5-TTS 参考音频声音太小或静音太多，请靠近麦克风重录。")
+    return stats
 
 
 def _validate_local_indextts_prompt(wav: bytes) -> dict[str, Any]:
@@ -307,6 +330,26 @@ def _local_cosyvoice_system_voice_items() -> list[VoiceItem]:
     return items
 
 
+def _local_f5_tts_voice_items(source: str) -> list[VoiceItem]:
+    if source not in {"system", "clones"}:
+        return []
+    items: list[VoiceItem] = []
+    for asset in iter_voice_assets(
+        provider=LOCAL_F5_TTS_PROVIDER,
+        sources=(source,),
+        model_root=_local_audio_model_root(),
+        require_prompt_text=source == "system",
+    ):
+        voice_id = asset.voice_id
+        if not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
+            continue
+        meta = asset.meta
+        label = _public_voice_label(str(meta.get("display_label") or meta.get("label") or voice_id), fallback=voice_id)
+        tm = str(meta.get("target_model") or "").strip()
+        items.append({"id": -len(items) - 1, "user_id": 1, "provider": LOCAL_F5_TTS_PROVIDER, "voice_id": voice_id, "display_label": label, "target_model": tm or None, "source": "clone" if source == "clones" else "system"})
+    return items
+
+
 def _local_indextts_voice_items(source: str) -> list[VoiceItem]:
     if source not in {"system", "clones"}:
         return []
@@ -399,6 +442,13 @@ async def get_voices(provider: str | None = None) -> JSONResponse:
             if key not in existing:
                 items.append(item)
                 existing.add(key)
+    if public_p is None or public_p == LOCAL_F5_TTS_PROVIDER:
+        for source in ("system", "clones"):
+            for item in _local_f5_tts_voice_items(source):
+                key = (item["provider"], item["voice_id"])
+                if key not in existing:
+                    items.append(item)
+                    existing.add(key)
     if public_p is None or public_p == INDEXTTS_PROVIDER:
         for source in ("system", "clones"):
             for item in _local_indextts_voice_items(source):
@@ -445,10 +495,10 @@ async def post_voice_clone(
     prov = provider.strip().lower()
     if prov in {"xiaomi", "mimo"}:
         prov = "xiaomi_mimo"
-    if prov not in {"local_cosyvoice", "cosyvoice", "dashscope", "xiaomi_mimo", *INDEXTTS_PROVIDERS}:
+    if prov not in {"local_cosyvoice", "local_f5_tts", "cosyvoice", "dashscope", "xiaomi_mimo", *INDEXTTS_PROVIDERS}:
         raise HTTPException(
             status_code=400,
-            detail="provider 须为 local_cosyvoice、indextts、cosyvoice、dashscope 或 xiaomi_mimo",
+            detail="provider 须为 local_cosyvoice、local_f5_tts、indextts、cosyvoice、dashscope 或 xiaomi_mimo",
         )
 
     raw = await audio.read()
@@ -471,6 +521,14 @@ async def post_voice_clone(
     )
 
     try:
+        if prov == LOCAL_F5_TTS_PROVIDER:
+            voice_id = _safe_local_voice_id(label)
+            effective_model = tm or "SWivid/F5-TTS/F5TTS_v1_Base"
+            validation = _validate_local_f5_tts_prompt(wav)
+            _write_local_f5_tts_prompt(voice_id=voice_id, wav=wav, prompt_text=(prompt_text or "").strip(), display_label=label, target_model=effective_model, validation=validation)
+            eid = insert_clone(provider=LOCAL_F5_TTS_PROVIDER, voice_id=voice_id, display_label=label, target_model=effective_model)
+            return JSONResponse({"ok": True, "entry_id": eid, "voice_id": voice_id, "display_label": label, "provider": LOCAL_F5_TTS_PROVIDER, "target_model": effective_model, "message": "F5-TTS 复刻音色已保存，可用于 F5-TTS 合成。"})
+
         if prov in INDEXTTS_PROVIDERS:
             voice_id = _safe_local_voice_id(label)
             effective_model = tm or "IndexTeam/IndexTTS-2"
@@ -641,7 +699,7 @@ async def delete_voice_entry(entry_id: int) -> JSONResponse:
     if row.get("source") != "clone":
         raise HTTPException(status_code=400, detail="不能删除系统预设音色")
     if delete_entry(entry_id):
-        if row.get("provider") in {"local_cosyvoice", *INDEXTTS_PROVIDERS}:
+        if row.get("provider") in {"local_cosyvoice", "local_f5_tts", *INDEXTTS_PROVIDERS}:
             _remove_local_prompt(str(row.get("voice_id") or ""))
         return JSONResponse({"ok": True})
     raise HTTPException(status_code=404, detail="not found")

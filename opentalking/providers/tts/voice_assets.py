@@ -11,6 +11,7 @@ INDEXTTS_PROVIDER = "indextts"
 INDEXTTS_LEGACY_PROVIDERS = {"local_indextts", "omnirt_indextts"}
 INDEXTTS_PROVIDERS = {INDEXTTS_PROVIDER, *INDEXTTS_LEGACY_PROVIDERS}
 LOCAL_COSYVOICE_PROVIDER = "local_cosyvoice"
+LOCAL_F5_TTS_PROVIDER = "local_f5_tts"
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ def _provider_aliases(provider: str) -> set[str]:
     normalized = provider.strip().lower()
     if normalized in INDEXTTS_PROVIDERS:
         return {INDEXTTS_PROVIDER, *INDEXTTS_LEGACY_PROVIDERS}
+    if normalized == LOCAL_F5_TTS_PROVIDER:
+        return {LOCAL_F5_TTS_PROVIDER}
     return {normalized}
 
 
@@ -82,6 +85,8 @@ def voice_applies_to_provider(meta: dict[str, Any], provider: str, *, bundled_sy
     if not normalized:
         return True
     if bundled_system and normalized == LOCAL_COSYVOICE_PROVIDER:
+        return True
+    if bundled_system and normalized == LOCAL_F5_TTS_PROVIDER:
         return True
     if any(_truthy_meta_flag(meta.get(key)) for key in ("universal", "compatible", "zero_shot_compatible")):
         return True

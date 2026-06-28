@@ -326,6 +326,7 @@ Join the QQ community to discuss real-time digital humans, FlashTalk, OmniRT, mo
 
 OpenTalking references and benefits from excellent projects in the real-time digital-human ecosystem:
 
+- Thanks to the [LINUX DO](https://linux.do/) community for their support and discussions.
 - [SoulX-FlashTalk](https://github.com/Soul-AILab/SoulX-FlashTalk) and [SoulX-FlashTalk-14B](https://huggingface.co/Soul-AILab/SoulX-FlashTalk-14B)
 - [LiveTalking](https://github.com/lipku/LiveTalking)
 - [OmniRT](https://github.com/datascale-ai/omnirt)

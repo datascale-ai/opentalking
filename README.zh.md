@@ -324,6 +324,7 @@ OpenTalking 的 LLM 走 OpenAI-compatible 接口，把 `OPENTALKING_LLM_BASE_URL
 
 OpenTalking 参考并受益于实时数字人生态中的优秀项目：
 
+- 感谢 [LINUX DO](https://linux.do/) 社区的支持与讨论。
 - [SoulX-FlashTalk](https://github.com/Soul-AILab/SoulX-FlashTalk) 和 [SoulX-FlashTalk-14B](https://huggingface.co/Soul-AILab/SoulX-FlashTalk-14B)
 - [LiveTalking](https://github.com/lipku/LiveTalking)
 - [OmniRT](https://github.com/datascale-ai/omnirt)

@@ -28,6 +28,10 @@ export const LOCAL_INDEXTTS_MODEL_OPTIONS: { id: string; label: string }[] = [
   { id: "IndexTeam/IndexTTS-2", label: "IndexTTS-2（本地模型）" },
 ];
 
+export const LOCAL_F5_TTS_MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: "SWivid/F5-TTS/F5TTS_v1_Base", label: "F5-TTS v1 Base（本地模型）" },
+];
+
 export const LOCAL_TTS_VOICE_OPTIONS: { id: string; label: string }[] = [];
 
 export const XIAOMI_MIMO_MODEL_OPTIONS: { id: string; label: string }[] = [
@@ -54,6 +58,7 @@ export type TtsProviderExtended =
   | "sambert"
   | "local_cosyvoice"
   | "indextts"
+  | "local_f5_tts"
   | "xiaomi_mimo"
   | "openai_compatible";
 

@@ -70,6 +70,7 @@ import {
   COSYVOICE_MODEL_OPTIONS,
   COSYVOICE_VOICE_OPTIONS,
   LOCAL_COSYVOICE_MODEL_OPTIONS,
+  LOCAL_F5_TTS_MODEL_OPTIONS,
   LOCAL_INDEXTTS_MODEL_OPTIONS,
   LOCAL_TTS_VOICE_OPTIONS,
   SAMBERT_MODEL_OPTIONS,
@@ -104,6 +105,8 @@ function bailianModelOptions(provider: TtsProviderExtended): { id: string; label
       return LOCAL_COSYVOICE_MODEL_OPTIONS;
     case "indextts":
       return LOCAL_INDEXTTS_MODEL_OPTIONS;
+    case "local_f5_tts":
+      return LOCAL_F5_TTS_MODEL_OPTIONS;
     case "xiaomi_mimo":
       return XIAOMI_MIMO_MODEL_OPTIONS;
     default:
@@ -121,6 +124,7 @@ function bailianVoiceOptions(provider: TtsProviderExtended): { id: string; label
       return [];
     case "local_cosyvoice":
     case "indextts":
+    case "local_f5_tts":
       return LOCAL_TTS_VOICE_OPTIONS;
     case "xiaomi_mimo":
       return XIAOMI_MIMO_VOICE_OPTIONS;
@@ -134,6 +138,7 @@ function catalogProviderKey(p: TtsProviderExtended): string | null {
   if (p === "cosyvoice") return "cosyvoice";
   if (p === "local_cosyvoice") return "local_cosyvoice";
   if (p === "indextts") return "indextts";
+  if (p === "local_f5_tts") return "local_f5_tts";
   if (p === "xiaomi_mimo") return "xiaomi_mimo";
   return null;
 }
@@ -166,13 +171,15 @@ function mergeVoiceCatalogIntoOptions(
   const extras: VoiceOpt[] = [];
   for (const r of catalog) {
     if (r.provider !== cp) continue;
-    if (activeModel && r.target_model && r.target_model !== activeModel && !(ttsProvider === "local_cosyvoice" && r.source === "system")) continue;
+    const sharedSystemPrompt =
+      r.source === "system" && (ttsProvider === "local_cosyvoice" || ttsProvider === "local_f5_tts");
+    if (activeModel && r.target_model && r.target_model !== activeModel && !sharedSystemPrompt) continue;
     if (cloneOnly && r.source !== "clone") continue;
     if (staticIds.has(r.voice_id)) continue;
     extras.push({
       id: r.voice_id,
       label: r.source === "clone" ? `复刻 · ${r.display_label}` : r.display_label,
-      targetModel: ttsProvider === "local_cosyvoice" && r.source === "system" ? undefined : r.target_model,
+      targetModel: sharedSystemPrompt ? undefined : r.target_model,
     });
     staticIds.add(r.voice_id);
   }
@@ -489,6 +496,7 @@ function normalizeTtsProvider(value: string | null | undefined, fallback: TtsPro
     normalized === "sambert" ||
     normalized === "local_cosyvoice" ||
     normalized === "indextts" ||
+    normalized === "local_f5_tts" ||
     normalized === "xiaomi_mimo" ||
     normalized === "openai_compatible"
   ) {
@@ -2791,7 +2799,8 @@ export default function App() {
       || runtimeConfigTtsProvider === "local_cosyvoice"
       || runtimeConfigTtsProvider === "indextts"
       || runtimeConfigTtsProvider === "local_indextts"
-      || runtimeConfigTtsProvider === "omnirt_indextts",
+      || runtimeConfigTtsProvider === "omnirt_indextts"
+      || runtimeConfigTtsProvider === "local_f5_tts",
   );
   const runtimeConfigReady = Boolean(
     runtimeConfig?.llm.api_key_set

@@ -234,6 +234,7 @@ function providerLabel(provider: TtsProviderExtended): string {
   if (provider === "cosyvoice") return "CosyVoice";
   if (provider === "sambert") return "Sambert";
   if (provider === "indextts") return "Local IndexTTS";
+  if (provider === "local_f5_tts") return "Local F5-TTS";
   if (provider === "xiaomi_mimo") return "小米 MiMo";
   if (provider === "openai_compatible") return "OpenAI-compatible TTS";
   return "Local CosyVoice";
@@ -737,7 +738,7 @@ export function VideoCreationWorkspace({
                   <label className="block text-sm font-medium text-slate-700">
                     TTS
                     <select value={ttsProvider} onChange={(event) => onTtsProviderChange(event.target.value as TtsProviderExtended)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
-                      {(["edge", "dashscope", "cosyvoice", "sambert", "local_cosyvoice", "indextts", "xiaomi_mimo", "openai_compatible"] as TtsProviderExtended[]).map((item) => <option key={item} value={item}>{providerLabel(item)}</option>)}
+                      {(["edge", "dashscope", "cosyvoice", "sambert", "local_cosyvoice", "indextts", "local_f5_tts", "xiaomi_mimo", "openai_compatible"] as TtsProviderExtended[]).map((item) => <option key={item} value={item}>{providerLabel(item)}</option>)}
                     </select>
                   </label>
                   <label className="block text-sm font-medium text-slate-700">

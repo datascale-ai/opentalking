@@ -53,6 +53,7 @@ def _runtime_status_payload(request: Request) -> dict[str, Any]:
         "mock",
         "local_cosyvoice",
         "indextts",
+        "local_f5_tts",
         "dashscope",
         "xiaomi_mimo",
         "openai_compatible",

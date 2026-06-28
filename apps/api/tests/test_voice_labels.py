@@ -71,6 +71,7 @@ def test_local_cosyvoice_clone_stores_prompt_locally(tmp_path, monkeypatch):
 
     monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(tmp_path / "models"))
     monkeypatch.setattr(voices_routes, "init_voice_store", lambda: None)
+    monkeypatch.setattr(voices_routes, "list_voices", lambda provider=None: [])
     monkeypatch.setattr(
         voices_routes.bailian_clone,
         "convert_audio_to_wav_24k_mono",
@@ -115,6 +116,106 @@ def test_local_cosyvoice_clone_stores_prompt_locally(tmp_path, monkeypatch):
     assert inserted["provider"] == "local_cosyvoice"
     assert inserted["voice_id"] == voice_id
     assert inserted["display_label"] == "本地客服女声"
+
+
+
+def test_local_f5_tts_clone_stores_prompt_audio_and_text(tmp_path, monkeypatch):
+    inserted: dict[str, object] = {}
+
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(tmp_path / "models"))
+    monkeypatch.setattr(voices_routes, "init_voice_store", lambda: None)
+    monkeypatch.setattr(voices_routes, "list_voices", lambda provider=None: [])
+    monkeypatch.setattr(
+        voices_routes.bailian_clone,
+        "convert_audio_to_wav_24k_mono",
+        lambda raw, suffix: _wav_bytes(),
+    )
+
+    def fake_insert_clone(**kwargs):
+        inserted.update(kwargs)
+        return 77
+
+    monkeypatch.setattr(voices_routes, "insert_clone", fake_insert_clone)
+
+    app = FastAPI()
+    app.include_router(voices_routes.router)
+    response = TestClient(app).post(
+        "/voices/clone",
+        data={
+            "provider": "local_f5_tts",
+            "target_model": "SWivid/F5-TTS/F5TTS_v1_Base",
+            "display_label": "F5 客服女声",
+            "prompt_text": "您好，欢迎使用实时数字人。",
+        },
+        files={"audio": ("sample.wav", _wav_bytes(), "audio/wav")},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    voice_id = body["voice_id"]
+    voice_dir = tmp_path / "models" / "voices" / "clones" / voice_id
+    assert body["provider"] == "local_f5_tts"
+    assert body["entry_id"] == 77
+    assert body["target_model"] == "SWivid/F5-TTS/F5TTS_v1_Base"
+    assert (voice_dir / "prompt.wav").is_file()
+    assert (voice_dir / "prompt.txt").read_text(encoding="utf-8") == "您好，欢迎使用实时数字人。"
+    meta = (voice_dir / "meta.json").read_text(encoding="utf-8")
+    assert '"provider": "local_f5_tts"' in meta
+    assert inserted["provider"] == "local_f5_tts"
+    assert inserted["voice_id"] == voice_id
+    assert inserted["display_label"] == "F5 客服女声"
+
+
+def test_get_voices_includes_local_f5_tts_system_voice_dirs(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(tmp_path / "models"))
+    voice_dir = tmp_path / "models" / "voices" / "system" / "f5-clear-cn"
+    voice_dir.mkdir(parents=True)
+    (voice_dir / "prompt.wav").write_bytes(b"RIFFtest")
+    (voice_dir / "prompt.txt").write_text("这是一段 F5 参考音色。", encoding="utf-8")
+    (voice_dir / "meta.json").write_text(
+        '{"provider":"local_f5_tts","display_label":"F5 清晰中文","target_model":"SWivid/F5-TTS/F5TTS_v1_Base"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(voices_routes, "init_voice_store", lambda: None)
+    monkeypatch.setattr(voices_routes, "list_voices", lambda provider=None: [])
+
+    app = FastAPI()
+    app.include_router(voices_routes.router)
+    response = TestClient(app).get("/voices?provider=local_f5_tts")
+
+    assert response.status_code == 200
+    assert {
+        "id": -1,
+        "user_id": 1,
+        "provider": "local_f5_tts",
+        "voice_id": "f5-clear-cn",
+        "display_label": "F5 清晰中文",
+        "target_model": "SWivid/F5-TTS/F5TTS_v1_Base",
+        "source": "system",
+    } in response.json()["items"]
+
+
+def test_get_voices_shares_bundled_zero_shot_system_voices_with_local_f5_tts(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(tmp_path / "models"))
+    monkeypatch.setattr(voices_routes, "init_voice_store", lambda: None)
+    monkeypatch.setattr(voices_routes, "list_voices", lambda provider=None: [])
+
+    app = FastAPI()
+    app.include_router(voices_routes.router)
+    response = TestClient(app).get("/voices?provider=local_f5_tts")
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert {
+        "id": -1,
+        "user_id": 1,
+        "provider": "local_f5_tts",
+        "voice_id": "cosyvoice-official-zero-shot",
+        "display_label": "官方示例女声",
+        "target_model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+        "source": "system",
+    } in items
+    assert any(item["voice_id"] == "local-office-serena" for item in items)
 
 
 def test_local_cosyvoice_clone_rejects_silent_prompt(tmp_path, monkeypatch):

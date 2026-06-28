@@ -149,6 +149,15 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "local_cosyvoice_max_token_text_ratio": "tts_local_cosyvoice_max_token_text_ratio",
             "local_cosyvoice_min_token_text_ratio": "tts_local_cosyvoice_min_token_text_ratio",
             "local_cosyvoice_mask_stop_tokens": "tts_local_cosyvoice_mask_stop_tokens",
+            "local_f5_tts_model": "tts_local_f5_tts_model",
+            "local_f5_tts_model_dir": "tts_local_f5_tts_model_dir",
+            "local_f5_tts_runtime_dir": "tts_local_f5_tts_runtime_dir",
+            "local_f5_tts_service_url": "tts_local_f5_tts_service_url",
+            "local_f5_tts_ckpt_file": "tts_local_f5_tts_ckpt_file",
+            "local_f5_tts_vocoder_local_path": "tts_local_f5_tts_vocoder_local_path",
+            "local_f5_tts_prompt_audio": "tts_local_f5_tts_prompt_audio",
+            "local_f5_tts_prompt_text": "tts_local_f5_tts_prompt_text",
+            "local_f5_tts_device": "tts_local_f5_tts_device",
             "local_indextts_model": "tts_local_indextts_model",
             "local_indextts_model_dir": "tts_local_indextts_model_dir",
             "local_indextts_cfg_path": "tts_local_indextts_cfg_path",
@@ -516,6 +525,15 @@ class Settings(BaseSettings):
     tts_local_cosyvoice_max_token_text_ratio: float = 6.0
     tts_local_cosyvoice_min_token_text_ratio: float = 0.0
     tts_local_cosyvoice_mask_stop_tokens: bool = True
+    tts_local_f5_tts_model: str = "SWivid/F5-TTS/F5TTS_v1_Base"
+    tts_local_f5_tts_model_dir: str = ""
+    tts_local_f5_tts_runtime_dir: str = ""
+    tts_local_f5_tts_service_url: str = ""
+    tts_local_f5_tts_ckpt_file: str = ""
+    tts_local_f5_tts_vocoder_local_path: str = ""
+    tts_local_f5_tts_prompt_audio: str = ""
+    tts_local_f5_tts_prompt_text: str = ""
+    tts_local_f5_tts_device: str = "auto"
     tts_local_indextts_model: str = "IndexTeam/IndexTTS-2"
     tts_local_indextts_model_dir: str = ""
     tts_local_indextts_cfg_path: str = ""

@@ -15,19 +15,28 @@ def test_frontend_lists_local_tts_models_and_labels():
 
     assert "local_cosyvoice" in constants
     assert "indextts" in constants
+    assert "local_f5_tts" in constants
     assert "Local CosyVoice" in settings
     assert "IndexTTS" in settings
     assert "Local IndexTTS" in settings
+    assert "Local F5-TTS" in settings
     assert "OmniRT IndexTTS" not in settings
     assert "Local IndexTTS" in workspace
+    assert "Local F5-TTS" in workspace
     assert "OmniRT IndexTTS" not in workspace
     assert "Local IndexTTS" in clone
+    assert "Local F5-TTS" in clone
     assert "OmniRT IndexTTS" not in clone
     assert "本地模型" in constants
     assert "local_cosyvoice" in app
     assert "indextts" in app
     assert "FunAudioLLM/Fun-CosyVoice3-0.5B-2512" in constants
     assert "IndexTeam/IndexTTS-2" in constants
+    assert "SWivid/F5-TTS/F5TTS_v1_Base" in constants
+    assert "LOCAL_F5_TTS_MODEL_OPTIONS" in app
+    assert "local_f5_tts" in app[app.index("function normalizeTtsProvider"):app.index("if (normalized === \"local_indextts\"")]
+    assert "if (p === \"local_f5_tts\") return \"local_f5_tts\"" in app
+    assert 'ttsProvider === "local_f5_tts"' in app[app.index("const sharedSystemPrompt"):app.index("targetModel: sharedSystemPrompt")]
     assert "iic/CosyVoice-300M" not in constants
     assert "local_qwen3_tts" not in settings
 
@@ -45,6 +54,7 @@ def test_single_model_tts_provider_opens_voice_picker_first():
     assert "const providerOptions" in settings
     assert "hasChildren: true," in settings[settings.index("const providerOptions"):settings.index("const selectedProvider")]
     assert "hasChildren: p !== ttsProvider" not in settings
+    assert "provider === \"local_f5_tts\"" in settings[settings.index("providerHasSingleModel"):settings.index("handleProviderSelect")]
     assert settings.index("const qwenModelColumnOptions") < settings.index("const providerOptions")
 
 

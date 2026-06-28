@@ -13,12 +13,14 @@ talking-head backend。本文只做选型和入口导航；权重、启动、验
 | `elevenlabs` | 托管 API | 多语言托管音色 | `.env` provider 配置 |
 | `local_cosyvoice` | 本地部署 | 本地中文 TTS、内置音色和复刻音色 | [CosyVoice](tts/cosyvoice.md) |
 | `indextts` | 本地部署 / OmniRT | 可控配音、情绪控制和复刻音色 | [IndexTTS](tts/indextts.md) |
+| `local_f5_tts` | 本地部署 | 本地 F5-TTS Base 音色克隆 | [F5-TTS](tts/f5-tts.md) |
 | `local_qwen3_tts` | 本地部署 | 本地 Qwen3-TTS Base 复刻音色 | [Qwen3-TTS](tts/qwen3-tts.md) |
 
 ## 本地模型入口
 
 - [CosyVoice 本地部署](tts/cosyvoice.md)
 - [IndexTTS 本地部署](tts/indextts.md)
+- [F5-TTS 本地部署](tts/f5-tts.md)
 - [Qwen3-TTS 本地部署](tts/qwen3-tts.md)
 
 每个本地模型页面都包含适用场景、权重准备、启动命令、验证命令和常见错误。
