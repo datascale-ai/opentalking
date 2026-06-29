@@ -123,12 +123,12 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 | 路线 | 推荐模型 / 后端 | 设备参考 | 适合场景 | 详细文档 |
 | --- | --- | --- | --- | --- |
-| 快速体验 | `mock` | CPU / 无 GPU | 不下载模型权重，先验证 API、LLM、TTS、WebRTC 与浏览器播放链路 | [快速开始](docs/zh/user-guide/quickstart.md) |
-| 入门验证 | `quicktalk` / `wav2lip` | RTX 3050 Laptop、RTX 3060、RTX 4060 | 能跑通真实视频渲染，适合功能演示和部署验证；低显存设备建议降低分辨率 | [QuickTalk](docs/zh/model-deployment/quicktalk.md) / [Wav2Lip](docs/zh/model-deployment/wav2lip-local.md) |
-| 消费级显卡单机 | `quicktalk` / `wav2lip` / `musetalk` | RTX 3090、RTX 4090 | 更接近实时体验，适合本地 demo、私有化验证和轻量生产前评估 | [模型部署](docs/zh/model-deployment/index.md) |
-| 全本地私有化 | `sensevoice` + `local_cosyvoice` + `quicktalk` | RTX 3090 / 4090 或同级 GPU | STT、TTS、视频驱动都走本地；OpenTalking 使用主 `.venv`，CosyVoice 使用独立 sidecar venv | [本地 STT/TTS + QuickTalk](docs/zh/model-deployment/local-quicktalk-audio.md) |
-| 高质量远端推理 | `flashtalk` / `flashhead` / `fasterliveportrait` + OmniRT | 多卡 GPU、Ascend 910B2、远端 GPU 服务 | 多卡、GPU/NPU、生产隔离、更高画质或视频克隆 | [FlashTalk](docs/zh/model-deployment/flashtalk.md) / [FasterLivePortrait](docs/zh/model-deployment/fasterliveportrait.md) |
-| Docker / 生产部署 | API、Web、Worker、外部模型服务分离 | 单机 GPU、远端 GPU、分布式集群 | 服务化部署、远端 GPU、分布式和生产验证 | [部署文档](docs/zh/user-guide/deployment.md) |
+| 快速体验 | `mock` | CPU / 无 GPU | 不下载模型权重，先验证 API、LLM、TTS、WebRTC 与浏览器播放链路 | [快速开始](https://datascale-ai.github.io/opentalking/latest/quick-start/) |
+| 入门验证 | `quicktalk` / `wav2lip` | RTX 3050 Laptop、RTX 3060、RTX 4060 | 能跑通真实视频渲染，适合功能演示和部署验证；低显存设备建议降低分辨率 | [QuickTalk](https://datascale-ai.github.io/opentalking/latest/avatar_models/deployment/quicktalk-local/) / [Wav2Lip](https://datascale-ai.github.io/opentalking/latest/avatar_models/deployment/wav2lip-local/) |
+| 消费级显卡单机 | `quicktalk` / `wav2lip` / `musetalk` | RTX 3090、RTX 4090 | 更接近实时体验，适合本地 demo、私有化验证和轻量生产前评估 | [模型与后端选择](https://datascale-ai.github.io/opentalking/latest/model-support/selection/) |
+| 全本地私有化 | `sensevoice` + `local_cosyvoice` + `quicktalk` | RTX 3090 / 4090 或同级 GPU | STT、TTS、视频驱动都走本地；OpenTalking 使用主 `.venv`，CosyVoice 使用独立 sidecar venv | [本地 STT/TTS + QuickTalk](https://datascale-ai.github.io/opentalking/latest/recipes/local-quicktalk-audio/) |
+| 高质量远端推理 | `flashtalk` / `flashhead` / `fasterliveportrait` + OmniRT | 多卡 GPU、Ascend 910B2、远端 GPU 服务 | 多卡、GPU/NPU、生产隔离、更高画质或视频克隆 | [FlashTalk](https://datascale-ai.github.io/opentalking/latest/avatar_models/flashtalk/) / [FasterLivePortrait](https://datascale-ai.github.io/opentalking/latest/avatar_models/fasterliveportrait/) |
+| Docker / 生产部署 | API、Web、Worker、外部模型服务分离 | 单机 GPU、远端 GPU、分布式集群 | 服务化部署、远端 GPU、分布式和生产验证 | [部署文档](https://datascale-ai.github.io/opentalking/latest/deployment/) |
 
 ## 快速开始
 
@@ -145,7 +145,7 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 - 镜像地址：[镜像链接](https://www.compshare.cn/images/TdDwmKZUZebI?referral_code=Hid5KUhcqlZEptmMEwKy2F)
 - 对外端口：`5173`（WebUI，内部自动代理 API）
-- 操作文档：[优云智算镜像快速体验](docs/zh/quick-start/compshare-image.md)
+- 操作文档：[优云智算镜像快速体验](https://datascale-ai.github.io/opentalking/latest/quick-start/)
 
 镜像内已预置 OpenTalking、OmniRT、QuickTalk 运行环境和模型文件。部署实例后开放 `5173` 端口，在浏览器访问平台提供的实例地址即可进入 WebUI；如需手动重启服务，请按操作文档中的命令执行。
 
@@ -162,7 +162,7 @@ source .venv/bin/activate
 cp .env.example .env
 ```
 
-编辑 `.env`，至少配置 LLM；TTS 默认可使用不需要 key 的 `edge` 语音。LLM、STT、TTS 是独立 provider，常见配置见 [配置说明](docs/zh/user-guide/configuration.md) 和 [LLM / STT 文档](docs/zh/model-deployment/llm-stt.md)。
+编辑 `.env`，至少配置 LLM；TTS 默认可使用不需要 key 的 `edge` 语音。LLM、STT、TTS 是独立 provider，常见配置见 [配置说明](https://datascale-ai.github.io/opentalking/latest/reference/configuration/) 和 [LLM / STT 文档](https://datascale-ai.github.io/opentalking/latest/speech_models/llm-stt/)。
 
 ```bash
 bash scripts/start_unified.sh --mock
@@ -202,12 +202,12 @@ bash scripts/start_unified.sh \
 
 更多入口：
 
-- [QuickTalk 本地部署](docs/zh/model-deployment/quicktalk.md)
-- [Wav2Lip 本地部署](docs/zh/model-deployment/wav2lip-local.md)
-- [FasterLivePortrait / JoyVASA](docs/zh/model-deployment/fasterliveportrait.md)
-- [视频克隆使用说明](docs/zh/usage/webui/video-clone.md)
-- [WebUI 使用说明](docs/zh/usage/webui/basic.md)
-- [Docker Compose 与生产部署](docs/zh/user-guide/deployment.md)
+- [QuickTalk 本地部署](https://datascale-ai.github.io/opentalking/latest/avatar_models/deployment/quicktalk-local/)
+- [Wav2Lip 本地部署](https://datascale-ai.github.io/opentalking/latest/avatar_models/deployment/wav2lip-local/)
+- [FasterLivePortrait / JoyVASA](https://datascale-ai.github.io/opentalking/latest/avatar_models/fasterliveportrait/)
+- [视频克隆使用说明](https://datascale-ai.github.io/opentalking/latest/usage/webui/video-clone/)
+- [WebUI 使用说明](https://datascale-ai.github.io/opentalking/latest/usage/webui/basic/)
+- [Docker Compose 与生产部署](https://datascale-ai.github.io/opentalking/latest/deployment/)
 
 ## 模型支持
 
@@ -227,7 +227,7 @@ bash scripts/start_unified.sh \
 | --- | --- | --- | --- | --- | --- |
 | `quicktalk` | RTX 3090 | template video + audio | 720x900 / 25fps | 约 3.8 GiB | 约 35 fps |
 
-更多权重下载、Docker、故障排查和模型配置见 [模型部署索引](docs/zh/model-deployment/index.md)。
+更多权重下载、Docker、故障排查和模型配置见 [模型部署索引](https://datascale-ai.github.io/opentalking/latest/model-deployment/)。
 
 ### 云端模型 API：Atlas Cloud
 
@@ -239,7 +239,7 @@ bash scripts/start_unified.sh \
 
 > 🎁 **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking)** 是一个全模态 AI 推理平台，用一套 API 即可访问视频生成、图像生成和 LLM，无需分别对接多家厂商，一次接入即可统一调用全模态的 300+ 精选模型。
 
-OpenTalking 的 LLM 走 OpenAI-compatible 接口，把 `OPENTALKING_LLM_BASE_URL` 指向 `https://api.atlascloud.ai/v1` 即可直接使用 Atlas 托管的 DeepSeek / Qwen 等模型，配置见 [LLM 与 STT](docs/zh/model-deployment/llm-stt.md)。更多预算友好的 API 方案见 Atlas Cloud [coding plan](https://www.atlascloud.ai/console/coding-plan)。
+OpenTalking 的 LLM 走 OpenAI-compatible 接口，把 `OPENTALKING_LLM_BASE_URL` 指向 `https://api.atlascloud.ai/v1` 即可直接使用 Atlas 托管的 DeepSeek / Qwen 等模型，配置见 [LLM 与 STT](https://datascale-ai.github.io/opentalking/latest/speech_models/llm-stt/)。更多预算友好的 API 方案见 Atlas Cloud [coding plan](https://www.atlascloud.ai/console/coding-plan)。
 
 ## 能力进展与 Roadmap
 
@@ -302,12 +302,12 @@ OpenTalking 的 LLM 走 OpenAI-compatible 接口，把 `OPENTALKING_LLM_BASE_URL
 
 ## 文档与社区
 
-- [快速开始](docs/zh/user-guide/quickstart.md)
-- [模型](docs/zh/model-deployment/index.md)（权重下载、国内源、启动、验证）
-- [架构说明](docs/zh/developer-guide/architecture.md)
-- [配置说明](docs/zh/user-guide/configuration.md)
-- [部署文档](docs/zh/user-guide/deployment.md)（Docker Compose、分布式部署）
-- [模型适配](docs/zh/developer-guide/model-adapter.md)
+- [快速开始](https://datascale-ai.github.io/opentalking/latest/quick-start/)
+- [模型](https://datascale-ai.github.io/opentalking/latest/model-deployment/)（权重下载、国内源、启动、验证）
+- [架构说明](https://datascale-ai.github.io/opentalking/latest/developer-guide/architecture/)
+- [配置说明](https://datascale-ai.github.io/opentalking/latest/reference/configuration/)
+- [部署文档](https://datascale-ai.github.io/opentalking/latest/deployment/)（Docker Compose、分布式部署）
+- [模型适配](https://datascale-ai.github.io/opentalking/latest/developer-guide/model-adapter/)
 - [贡献指南](CONTRIBUTING.md)（开发环境、CLI 工具、ruff / mypy / pytest）
 
 欢迎加入 QQ 交流群，讨论实时数字人、FlashTalk、OmniRT、模型部署和产品场景。

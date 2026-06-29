@@ -123,12 +123,12 @@ OpenTalking's **orchestration layer** (API / Worker / frontend) and **digital-hu
 
 | Path | Recommended model / backend | Device reference | Best for | Details |
 | --- | --- | --- | --- | --- |
-| Fast trial | `mock` | CPU / no GPU | Validate API, LLM, TTS, WebRTC, and browser playback without downloading model weights | [Quickstart](docs/en/user-guide/quickstart.md) |
-| Entry validation | `quicktalk` / `wav2lip` | RTX 3050 Laptop, RTX 3060, RTX 4060 | Run real video rendering for demos and deployment validation; lower the resolution on low-memory devices | [QuickTalk](docs/en/model-deployment/quicktalk.md) / [Wav2Lip](docs/en/model-deployment/wav2lip-local.md) |
-| Consumer-GPU single machine | `quicktalk` / `wav2lip` / `musetalk` | RTX 3090, RTX 4090 | Closer to real-time local demos, private validation, and lightweight pre-production evaluation | [Model deployment](docs/en/model-deployment/index.md) |
-| Fully local private path | `sensevoice` + `local_cosyvoice` + `quicktalk` | RTX 3090 / 4090 or similar GPU | Run STT, TTS, and video driving locally; OpenTalking uses the main `.venv`, while CosyVoice runs in a dedicated sidecar venv | [Local STT/TTS + QuickTalk](docs/en/model-deployment/local-quicktalk-audio.md) |
-| High-quality remote inference | `flashtalk` / `flashhead` / `fasterliveportrait` + OmniRT | Multi-GPU, Ascend 910B2, remote GPU service | Multi-card, GPU/NPU, production isolation, higher visual quality, or video clone workflows | [FlashTalk](docs/en/model-deployment/flashtalk.md) / [FasterLivePortrait](docs/en/model-deployment/fasterliveportrait.md) |
-| Docker / production deployment | API, Web, Worker, external model services | Single GPU, remote GPU, distributed cluster | Service deployment, remote GPU, distributed runtime, and production validation | [Deployment](docs/en/user-guide/deployment.md) |
+| Fast trial | `mock` | CPU / no GPU | Validate API, LLM, TTS, WebRTC, and browser playback without downloading model weights | [Quickstart](https://datascale-ai.github.io/opentalking/latest/en/quick-start/) |
+| Entry validation | `quicktalk` / `wav2lip` | RTX 3050 Laptop, RTX 3060, RTX 4060 | Run real video rendering for demos and deployment validation; lower the resolution on low-memory devices | [QuickTalk](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/deployment/quicktalk-local/) / [Wav2Lip](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/deployment/wav2lip-local/) |
+| Consumer-GPU single machine | `quicktalk` / `wav2lip` / `musetalk` | RTX 3090, RTX 4090 | Closer to real-time local demos, private validation, and lightweight pre-production evaluation | [Model and backend selection](https://datascale-ai.github.io/opentalking/latest/en/model-support/selection/) |
+| Fully local private path | `sensevoice` + `local_cosyvoice` + `quicktalk` | RTX 3090 / 4090 or similar GPU | Run STT, TTS, and video driving locally; OpenTalking uses the main `.venv`, while CosyVoice runs in a dedicated sidecar venv | [Local STT/TTS + QuickTalk](https://datascale-ai.github.io/opentalking/latest/en/recipes/local-quicktalk-audio/) |
+| High-quality remote inference | `flashtalk` / `flashhead` / `fasterliveportrait` + OmniRT | Multi-GPU, Ascend 910B2, remote GPU service | Multi-card, GPU/NPU, production isolation, higher visual quality, or video clone workflows | [FlashTalk](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/flashtalk/) / [FasterLivePortrait](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/fasterliveportrait/) |
+| Docker / production deployment | API, Web, Worker, external model services | Single GPU, remote GPU, distributed cluster | Service deployment, remote GPU, distributed runtime, and production validation | [Deployment](https://datascale-ai.github.io/opentalking/latest/en/deployment/) |
 
 ## Quickstart
 
@@ -145,7 +145,7 @@ If you want to try the OpenTalking + OmniRT + QuickTalk real-time digital-human 
 
 - Image URL: [image link](https://www.compshare.cn/images/TdDwmKZUZebI?referral_code=Hid5KUhcqlZEptmMEwKy2F)
 - Exposed port: `5173` (WebUI; API traffic is proxied internally)
-- Guide: [Compshare image quick experience](docs/en/quick-start/compshare-image.md)
+- Guide: [Compshare image quick experience](https://datascale-ai.github.io/opentalking/latest/en/quick-start/)
 
 The image includes OpenTalking, OmniRT, the QuickTalk runtime environment, and model files. After deploying an instance, open port `5173` and visit the instance URL provided by the platform. If you need to restart services manually, follow the commands in the guide.
 
@@ -162,7 +162,7 @@ source .venv/bin/activate
 cp .env.example .env
 ```
 
-Edit `.env` and configure at least an LLM. The default TTS can use the keyless `edge` voice. LLM, STT, and TTS are independent providers; see [Configuration](docs/en/user-guide/configuration.md) and [LLM / STT](docs/en/model-deployment/llm-stt.md).
+Edit `.env` and configure at least an LLM. The default TTS can use the keyless `edge` voice. LLM, STT, and TTS are independent providers; see [Configuration](https://datascale-ai.github.io/opentalking/latest/en/reference/configuration/) and [LLM / STT](https://datascale-ai.github.io/opentalking/latest/en/speech_models/llm-stt/).
 
 ```bash
 bash scripts/start_unified.sh --mock
@@ -202,12 +202,12 @@ bash scripts/start_unified.sh \
 
 More entrypoints:
 
-- [QuickTalk local deployment](docs/en/model-deployment/quicktalk.md)
-- [Wav2Lip local deployment](docs/en/model-deployment/wav2lip-local.md)
-- [FasterLivePortrait / JoyVASA](docs/en/model-deployment/fasterliveportrait.md)
-- [Video clone guide](docs/en/usage/webui/video-clone.md)
-- [WebUI guide](docs/en/usage/webui/basic.md)
-- [Docker Compose and production deployment](docs/en/user-guide/deployment.md)
+- [QuickTalk local deployment](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/deployment/quicktalk-local/)
+- [Wav2Lip local deployment](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/deployment/wav2lip-local/)
+- [FasterLivePortrait / JoyVASA](https://datascale-ai.github.io/opentalking/latest/en/avatar_models/fasterliveportrait/)
+- [Video clone guide](https://datascale-ai.github.io/opentalking/latest/en/usage/webui/video-clone/)
+- [WebUI guide](https://datascale-ai.github.io/opentalking/latest/en/usage/webui/basic/)
+- [Docker Compose and production deployment](https://datascale-ai.github.io/opentalking/latest/en/deployment/)
 
 ## Supported Models
 
@@ -227,7 +227,7 @@ More entrypoints:
 | --- | --- | --- | --- | --- | --- |
 | `quicktalk` | RTX 3090 | Template video + audio | 720x900 / 25fps | About 3.8 GiB | About 35 fps |
 
-For weight downloads, Docker, troubleshooting, and model configuration, see [Model deployment](docs/en/model-deployment/index.md).
+For weight downloads, Docker, troubleshooting, and model configuration, see [Model deployment](https://datascale-ai.github.io/opentalking/latest/en/model-deployment/).
 
 ### Cloud Model API: Atlas Cloud
 
@@ -239,7 +239,7 @@ For weight downloads, Docker, troubleshooting, and model configuration, see [Mod
 
 > **[Atlas Cloud](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=opentalking)** is an all-modal AI inference platform. One API gives you access to video generation, image generation, and LLMs, so you do not need to integrate multiple vendors separately. A single integration can route to 300+ curated all-modal models.
 
-OpenTalking uses an OpenAI-compatible interface for LLMs. Point `OPENTALKING_LLM_BASE_URL` to `https://api.atlascloud.ai/v1` to use Atlas-hosted DeepSeek / Qwen models. See [LLM and STT](docs/en/model-deployment/llm-stt.md). For budget-friendly API options, see Atlas Cloud's [coding plan](https://www.atlascloud.ai/console/coding-plan).
+OpenTalking uses an OpenAI-compatible interface for LLMs. Point `OPENTALKING_LLM_BASE_URL` to `https://api.atlascloud.ai/v1` to use Atlas-hosted DeepSeek / Qwen models. See [LLM and STT](https://datascale-ai.github.io/opentalking/latest/en/speech_models/llm-stt/). For budget-friendly API options, see Atlas Cloud's [coding plan](https://www.atlascloud.ai/console/coding-plan).
 
 ## Progress And Roadmap
 
@@ -304,12 +304,12 @@ OpenTalking uses an OpenAI-compatible interface for LLMs. Point `OPENTALKING_LLM
 
 ## Documentation And Community
 
-- [Quickstart](docs/en/user-guide/quickstart.md)
-- [Models](docs/en/model-deployment/index.md) (weight downloads, mirrors, startup, validation)
-- [Architecture](docs/en/developer-guide/architecture.md)
-- [Configuration](docs/en/user-guide/configuration.md)
-- [Deployment](docs/en/user-guide/deployment.md) (Docker Compose, distributed deployment)
-- [Model adapter](docs/en/developer-guide/model-adapter.md)
+- [Quickstart](https://datascale-ai.github.io/opentalking/latest/en/quick-start/)
+- [Models](https://datascale-ai.github.io/opentalking/latest/en/model-deployment/) (weight downloads, mirrors, startup, validation)
+- [Architecture](https://datascale-ai.github.io/opentalking/latest/en/developer-guide/architecture/)
+- [Configuration](https://datascale-ai.github.io/opentalking/latest/en/reference/configuration/)
+- [Deployment](https://datascale-ai.github.io/opentalking/latest/en/deployment/) (Docker Compose, distributed deployment)
+- [Model adapter](https://datascale-ai.github.io/opentalking/latest/en/developer-guide/model-adapter/)
 - [Contributing](CONTRIBUTING.md) (dev environment, CLI tools, ruff / mypy / pytest)
 
 Join the QQ community to discuss real-time digital humans, FlashTalk, OmniRT, model deployment, and product scenarios.
