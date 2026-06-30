@@ -109,9 +109,10 @@ class MemorySummaryAgent:
         return self._fallback_summary(turns, max_items=max_items)
 
     async def _summarize_with_llm(self, turns: list[dict[str, str]], *, max_items: int) -> str:
-        from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
+        from opentalking.providers.llm.factory import create_llm_client
 
-        client = OpenAICompatibleLLMClient(
+        client = create_llm_client(
+            provider=getattr(self.settings, "llm_provider", "openai_compatible") or "openai_compatible",
             base_url=self.settings.llm_base_url,
             api_key=self.settings.llm_api_key,
             model=self.settings.llm_model,

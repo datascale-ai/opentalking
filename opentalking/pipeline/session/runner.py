@@ -30,7 +30,6 @@ from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.models.registry import get_adapter
 from opentalking.providers.rtc.aiortc.adapter import WebRTCSession
 from opentalking.providers.tts import build_tts_adapter
-from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
 from opentalking.providers.llm.openai_compatible.conversation import ConversationHistory
 from opentalking.providers.llm.openai_compatible.sentence_splitter import SentenceSplitter
 from opentalking.providers.memory.runtime import MemoryRuntime, MemoryScope
@@ -1705,13 +1704,17 @@ class SessionRunner:
                 )
                 self._active_timing = None
 
-    def _ensure_llm_client(self) -> OpenAICompatibleLLMClient:
+    def _ensure_llm_client(self):
         if self._llm_client is None:
-            if not self._llm_base_url:
+            from opentalking.providers.llm.factory import create_llm_client
+
+            provider = getattr(_SETTINGS, "llm_provider", "openai_compatible") or "openai_compatible"
+            if provider != "litellm" and not self._llm_base_url:
                 raise RuntimeError(
                     "LLM 未配置：请设置 OPENTALKING_LLM_BASE_URL（OpenAI-compatible /v1）。"
                 )
-            self._llm_client = OpenAICompatibleLLMClient(
+            self._llm_client = create_llm_client(
+                provider=provider,
                 base_url=self._llm_base_url,
                 api_key=self._llm_api_key,
                 model=self._llm_model,

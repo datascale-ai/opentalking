@@ -479,9 +479,10 @@ class MemoryLLMRecallJudge:
         if not getattr(self.settings, "llm_base_url", ""):
             return RecallDecision(False, reason="llm_unavailable")
 
-        from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
+        from opentalking.providers.llm.factory import create_llm_client
 
-        client = OpenAICompatibleLLMClient(
+        client = create_llm_client(
+            provider=getattr(self.settings, "llm_provider", "openai_compatible") or "openai_compatible",
             base_url=self.settings.llm_base_url,
             api_key=self.settings.llm_api_key,
             model=self.settings.llm_model,

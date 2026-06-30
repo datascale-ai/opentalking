@@ -31,9 +31,10 @@ class _ConfiguredPersonaLLM:
         settings = get_settings()
         if not str(getattr(settings, "llm_base_url", "") or "").strip():
             return ""
-        from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
+        from opentalking.providers.llm.factory import create_llm_client
 
-        client = OpenAICompatibleLLMClient(
+        client = create_llm_client(
+            provider=getattr(settings, "llm_provider", "openai_compatible") or "openai_compatible",
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
             model=settings.llm_model,
