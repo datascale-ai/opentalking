@@ -15,6 +15,7 @@ dependencies = [
   "uvicorn[standard]>=0.27",
   "pydantic>=2",
   "pydantic-settings>=2",
+  "python-dotenv>=1",
   "redis>=5",
   "numpy>=1.24,<2",
   "httpx>=0.26",
@@ -143,6 +144,7 @@ opentalking-unified = "apps.unified.main:main"
 opentalking-download = "apps.cli.download_models:main"
 opentalking-doctor = "apps.cli.doctor:main"
 opentalking-quicktalk-bench = "apps.cli.quicktalk_bench:main"
+opentalking-quicktalk-multiface = "apps.cli.quicktalk_multiface:main"
 opentalking-prepare-cache = "apps.cli.prepare_cache:main"
 opentalking-persona = "apps.cli.persona:main"
 

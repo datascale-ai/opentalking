@@ -40,6 +40,21 @@ import wave
 INSIGHTFACE_DETECT_SIZE = 640
 
 
+@dataclass(frozen=True)
+class FaceDetection:
+    bbox: np.ndarray
+    landmark_2d_106: np.ndarray
+
+    @property
+    def area(self) -> float:
+        x0, y0, x1, y1 = self.bbox
+        return float(max(0.0, x1 - x0) * max(0.0, y1 - y0))
+
+    @property
+    def center_x(self) -> float:
+        return float((self.bbox[0] + self.bbox[2]) / 2.0)
+
+
 def run_cmd(cmd: Sequence[str]) -> None:
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if proc.returncode != 0:
@@ -418,11 +433,23 @@ class FaceDetector:
         self.app.prepare(ctx_id=ctx_id if self.device.type == "cuda" else -1, det_size=(det_size, det_size))
 
     def __call__(self, image_rgb: np.ndarray) -> Tuple[np.ndarray | None, np.ndarray | None]:
-        faces = self.app.get(image_rgb)
+        faces = self.detect_faces(image_rgb)
         if not faces:
             return None, None
-        face = max(faces, key=lambda x: float((x.bbox[2] - x.bbox[0]) * (x.bbox[3] - x.bbox[1])))
-        return np.asarray(face.bbox, dtype=np.float32), np.asarray(face.landmark_2d_106, dtype=np.float32)
+        face = max(faces, key=lambda item: item.area)
+        return face.bbox, face.landmark_2d_106
+
+    def detect_faces(self, image_rgb: np.ndarray) -> list[FaceDetection]:
+        faces = self.app.get(image_rgb)
+        if not faces:
+            return []
+        return [
+            FaceDetection(
+                bbox=np.asarray(face.bbox, dtype=np.float32),
+                landmark_2d_106=np.asarray(face.landmark_2d_106, dtype=np.float32),
+            )
+            for face in faces
+        ]
 
 
 class ImageProcessor:
@@ -447,6 +474,21 @@ class ImageProcessor:
         bbox, landmark_2d_106 = self.face_detector(image_rgb)
         if bbox is None or landmark_2d_106 is None:
             raise RuntimeError("Face not detected")
+        return self.affine_transform_from_landmarks(image_rgb, landmark_2d_106)
+
+    def detect_faces(self, image_rgb: np.ndarray) -> list[FaceDetection]:
+        if self.face_detector is None:
+            self.face_detector = FaceDetector(self.auxiliary_root, device=self.device)
+        return self.face_detector.detect_faces(image_rgb)
+
+    def affine_transform_from_detection(
+        self, image_rgb: np.ndarray, detection: FaceDetection
+    ) -> FaceCropResult:
+        return self.affine_transform_from_landmarks(image_rgb, detection.landmark_2d_106)
+
+    def affine_transform_from_landmarks(
+        self, image_rgb: np.ndarray, landmark_2d_106: np.ndarray
+    ) -> FaceCropResult:
         pt_left_eye = np.mean(landmark_2d_106[[43, 48, 49, 51, 50]], axis=0)
         pt_right_eye = np.mean(landmark_2d_106[101:106], axis=0)
         pt_nose = np.mean(landmark_2d_106[[74, 77, 83, 86]], axis=0)
