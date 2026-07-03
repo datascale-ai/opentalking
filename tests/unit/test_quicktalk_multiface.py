@@ -143,7 +143,7 @@ def test_multiface_worker_only_replaces_target_speaker_roi(monkeypatch: pytest.M
         return output
 
     monkeypatch.setattr(worker, "fast_restore_img", fake_restore.__get__(worker))
-    state = worker.make_state()
+    state = worker.make_multiface_state()
     reps = [np.zeros((10, 1024), dtype=np.float32)]
 
     frames = list(

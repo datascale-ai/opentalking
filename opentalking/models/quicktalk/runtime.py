@@ -172,7 +172,7 @@ def assign_face_ids_by_x(detections: Sequence[FaceDetection]) -> list[tuple[str,
         names = ["left", "center", "right"]
     else:
         names = [f"face_{idx}" for idx in range(len(ordered))]
-    return list(zip(names, ordered, strict=True))
+    return list(zip(names, ordered))
 
 
 class RealtimeV3Worker:
@@ -789,7 +789,7 @@ class MultiFaceRealtimeV3Worker(RealtimeV3Worker):
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         return self.v2.image_processor.detect_faces(rgb)
 
-    def make_state(self) -> MultiFaceSessionState:
+    def make_multiface_state(self) -> MultiFaceSessionState:
         return MultiFaceSessionState(
             frame_index=0,
             face_states={
@@ -805,7 +805,7 @@ class MultiFaceRealtimeV3Worker(RealtimeV3Worker):
     def warmup(self) -> None:
         if not self.restore_contexts_by_face:
             return
-        state = self.make_state()
+        state = self.make_multiface_state()
         face_id = next(iter(self.restore_contexts_by_face))
         dummy_rep = np.zeros((10, 1024), dtype=np.float32)
         self._render_face_rep(face_id, dummy_rep, state, self._base_frame_for_index(0))
@@ -1094,7 +1094,7 @@ class MultiFaceRealtimeV3Worker(RealtimeV3Worker):
         speaker_faces: Mapping[str, str],
         state: MultiFaceSessionState | None = None,
     ) -> Iterator[np.ndarray]:
-        state = state or self.make_state()
+        state = state or self.make_multiface_state()
         mouth_hold: MouthHoldState | None = None
         for segment in self._validate_segment_route(segments, speaker_faces):
             start_frame = max(0, int(round(segment.start_ms * self.fps / 1000.0)))
