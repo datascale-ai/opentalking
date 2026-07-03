@@ -84,23 +84,35 @@ export function CaseDetailPage({
                   <PlayCircle className="h-5 w-5 text-indigo-200" />
                   <span className="font-semibold">{copy.videoTitle}</span>
                 </div>
-                <video
-                  key={activeVideo.url}
-                  className="aspect-video w-full bg-black"
-                  src={activeVideo.url}
-                  controls
-                  poster={activeVideo.poster ?? item.image}
-                  onPlay={() =>
-                    trackAnalyticsEvent({
-                      eventName: "video_play",
-                      path: window.location.pathname,
-                      language: window.location.pathname === "/en" || window.location.pathname.startsWith("/en/") ? "en" : "zh",
-                      page: "caseDetail",
-                      caseSlug: item.slug,
-                      videoId: activeVideo.videoId ?? `case-${item.slug}`,
-                    })
-                  }
-                />
+                {activeVideo.embedUrl ? (
+                  <iframe
+                    key={activeVideo.embedUrl}
+                    className="aspect-video w-full bg-black"
+                    src={activeVideo.embedUrl}
+                    title={activeVideo.title}
+                    allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                ) : (
+                  <video
+                    key={activeVideo.url}
+                    className="aspect-video w-full bg-black"
+                    src={activeVideo.url}
+                    controls
+                    poster={activeVideo.poster ?? item.image}
+                    onPlay={() =>
+                      trackAnalyticsEvent({
+                        eventName: "video_play",
+                        path: window.location.pathname,
+                        language: window.location.pathname === "/en" || window.location.pathname.startsWith("/en/") ? "en" : "zh",
+                        page: "caseDetail",
+                        caseSlug: item.slug,
+                        videoId: activeVideo.videoId ?? `case-${item.slug}`,
+                      })
+                    }
+                  />
+                )}
                 {videoItems.length > 1 ? (
                   <div className="grid gap-3 border-t border-white/14 bg-indigo-950/95 p-4 md:grid-cols-2">
                     {videoItems.map((video, index) => {

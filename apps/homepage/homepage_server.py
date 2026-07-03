@@ -258,6 +258,10 @@ TRAFFIC_COPY = {
             "source": "来源",
             "video": "视频",
             "plays": "播放",
+            "today_plays": "今日",
+            "last_7_days": "近 7 天",
+            "previous_7_days": "上个 7 天",
+            "weekly_delta": "周变化",
             "day": "日期",
         },
         "direct_unknown_help": {
@@ -346,6 +350,10 @@ TRAFFIC_COPY = {
             "source": "Source",
             "video": "Video",
             "plays": "Plays",
+            "today_plays": "Today",
+            "last_7_days": "Last 7 days",
+            "previous_7_days": "Previous 7 days",
+            "weekly_delta": "Weekly change",
             "day": "Day",
         },
         "direct_unknown_help": {
@@ -609,10 +617,14 @@ def render_traffic_dashboard(language):
     yesterday = today - timedelta(days=1)
     previous_seven_day_start_date = today - timedelta(days=TREND_DAYS * 2 - 1)
     seven_day_start_date = beijing_now.date() - timedelta(days=TREND_DAYS - 1)
+    video_seven_day_start_date = today - timedelta(days=6)
+    previous_video_seven_day_start_date = today - timedelta(days=13)
     today_start = beijing_day_start(today)
     yesterday_start = beijing_day_start(yesterday)
     seven_day_start = beijing_day_start(seven_day_start_date)
     previous_seven_day_start = beijing_day_start(previous_seven_day_start_date)
+    video_seven_day_start = beijing_day_start(video_seven_day_start_date)
+    previous_video_seven_day_start = beijing_day_start(previous_video_seven_day_start_date)
 
     total_page_views = query_value("SELECT COUNT(*) AS count FROM analytics_events WHERE event_name = 'page_view'")
     today_page_views = query_value(
@@ -693,18 +705,25 @@ def render_traffic_dashboard(language):
     )
     top_videos = query_rows(
         """
-        SELECT video_id, COUNT(*) AS count
+        SELECT
+            video_id,
+            COUNT(*) AS count,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today_plays,
+            SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS last_7_days,
+            SUM(CASE WHEN created_at >= ? AND created_at < ? THEN 1 ELSE 0 END) AS previous_7_days
         FROM analytics_events
         WHERE event_name = 'video_play'
         GROUP BY video_id
         ORDER BY count DESC
-        LIMIT 10
-        """
+        LIMIT 50
+        """,
+        (today_start, video_seven_day_start, previous_video_seven_day_start, video_seven_day_start),
     )
     top_videos = [
         {
             **row,
             "video_label": copy["video_names"].get(row.get("video_id"), row.get("video_id") or "-"),
+            "weekly_delta": int(row.get("last_7_days") or 0) - int(row.get("previous_7_days") or 0),
         }
         for row in top_videos
     ]
@@ -793,6 +812,57 @@ def render_traffic_dashboard(language):
         body = "".join(body_parts)
 
         return f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+
+    def render_video_rankings(rows):
+        if not rows:
+            return f'<p class="empty">{escape(copy["empty"])}</p>'
+
+        columns = [
+            ("video_label", copy["columns"]["video"]),
+            ("count", copy["columns"]["plays"]),
+            ("last_7_days", copy["columns"]["last_7_days"]),
+            ("weekly_delta", copy["columns"]["weekly_delta"]),
+        ]
+        head = "".join(f"<th>{escape(label)}</th>" for _, label in columns)
+        table_rows = []
+
+        for row in rows[:10]:
+            cells = []
+
+            for key, _ in columns:
+                if key == "video_label":
+                    cells.append(f'<td>{escape(row.get("video_label") or "-")}</td>')
+                    continue
+
+                value = int(row.get(key) or 0)
+
+                if key == "weekly_delta":
+                    if value > 0:
+                        state = "positive"
+                        sign = "+"
+                    elif value < 0:
+                        state = "negative"
+                        sign = "-"
+                    else:
+                        state = "neutral"
+                        sign = ""
+
+                    cells.append(
+                        f'<td class="video-rank-value">'
+                        f'<span class="delta delta-{state} video-rank-delta">'
+                        f'{sign}{escape(format_number(abs(value)))}'
+                        f'</span></td>'
+                    )
+                else:
+                    cells.append(f'<td class="video-rank-value">{escape(format_number(value))}</td>')
+
+            table_rows.append(f'<tr>{"".join(cells)}</tr>')
+
+        return (
+            f'<div class="table-wrap"><table class="video-rank-table">'
+            f'<thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(table_rows)}</tbody></table></div>'
+        )
 
     def render_line_chart(title, total_label, points, metric_key, chart_id, total_value=None):
         values = [point[metric_key] for point in points]
@@ -933,6 +1003,11 @@ def render_traffic_dashboard(language):
           table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
           th, td {{ padding: 10px 8px; border-bottom: 1px solid #eef2f7; text-align: left; vertical-align: top; }}
           th {{ position: sticky; top: 0; background: rgba(255,255,255,.96); color: #64748b; font-size: 12px; font-weight: 700; }}
+          .video-rank-table {{ min-width: 520px; }}
+          .video-rank-table th:first-child, .video-rank-table td:first-child {{ min-width: 220px; }}
+          .video-rank-table th:not(:first-child), .video-rank-value {{ text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }}
+          .video-rank-table th:not(:first-child) {{ width: 86px; }}
+          .video-rank-delta {{ cursor: default; min-width: 34px; }}
           .empty {{ margin: 0; color: #94a3b8; font-size: 13px; }}
           .source-help-wrap {{ display: inline-flex; align-items: center; gap: 6px; }}
           .source-help {{ display: inline-flex; height: 15px; width: 15px; align-items: center; justify-content: center; border-radius: 999px; background: #e0f2fe; color: #0284c7; cursor: help; font-size: 10px; font-weight: 800; line-height: 1; }}
@@ -1009,7 +1084,7 @@ def render_traffic_dashboard(language):
             </section>
             <section>
               <h2>{escape(copy["sections"]["top_videos"])}</h2>
-              {render_table(top_videos, [("video_label", copy["columns"]["video"]), ("count", copy["columns"]["plays"])])}
+              {render_video_rankings(top_videos)}
             </section>
             <section>
               <h2>{escape(copy["sections"]["daily_views"])}</h2>

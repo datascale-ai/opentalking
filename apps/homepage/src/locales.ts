@@ -209,6 +209,7 @@ const enCaseStudies: CaseStudy[] = [
         title: "Front-facing livestream",
         description: "A direct host view for product explanation, offer highlights, and live commerce UI elements.",
         url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcb745001834809665869890/vkxsFysr5REA.mp4",
+        embedUrl: "https://player.bilibili.com/player.html?bvid=BV1jhT76hENu&page=1&autoplay=0&high_quality=1&danmaku=0",
         poster: "/images/cases/ecommerce-live-front-preview.png",
         videoId: "case-ecommerce-livestream-front",
       },

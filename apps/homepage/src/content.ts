@@ -31,6 +31,7 @@ export type CaseStudy = {
     title: string;
     description: string;
     url: string;
+    embedUrl?: string;
     poster?: string;
     videoId?: string;
   }>;
@@ -149,6 +150,7 @@ export const caseStudies: CaseStudy[] = [
         title: "正视直播间",
         description: "正面机位展示商品讲解、优惠信息和直播间视觉元素，适合官网主案例展示。",
         url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcb745001834809665869890/vkxsFysr5REA.mp4",
+        embedUrl: "https://player.bilibili.com/player.html?bvid=BV1jhT76hENu&page=1&autoplay=0&high_quality=1&danmaku=0",
         poster: "/images/cases/ecommerce-live-front-preview.png",
         videoId: "case-ecommerce-livestream-front",
       },

@@ -63,6 +63,26 @@ These demos cover three common frontend workflows: real-time conversation, video
 
 <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
+    <th align="center" colspan="3">Featured Product Scenarios</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <b>Healthcare guidance</b><br/>
+      <video src="https://github.com/user-attachments/assets/be67429b-b082-473f-a087-e3d1b8a1e9b4" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>Live commerce</b><br/>
+      <video src="https://github.com/user-attachments/assets/a0aad157-5d0b-4196-9a82-4226b7b2c6c6" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>Huangshan tourism guide</b><br/>
+      <video src="https://github.com/user-attachments/assets/7d620fe4-9e38-48a2-a3af-a26eae048ab4" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+  </tr>
+</table>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
     <th align="center" colspan="3">A. Real-time Conversation</th>
   </tr>
   <tr>

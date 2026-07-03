@@ -63,6 +63,26 @@ OpenTalking 提供 Web 服务界面，用于管理数字人对话链路：可以
 
 <table width="100%" cellpadding="0" cellspacing="0">
   <tr>
+    <th align="center" colspan="3">精选产品场景</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top" width="33%">
+      <b>医疗导诊助手</b><br/>
+      <video src="https://github.com/user-attachments/assets/be67429b-b082-473f-a087-e3d1b8a1e9b4" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>电商直播</b><br/>
+      <video src="https://github.com/user-attachments/assets/a0aad157-5d0b-4196-9a82-4226b7b2c6c6" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+    <td align="center" valign="top" width="33%">
+      <b>黄山文旅导览</b><br/>
+      <video src="https://github.com/user-attachments/assets/7d620fe4-9e38-48a2-a3af-a26eae048ab4" controls preload="metadata" width="248" height="140"></video><br/>
+    </td>
+  </tr>
+</table>
+
+<table width="100%" cellpadding="0" cellspacing="0">
+  <tr>
     <th align="center" colspan="3">A. 实时对话</th>
   </tr>
   <tr>
