@@ -6,7 +6,6 @@ repo_name: datascale-ai/opentalking
 edit_uri: edit/main/docs/
 
 exclude_docs: |
-  superpowers/
   requirements.txt
   */design/architecture-review.md
   */design/realtime-digital-human-research.md
@@ -72,13 +71,17 @@ plugins:
             Platform Notes: 平台说明
             Docker Deployment: Docker 部署
             Windows Deployment: Windows 部署
+            Compshare Image: 优云智算镜像快速体验
             Usage: 使用指南
             Usage Overview: 使用概览
             WebUI Usage: WebUI 使用
             Basic Usage: 基础使用
+            Video Creation: 视频创作
             Command Line Usage: 命令行使用
             Examples: 案例教程
             Examples Overview: 案例概览
+            WeChat Memory Import: 微信聊天记录导入
+            Huangshan Digital Human Guide: 黄山景区知识数字人
             AI Customer Support: AI 客服数字人
             Product Demo and Live Sales: 商品讲解与直播导购
             Course and News Presenter: 课程与新闻口播
@@ -128,6 +131,7 @@ plugins:
             SenseVoice: SenseVoice
             CosyVoice: CosyVoice
             IndexTTS: IndexTTS
+            F5-TTS: F5-TTS
             Qwen3-TTS: Qwen3-TTS
             Text-to-Speech: 语音合成
             Local Audio + QuickTalk: 本地语音 + QuickTalk
@@ -158,6 +162,10 @@ plugins:
             Model Adapter: 模型适配器
             Contributing: 贡献指南
             Community: 社区
+            Publishing Docs: 文档发布
+            Developer Guide: 开发者指南
+            Agent Knowledge LightRAG: Agent 知识库 LightRAG
+            Agent Memory and Knowledge RAG: Agent 记忆与知识库 RAG
             Overview: 概览
             Metrics: 指标定义
             Runbook: 运行方法
@@ -209,6 +217,7 @@ nav:
       - Home: index.md
       - Quick Start:
           - Quick Start: quick-start/index.md
+          - Compshare Image: quick-start/compshare-image.md
           - Platform Notes: quick-start/platform-notes.md
           - Docker Deployment: quick-start/docker-deployment.md
           - Windows Deployment: quick-start/windows-deployment.md
@@ -221,6 +230,7 @@ nav:
               - Basic Usage: usage/webui/basic.md
               - Custom Avatar: usage/webui/custom-avatar.md
               - Voice and TTS: usage/webui/voice-and-tts.md
+              - Video Creation: usage/webui/video-creation.md
               - Video Clone: usage/webui/video-clone.md
       - Examples:
           - Examples Overview: examples/index.md
@@ -229,6 +239,8 @@ nav:
           - Product Demo and Live Sales: examples/product-demo-live-sales.md
           - Course and News Presenter: examples/course-news-presenter.md
           - Private Digital Human Assistant: examples/private-assistant.md
+          - WeChat Memory Import: examples/Wechat_import.md
+          - Huangshan Digital Human Guide: examples/huangshan-digital-human-guide.md
       - Model Support:
           - Model Support Overview: model-support/index.md
           - Model and Backend Selection: model-support/selection.md
@@ -242,6 +254,7 @@ nav:
               - Wav2Lip: model-support/models/wav2lip.md
               - QuickTalk: model-support/models/quicktalk.md
               - MuseTalk: model-support/models/musetalk.md
+              - FasterLivePortrait: model-support/models/fasterliveportrait.md
               - FlashTalk: model-support/models/flashtalk.md
               - FlashHead: model-support/models/flashhead.md
       - Deployment Guide:
@@ -257,6 +270,7 @@ nav:
                   - Overview: speech_models/tts.md
                   - CosyVoice: speech_models/tts/cosyvoice.md
                   - IndexTTS: speech_models/tts/indextts.md
+                  - F5-TTS: speech_models/tts/f5-tts.md
                   - Qwen3-TTS: speech_models/tts/qwen3-tts.md
           - Talking-Head Model Deployment:
               - Overview: avatar_models/index.md
@@ -284,10 +298,17 @@ nav:
           - Reference Materials Overview: reference/index.md
           - Benchmark: reference/benchmark.md
           - Changelog: reference/changelog.md
+      - Developer Guide:
+          - Agent Knowledge LightRAG: developer-guide/agent-knowledge-lightrag.md
+          - Agent Memory and Knowledge RAG: design/agent-memory-knowledge-rag.md
+      - Community:
+          - Community: community/index.md
+          - Publishing Docs: community/publishing-docs.md
       - FAQ:
           - FAQ: faq.md
   - Quick Start:
       - Quick Start: quick-start/index.md
+      - Compshare Image: quick-start/compshare-image.md
       - Platform Notes: quick-start/platform-notes.md
       - Docker Deployment: quick-start/docker-deployment.md
       - Windows Deployment: quick-start/windows-deployment.md
@@ -300,6 +321,7 @@ nav:
           - Basic Usage: usage/webui/basic.md
           - Custom Avatar: usage/webui/custom-avatar.md
           - Voice and TTS: usage/webui/voice-and-tts.md
+          - Video Creation: usage/webui/video-creation.md
           - Video Clone: usage/webui/video-clone.md
   - Examples:
       - Examples Overview: examples/index.md
@@ -308,6 +330,8 @@ nav:
       - Product Demo and Live Sales: examples/product-demo-live-sales.md
       - Course and News Presenter: examples/course-news-presenter.md
       - Private Digital Human Assistant: examples/private-assistant.md
+      - WeChat Memory Import: examples/Wechat_import.md
+      - Huangshan Digital Human Guide: examples/huangshan-digital-human-guide.md
   - Model Support:
       - Model Support Overview: model-support/index.md
       - Model and Backend Selection: model-support/selection.md
@@ -321,6 +345,7 @@ nav:
           - Wav2Lip: model-support/models/wav2lip.md
           - QuickTalk: model-support/models/quicktalk.md
           - MuseTalk: model-support/models/musetalk.md
+          - FasterLivePortrait: model-support/models/fasterliveportrait.md
           - FlashTalk: model-support/models/flashtalk.md
           - FlashHead: model-support/models/flashhead.md
   - Deployment Guide:
@@ -336,6 +361,7 @@ nav:
               - Overview: speech_models/tts.md
               - CosyVoice: speech_models/tts/cosyvoice.md
               - IndexTTS: speech_models/tts/indextts.md
+              - F5-TTS: speech_models/tts/f5-tts.md
               - Qwen3-TTS: speech_models/tts/qwen3-tts.md
       - Talking-Head Model Deployment:
           - Overview: avatar_models/index.md
@@ -363,5 +389,11 @@ nav:
       - Reference Materials Overview: reference/index.md
       - Benchmark: reference/benchmark.md
       - Changelog: reference/changelog.md
+  - Developer Guide:
+      - Agent Knowledge LightRAG: developer-guide/agent-knowledge-lightrag.md
+      - Agent Memory and Knowledge RAG: design/agent-memory-knowledge-rag.md
+  - Community:
+      - Community: community/index.md
+      - Publishing Docs: community/publishing-docs.md
   - FAQ:
       - FAQ: faq.md
