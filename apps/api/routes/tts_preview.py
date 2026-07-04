@@ -6,7 +6,7 @@ import logging
 import tempfile
 import wave
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Request, UploadFile
@@ -14,6 +14,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from opentalking.avatar.duo_dialog import DEFAULT_DUO_DIALOG_GAP_MS, MAX_DUO_DIALOG_GAP_MS
 from opentalking.core.config import get_settings
 from opentalking.providers.tts.factory import build_tts_adapter
 from opentalking.providers.tts.indextts_config import normalize_indextts_config
@@ -27,6 +28,33 @@ MAX_PREVIEW_TEXT_CHARS = 1000
 LOCAL_COSYVOICE_PREVIEW_SECONDS = 3.0
 _INDEXTTS_PROVIDERS = {"indextts", "local_indextts", "omnirt_indextts"}
 PreviewUploadFile = UploadFile | StarletteUploadFile
+
+
+class TTSPreviewSettings(Protocol):
+    tts_sample_rate: int
+
+
+class DuoDialogPreviewLine(BaseModel):
+    id: str | None = None
+    role: str
+    text: Annotated[str, Field(max_length=MAX_PREVIEW_TEXT_CHARS)]
+
+
+class DuoDialogPreviewSpeaker(BaseModel):
+    tts_provider: str | None = None
+    provider: str | None = None
+    tts_model: str | None = None
+    model: str | None = None
+    voice: str | None = None
+    voice_id: str | None = None
+    indextts_config: dict[str, Any] | None = None
+
+
+class DuoDialogPreviewRequest(BaseModel):
+    lines: list[DuoDialogPreviewLine]
+    speakers: dict[str, DuoDialogPreviewSpeaker] = Field(default_factory=dict)
+    voices: dict[str, str] = Field(default_factory=dict)
+    gap_ms: int = DEFAULT_DUO_DIALOG_GAP_MS
 
 
 class TTSPreviewRequest(BaseModel):
@@ -53,6 +81,39 @@ def _wav_bytes(chunks: list[np.ndarray], sample_rate: int) -> bytes:
         wf.setframerate(sample_rate)
         wf.writeframes(pcm.tobytes())
     return out.getvalue()
+
+
+def _coerce_preview_gap_ms(raw: int | None) -> int:
+    value = DEFAULT_DUO_DIALOG_GAP_MS if raw is None else int(raw)
+    if value < 0 or value > MAX_DUO_DIALOG_GAP_MS:
+        raise HTTPException(status_code=422, detail=f"gap_ms must be between 0 and {MAX_DUO_DIALOG_GAP_MS}")
+    return value
+
+
+def _normalize_preview_tts_settings(
+    speaker: DuoDialogPreviewSpeaker | None,
+    *,
+    fallback_voice: str | None = None,
+) -> tuple[str | None, str | None, str | None, dict[str, Any] | None]:
+    provider_raw = (speaker.tts_provider or speaker.provider) if speaker else None
+    try:
+        provider = normalize_tts_provider(provider_raw, default=None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    model_raw = (speaker.tts_model or speaker.model or '').strip() if speaker else ''
+    model: str | None = model_raw or None
+    if provider in {'dashscope', 'bailian', 'qwen', 'qwen_tts', 'local_cosyvoice', 'local_qwen3_tts'} and model:
+        model = sanitize_qwen_model(model)
+    voice = (speaker.voice or speaker.voice_id or fallback_voice or '').strip() if speaker else (fallback_voice or '').strip()
+
+    indextts_config: dict[str, Any] | None = None
+    if provider in _INDEXTTS_PROVIDERS and speaker and speaker.indextts_config:
+        try:
+            indextts_config = normalize_indextts_config(dict(speaker.indextts_config)) or None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return voice or None, provider, model, indextts_config
 
 
 def _normalize_preview_request(
@@ -167,6 +228,44 @@ def _indextts_emotion_mode_for_log(
     return "voice"
 
 
+async def _collect_tts_preview_chunks(
+    *,
+    text: str,
+    voice: str | None,
+    provider: str | None,
+    model: str | None,
+    indextts_config: dict[str, Any] | None,
+    settings: TTSPreviewSettings,
+) -> tuple[list[np.ndarray], int]:
+    sample_rate = int(settings.tts_sample_rate)
+    tts = build_tts_adapter(
+        sample_rate=sample_rate,
+        chunk_ms=40.0,
+        default_voice=voice,
+        tts_provider=provider,
+        tts_model=model,
+        indextts_config=indextts_config,
+    )
+    chunks: list[np.ndarray] = []
+    effective_sample_rate = sample_rate
+    sample_limit = _preview_sample_limit(provider, sample_rate)
+    total_samples = 0
+    try:
+        async for chunk in tts.synthesize_stream(text, voice=voice):
+            arr = np.asarray(chunk.data, dtype=np.int16).reshape(-1)
+            if arr.size:
+                chunks.append(arr.copy())
+                total_samples += int(arr.size)
+            effective_sample_rate = int(chunk.sample_rate or effective_sample_rate)
+            if sample_limit is not None and total_samples >= sample_limit:
+                break
+    finally:
+        close = getattr(tts, "aclose", None)
+        if close is not None:
+            await close()
+    return chunks, effective_sample_rate
+
+
 def _log_tts_preview_request(
     *,
     provider: str | None,
@@ -275,6 +374,66 @@ async def preview_tts(request: Request) -> Response:
 
     return Response(
         content=_wav_bytes(chunks, effective_sample_rate),
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
+    )
+
+@router.post("/preview-duo-dialog", response_class=Response)
+async def preview_duo_dialog_tts(body: DuoDialogPreviewRequest) -> Response:
+    if not body.lines:
+        raise HTTPException(status_code=422, detail="lines is required")
+    gap_ms = _coerce_preview_gap_ms(body.gap_ms)
+    settings = get_settings()
+    sample_rate = int(settings.tts_sample_rate)
+    all_chunks: list[np.ndarray] = []
+    for index, line in enumerate(body.lines):
+        role = line.role.strip()
+        text = line.text.strip()
+        if not role:
+            raise HTTPException(status_code=422, detail="line role is required")
+        if not text:
+            raise HTTPException(status_code=422, detail="line text is required")
+        speaker = body.speakers.get(role)
+        voice, provider, model, indextts_config = _normalize_preview_tts_settings(
+            speaker,
+            fallback_voice=(body.voices or {}).get(role),
+        )
+        _log_tts_preview_request(
+            provider=provider,
+            voice=voice,
+            model=model,
+            raw_indextts_config=speaker.indextts_config if speaker else None,
+            indextts_config=indextts_config,
+            emotion_audio_path=None,
+        )
+        try:
+            chunks, effective_sample_rate = await _collect_tts_preview_chunks(
+                text=text,
+                voice=voice,
+                provider=provider,
+                model=model,
+                indextts_config=indextts_config,
+                settings=settings,
+            )
+        except Exception as exc:
+            logger.exception(
+                "duo tts preview failed | role=%s provider=%s voice_id=%s model=%s error=%s",
+                role,
+                provider or "default",
+                voice or "default",
+                model or "default",
+                exc,
+            )
+            raise HTTPException(status_code=502, detail=f"TTS preview failed: {exc}") from exc
+        if not chunks:
+            raise HTTPException(status_code=502, detail="TTS preview returned no audio")
+        sample_rate = effective_sample_rate
+        all_chunks.extend(chunks)
+        if index < len(body.lines) - 1 and gap_ms > 0:
+            all_chunks.append(np.zeros(int(round(sample_rate * gap_ms / 1000.0)), dtype=np.int16))
+
+    return Response(
+        content=_wav_bytes(all_chunks, sample_rate),
         media_type="audio/wav",
         headers={"Cache-Control": "no-store"},
     )

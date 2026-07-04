@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from opentalking.avatar import mouth_metadata
+from opentalking.avatar.duo_dialog import duo_dialog_summary_from_metadata
 from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.avatar.matting import MattingError, image_has_transparency, remove_avatar_background
 from opentalking.avatar.validator import list_avatar_dirs
@@ -27,7 +28,7 @@ from opentalking.models.quicktalk.paths import resolve_quicktalk_asset_root
 from opentalking.models.registry import get_adapter
 from opentalking.providers.synthesis.backends import resolve_model_backend
 from opentalking.providers.synthesis.omnirt import auth_headers
-from apps.api.schemas.avatar import AvatarSummary
+from apps.api.schemas.avatar import AvatarSummary, DuoDialogCapability
 from apps.cli.prepare_cache import (
     PreparedAssetResult,
     _prepare_quicktalk_asset,
@@ -114,15 +115,26 @@ def _video_media_type(path: Path) -> str:
 def _summary_from_dir(path: Path) -> AvatarSummary:
     b = load_avatar_bundle(path, strict=False)
     m = b.manifest
+    duo_dialog = duo_dialog_summary_from_metadata(m.metadata)
+    duo_capability = None
+    if duo_dialog is not None:
+        speaker_faces = duo_dialog.get('speaker_faces')
+        default_voices = duo_dialog.get('default_voices')
+        if isinstance(speaker_faces, dict) and isinstance(default_voices, dict):
+            duo_capability = DuoDialogCapability(
+                speaker_faces={str(key): str(value) for key, value in speaker_faces.items()},
+                default_voices={str(key): str(value) for key, value in default_voices.items()},
+            )
     return AvatarSummary(
         id=m.id,
         name=m.name,
         model_type=m.model_type,
         width=m.width,
         height=m.height,
-        is_custom=_is_custom_avatar(path / "manifest.json"),
+        is_custom=_is_custom_avatar(path / 'manifest.json'),
         has_preview_video=_avatar_preview_video_path(path) is not None,
-        matting_status=_avatar_matting_status(path / "manifest.json"),
+        matting_status=_avatar_matting_status(path / 'manifest.json'),
+        duo_dialog=duo_capability,
     )
 
 

@@ -13,11 +13,13 @@ from typing import Any
 import cv2
 import numpy as np
 
+from opentalking.avatar.duo_dialog import duo_dialog_summary_from_metadata, normalize_duo_dialog_payload
 from opentalking.avatar.fasterliveportrait_config import normalize_fasterliveportrait_runtime_config
 from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.core.model_config import get_model_config
 from opentalking.core.types.frames import VideoFrameData
 from opentalking.export_store import create_video_export
+from opentalking.models.quicktalk.paths import resolve_quicktalk_asset_root
 from opentalking.models.registry import get_adapter
 from opentalking.providers.stt.dashscope.adapter import decode_audio_file_to_pcm_i16
 from opentalking.providers.synthesis.audio2video_client import LocalAudio2VideoClient, OmniRTAudio2VideoClient
@@ -548,6 +550,35 @@ def _settings_or_env_int(settings: object, attr: str, env_names: tuple[str, ...]
         return default
 
 
+def _settings_or_env_float(settings: object, attr: str, env_names: tuple[str, ...]) -> float | None:
+    raw: Any = getattr(settings, attr, None)
+    if raw in (None, ""):
+        for env_name in env_names:
+            env_value = os.environ.get(env_name)
+            if env_value not in (None, ""):
+                raw = env_value
+                break
+    if raw in (None, ""):
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _settings_or_env_str(settings: object, attr: str, env_names: tuple[str, ...], default: str) -> str:
+    raw: Any = getattr(settings, attr, None)
+    if raw in (None, ""):
+        for env_name in env_names:
+            env_value = os.environ.get(env_name)
+            if env_value not in (None, ""):
+                raw = env_value
+                break
+    value = str(raw if raw not in (None, "") else default).strip()
+    return value or default
+
+
 def _even_video_dim(value: int) -> int:
     value = max(2, int(value))
     return value + (value % 2)
@@ -791,6 +822,18 @@ def _write_video_only(path: Path, frames: list[np.ndarray], fps: float) -> None:
         writer.release()
 
 
+MultiFaceRealtimeV3Worker: Any | None = None
+
+
+def _quicktalk_multiface_worker_class():
+    global MultiFaceRealtimeV3Worker
+    if MultiFaceRealtimeV3Worker is None:
+        from opentalking.models.quicktalk.runtime import MultiFaceRealtimeV3Worker as worker_cls
+
+        MultiFaceRealtimeV3Worker = worker_cls
+    return MultiFaceRealtimeV3Worker
+
+
 async def _ffmpeg_mux(ffmpeg_bin: str, video_in: Path, audio_in: Path, out_mp4: Path) -> None:
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
     proc = await asyncio.create_subprocess_exec(
@@ -848,21 +891,15 @@ class VideoCreationService:
             composition_config=composition_config,
         )
 
-    async def create_from_tts_text(
+    async def _synthesize_tts_pcm(
         self,
         *,
-        model: str,
-        avatar_id: str,
         text: str,
-        title: str,
+        voice: str | None,
         tts_provider: str | None,
         tts_model: str | None,
-        voice: str | None,
-        source: str = "tts_text",
-        fasterliveportrait_config: Mapping[str, object] | None = None,
         indextts_config: Mapping[str, object] | None = None,
-        composition_config: Mapping[str, object] | None = None,
-    ) -> dict[str, Any]:
+    ) -> np.ndarray:
         text_value = text.strip()
         if not text_value:
             raise ValueError("text is required")
@@ -892,6 +929,30 @@ class VideoCreationService:
         pcm = np.concatenate(chunks).astype(np.int16, copy=False)
         if sample_rate != 16000:
             pcm = await self._resample_pcm(pcm, sample_rate)
+        return pcm
+
+    async def create_from_tts_text(
+        self,
+        *,
+        model: str,
+        avatar_id: str,
+        text: str,
+        title: str,
+        tts_provider: str | None,
+        tts_model: str | None,
+        voice: str | None,
+        source: str = "tts_text",
+        fasterliveportrait_config: Mapping[str, object] | None = None,
+        indextts_config: Mapping[str, object] | None = None,
+        composition_config: Mapping[str, object] | None = None,
+    ) -> dict[str, Any]:
+        pcm = await self._synthesize_tts_pcm(
+            text=text,
+            voice=voice,
+            tts_provider=tts_provider,
+            tts_model=tts_model,
+            indextts_config=indextts_config,
+        )
         return await self._create_from_pcm(
             model=model,
             avatar_id=avatar_id,
@@ -901,6 +962,183 @@ class VideoCreationService:
             fasterliveportrait_config=fasterliveportrait_config,
             composition_config=composition_config,
         )
+
+    async def create_from_duo_dialog(
+        self,
+        *,
+        model: str,
+        avatar_id: str,
+        title: str,
+        duo_dialog: Mapping[str, object],
+        tts_provider: str | None,
+        tts_model: str | None,
+        indextts_config: Mapping[str, object] | None = None,
+        composition_config: Mapping[str, object] | None = None,
+    ) -> dict[str, Any]:
+        model_value = _normalize_model(model)
+        if model_value != "quicktalk":
+            raise ValueError("duo_dialog only supports quicktalk")
+
+        avatar_path = _avatar_dir(self.settings, avatar_id)
+        capability = duo_dialog_summary_from_metadata(_avatar_manifest_metadata(avatar_path))
+        if capability is None:
+            raise ValueError("avatar does not support duo_dialog")
+        speaker_faces_raw = capability.get('speaker_faces')
+        if not isinstance(speaker_faces_raw, Mapping):
+            raise ValueError('avatar duo_dialog speaker_faces is required')
+        speaker_faces = {str(key): str(value) for key, value in speaker_faces_raw.items()}
+        default_voices_raw = capability.get('default_voices')
+        default_voices = (
+            {str(key): str(value) for key, value in default_voices_raw.items()}
+            if isinstance(default_voices_raw, Mapping)
+            else None
+        )
+        normalized = normalize_duo_dialog_payload(
+            duo_dialog,
+            speaker_faces=speaker_faces,
+            default_voices=default_voices,
+        )
+
+        backend = resolve_model_backend(model_value, self.settings)
+        backend_name = str(getattr(backend, "backend", "") or "").strip().lower()
+        if backend_name != "local":
+            raise ValueError("duo_dialog only supports quicktalk local backend")
+
+        normalized_composition_config = _normalize_video_composition_config(self.settings, avatar_path, composition_config)
+        template_video = _quicktalk_template_video(self.settings, avatar_path)
+        if template_video is None:
+            raise FileNotFoundError("quicktalk template video not found")
+
+        job_id = uuid.uuid4().hex
+        work_dir = _settings_path(self.settings, "exports_dir", "./data/exports") / "video_creation_jobs" / job_id
+        segments_dir = work_dir / "segments"
+        segments_dir.mkdir(parents=True, exist_ok=False)
+        sample_rate = 16000
+        raw_gap_ms = normalized['gap_ms']
+        gap_ms = int(raw_gap_ms) if isinstance(raw_gap_ms, (str, int, float)) else 0
+        gap_samples = int(round(float(gap_ms) * float(sample_rate) / 1000.0))
+        cursor = 0
+        total_parts: list[np.ndarray] = []
+        script_segments: list[dict[str, object]] = []
+        voices = normalized["voices"]
+        assert isinstance(voices, Mapping)
+        speaker_tts = normalized.get("speakers")
+        if not isinstance(speaker_tts, Mapping):
+            speaker_tts = {}
+        lines = normalized["lines"]
+        assert isinstance(lines, list)
+
+        for index, line in enumerate(lines):
+            role = str(line["role"])
+            text_value = str(line["text"])
+            role_config_raw = speaker_tts.get(role)
+            role_config = role_config_raw if isinstance(role_config_raw, Mapping) else {}
+            voice = str(role_config.get("voice") or voices.get(role) or "") or None
+            role_provider = str(role_config.get("tts_provider") or tts_provider or "") or None
+            role_model = str(role_config.get("tts_model") or tts_model or "") or None
+            role_indextts_config = role_config.get("indextts_config")
+            if not isinstance(role_indextts_config, Mapping):
+                role_indextts_config = indextts_config
+            pcm = await self._synthesize_tts_pcm(
+                text=text_value,
+                voice=voice,
+                tts_provider=role_provider,
+                tts_model=role_model,
+                indextts_config=role_indextts_config,
+            )
+            if pcm.size == 0:
+                raise RuntimeError("TTS returned no audio")
+            segment_wav = segments_dir / f"{index + 1:03d}-{role}.wav"
+            _write_wav(segment_wav, pcm, sample_rate)
+            start = cursor
+            end = start + int(pcm.size)
+            script_segments.append(
+                {
+                    "speaker_id": role,
+                    "start_ms": int(round(float(start) * 1000.0 / float(sample_rate))),
+                    "end_ms": int(round(float(end) * 1000.0 / float(sample_rate))),
+                    "audio": str(segment_wav),
+                }
+            )
+            total_parts.append(pcm)
+            cursor = end
+            if index < len(lines) - 1 and gap_samples > 0:
+                total_parts.append(np.zeros(gap_samples, dtype=np.int16))
+                cursor += gap_samples
+
+        total_pcm = np.concatenate(total_parts).astype(np.int16, copy=False) if total_parts else np.zeros(0, dtype=np.int16)
+        if total_pcm.size == 0:
+            raise RuntimeError("TTS returned no audio")
+        audio_wav = work_dir / "audio.wav"
+        _write_wav(audio_wav, total_pcm, sample_rate)
+
+        script = {"speaker_faces": dict(speaker_faces), "segments": script_segments}
+        asset_root = resolve_quicktalk_asset_root(self.settings)
+        if asset_root is None:
+            raise FileNotFoundError("quicktalk asset root not found")
+        worker_cls = _quicktalk_multiface_worker_class()
+        worker = worker_cls(
+            asset_root=asset_root,
+            template_video=template_video,
+            face_cache_dir=asset_root / ".face_cache_v3",
+            device=_device_for_model(self.settings, model_value),
+            hubert_device=str(
+                getattr(self.settings, "quicktalk_hubert_device", "")
+                or getattr(self.settings, "quicktalk_device", "")
+                or getattr(self.settings, "torch_device", "")
+                or "cuda:0"
+            ),
+            max_template_seconds=_settings_or_env_float(
+                self.settings,
+                "quicktalk_max_template_seconds",
+                ("OPENTALKING_QUICKTALK_MAX_TEMPLATE_SECONDS", "OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS"),
+            ),
+            model_backend=_settings_or_env_str(
+                self.settings,
+                "quicktalk_model_backend",
+                ("OPENTALKING_QUICKTALK_MODEL_BACKEND", "OMNIRT_QUICKTALK_MODEL_BACKEND"),
+                "auto",
+            ),
+        )
+        frames: list[np.ndarray] = []
+        for frame in worker.generate_frames_from_script(script):
+            frame_array = _frame_array(frame)
+            if frame_array is not None:
+                frames.append(frame_array)
+        fps = float(getattr(worker, 'fps', 25) or 25)
+        composed_frames = _apply_video_composition(frames, config=normalized_composition_config)
+
+        video_only = work_dir / 'video_only.mp4'
+        _write_video_only(video_only, composed_frames, fps)
+        output_mp4 = work_dir / "result.mp4"
+        await _ffmpeg_mux(str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"), video_only, audio_wav, output_mp4)
+        content = output_mp4.read_bytes()
+        duration = float(total_pcm.size) / float(sample_rate) if sample_rate else None
+        item = create_video_export(
+            _settings_path(self.settings, "exports_dir", "./data/exports"),
+            content=content,
+            mime_type="video/mp4",
+            kind="video_creation",
+            title=_safe_title(title, model=model_value, avatar_id=avatar_id),
+            duration_sec=duration,
+            session_id=None,
+            avatar_id=avatar_id,
+            model=model_value,
+            max_bytes=_settings_int(self.settings, "export_max_bytes", 1024 * 1024 * 1024),
+        )
+        log.info(
+            "quicktalk duo_dialog export complete: job=%s export_id=%s avatar=%s path=%s",
+            job_id,
+            item.get("id"),
+            avatar_id,
+            item.get("path"),
+        )
+        return {
+            "job_id": job_id,
+            "status": "done",
+            "source": "duo_dialog",
+            "export_video": _export_with_download_url(item),
+        }
 
     async def create_reference_video(
         self,

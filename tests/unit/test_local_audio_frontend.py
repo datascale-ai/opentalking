@@ -491,12 +491,13 @@ def test_video_creation_workspace_wires_offline_generation_flow():
     assert "MuseTalk" in workspace
     assert "音频来源" in workspace
     assert "上传音频" in workspace
-    assert "文本合成" in workspace
+    assert "口播合成" in workspace
+    assert "双人对话" in workspace
     assert "复刻音色" in workspace
     assert "audioSource," in workspace
     assert 'form.set("audio_source", input.audioSource)' in api
-    assert '"upload" | "tts_text" | "voice_clone"' in api
-    assert "voice_clone" in workspace
+    assert '"upload" | "tts_text" | "voice_clone" | "duo_dialog" | "reference_video"' in api
+    assert "录制/上传复刻" in workspace
     assert "BailianVoiceClone" in workspace
     assert "onVoiceCloned" in workspace
     assert "已保存到资产库" in workspace

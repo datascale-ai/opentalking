@@ -14,7 +14,7 @@ from opentalking.video_creation import VideoCreationService
 
 router = APIRouter(prefix="/video-creation", tags=["video-creation"])
 
-_AUDIO_SOURCES = {"upload", "tts_text", "voice_clone", "reference_video"}
+_AUDIO_SOURCES = {"upload", "tts_text", "voice_clone", "reference_video", "duo_dialog"}
 _INDEXTTS_PROVIDERS = {"indextts", "local_indextts", "omnirt_indextts"}
 
 
@@ -82,6 +82,18 @@ def _parse_video_composition_config(raw: str | None) -> dict[str, object] | None
     return decoded
 
 
+def _parse_duo_dialog(raw: str | None) -> dict[str, object]:
+    if not raw:
+        raise HTTPException(status_code=400, detail="duo_dialog is required")
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="duo_dialog must be valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise HTTPException(status_code=400, detail="duo_dialog must be a JSON object")
+    return decoded
+
+
 async def _save_indextts_emotion_audio(upload: UploadFile | None) -> Path | None:
     if upload is None:
         return None
@@ -110,11 +122,12 @@ async def create_video_creation_job(
     fasterliveportrait_config: str | None = Form(default=None),
     indextts_config: str | None = Form(default=None),
     composition_config: str | None = Form(default=None),
+    duo_dialog: str | None = Form(default=None),
     indextts_emotion_audio_file: UploadFile | None = File(default=None),
 ) -> dict[str, Any]:
     source = audio_source.strip().lower()
     if source not in _AUDIO_SOURCES:
-        raise HTTPException(status_code=400, detail="audio_source must be upload, tts_text, voice_clone, or reference_video")
+        raise HTTPException(status_code=400, detail="audio_source must be upload, tts_text, voice_clone, duo_dialog, or reference_video")
     settings = request.app.state.settings
     flp_config = _parse_fasterliveportrait_config(model, fasterliveportrait_config)
     video_composition_config = _parse_video_composition_config(composition_config)
@@ -160,6 +173,19 @@ async def create_video_creation_job(
                 avatar_id=avatar_id,
                 duration_sec=duration_sec,
                 title=title,
+                composition_config=video_composition_config,
+            )
+            return _with_download_url(result)
+
+        if source == "duo_dialog":
+            result = await service.create_from_duo_dialog(
+                model=model,
+                avatar_id=avatar_id,
+                title=title,
+                duo_dialog=_parse_duo_dialog(duo_dialog),
+                tts_provider=tts_provider,
+                tts_model=tts_model,
+                indextts_config=index_config,
                 composition_config=video_composition_config,
             )
             return _with_download_url(result)

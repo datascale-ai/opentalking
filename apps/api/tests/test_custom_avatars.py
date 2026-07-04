@@ -117,6 +117,61 @@ def test_avatar_summary_includes_matting_status(tmp_path: Path) -> None:
     assert response.json()[0]["matting_status"] == "transparent_ready"
 
 
+def test_avatar_summary_exposes_duo_dialog_metadata_only_when_declared(tmp_path: Path) -> None:
+    duo_dir = tmp_path / "duo-anchor"
+    plain_dir = tmp_path / "plain-anchor"
+    for avatar_dir, metadata in (
+        (
+            duo_dir,
+            {
+                "duo_dialog": {
+                    "speaker_faces": {"male": "left", "female": "right"},
+                    "default_voices": {
+                        "male": "zh-CN-YunxiNeural",
+                        "female": "zh-CN-XiaoxiaoNeural",
+                    },
+                }
+            },
+        ),
+        (plain_dir, {}),
+    ):
+        avatar_dir.mkdir()
+        (avatar_dir / "preview.png").write_bytes(_png_bytes())
+        (avatar_dir / "reference.png").write_bytes(_png_bytes())
+        (avatar_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "id": avatar_dir.name,
+                    "name": avatar_dir.name,
+                    "model_type": "quicktalk",
+                    "fps": 25,
+                    "sample_rate": 16000,
+                    "width": 64,
+                    "height": 48,
+                    "version": "1.0",
+                    "metadata": metadata,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(avatars_dir=str(tmp_path))
+    app.include_router(avatars.router)
+    response = TestClient(app).get("/avatars")
+
+    assert response.status_code == 200
+    by_id = {item["id"]: item for item in response.json()}
+    assert by_id["duo-anchor"]["duo_dialog"] == {
+        "speaker_faces": {"male": "left", "female": "right"},
+        "default_voices": {
+            "male": "zh-CN-YunxiNeural",
+            "female": "zh-CN-XiaoxiaoNeural",
+        },
+    }
+    assert by_id["plain-anchor"]["duo_dialog"] is None
+
+
 def test_builtin_female_host_transparent_avatar_asset_is_ready() -> None:
     avatar_dir = REPO_ROOT / "examples" / "avatars" / "female-host-transparent"
     manifest = json.loads((avatar_dir / "manifest.json").read_text(encoding="utf-8"))

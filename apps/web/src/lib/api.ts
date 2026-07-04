@@ -308,7 +308,7 @@ export async function deleteSceneComposition(compositionId: string): Promise<{ i
 }
 
 
-export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone" | "reference_video";
+export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone" | "duo_dialog" | "reference_video";
 
 export type IndexTTSEmotionMode = "voice" | "text" | "vector" | "audio";
 
@@ -323,6 +323,33 @@ export type IndexTTSConfig = {
   streaming_mode?: "segment" | "token_window";
   max_text_tokens_per_segment?: number;
   quick_streaming_tokens?: number;
+};
+
+export type DuoDialogRole = "male" | "female";
+
+export type DuoDialogLine = {
+  id: string;
+  role: DuoDialogRole;
+  text: string;
+};
+
+export type DuoDialogSpeakerTTS = {
+  tts_provider?: string;
+  tts_model?: string;
+  voice?: string;
+  indextts_config?: IndexTTSConfig;
+};
+
+export type DuoDialogRequest = {
+  lines: DuoDialogLine[];
+  voices?: Record<DuoDialogRole, string>;
+  speakers?: Record<DuoDialogRole, DuoDialogSpeakerTTS>;
+  gap_ms?: number;
+};
+
+export type DuoDialogCapability = {
+  speaker_faces: Record<string, string>;
+  default_voices: Partial<Record<DuoDialogRole, string>>;
 };
 
 export type VideoCreationJobResponse = {
@@ -359,6 +386,7 @@ export type CreateVideoCreationJobInput = {
   fasterliveportraitConfig?: Record<string, unknown>;
   indexttsConfig?: IndexTTSConfig;
   indexttsEmotionAudioFile?: File | null;
+  duoDialog?: DuoDialogRequest;
   compositionConfig?: VideoCreationCompositionConfig | null;
 };
 
@@ -386,6 +414,9 @@ export async function createVideoCreationJob(input: CreateVideoCreationJobInput)
   }
   if (input.indexttsEmotionAudioFile) {
     form.set("indextts_emotion_audio_file", input.indexttsEmotionAudioFile);
+  }
+  if (input.duoDialog) {
+    form.set("duo_dialog", JSON.stringify(input.duoDialog));
   }
   if (input.compositionConfig) {
     form.set("composition_config", JSON.stringify(input.compositionConfig));
@@ -524,6 +555,7 @@ export type AvatarSummary = {
   is_custom: boolean;
   has_preview_video: boolean;
   matting_status: "unknown" | "opaque" | "transparent_ready";
+  duo_dialog: DuoDialogCapability | null;
 };
 
 export type CreateSessionResponse = { session_id: string; status: string };

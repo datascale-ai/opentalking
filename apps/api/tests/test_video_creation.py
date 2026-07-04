@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from apps.api.routes import video_creation
-from opentalking.core.types.frames import VideoFrameData
+from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.video_creation import VideoCreationService
 
 
@@ -33,6 +34,26 @@ def _write_avatar(root: Path, avatar_id: str = "anchor") -> Path:
         ),
         encoding="utf-8",
     )
+    return avatar
+
+
+def _write_duo_avatar(root: Path, avatar_id: str = "duo-anchor") -> Path:
+    avatar = _write_avatar(root, avatar_id)
+    source_dir = avatar / "source"
+    source_dir.mkdir()
+    (source_dir / "source_video.mp4").write_bytes(b"template-video")
+    manifest = json.loads((avatar / "manifest.json").read_text(encoding="utf-8"))
+    manifest["model_type"] = "quicktalk"
+    manifest["metadata"] = {
+        "reference_mode": "video",
+        "source_video": "source/source_video.mp4",
+        "quicktalk": {"template_video": "source/source_video.mp4"},
+        "duo_dialog": {
+            "speaker_faces": {"male": "left", "female": "right"},
+            "default_voices": {"male": "zh-CN-YunxiNeural", "female": "zh-CN-XiaoxiaoNeural"},
+        },
+    }
+    (avatar / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     return avatar
 
 
@@ -81,6 +102,28 @@ class FakeVideoCreator:
                 "created_at": "2026-06-03T00:00:00Z",
                 "path": str(Path(str(getattr(self.settings, "exports_dir"))) / "tts.mp4"),
                 "download_url": "/exports/videos/export-tts/download",
+                "session_id": None,
+                "avatar_id": kwargs["avatar_id"],
+                "model": kwargs["model"],
+            },
+        }
+
+    async def create_from_duo_dialog(self, **kwargs: object) -> dict[str, object]:
+        self.calls.append(("duo_dialog", kwargs))
+        return {
+            "job_id": "job-duo",
+            "status": "done",
+            "source": "duo_dialog",
+            "export_video": {
+                "id": "export-duo",
+                "kind": "video_creation",
+                "title": kwargs["title"],
+                "duration_sec": 1.0,
+                "size_bytes": 9,
+                "mime_type": "video/mp4",
+                "created_at": "2026-06-03T00:00:00Z",
+                "path": str(Path(str(getattr(self.settings, "exports_dir"))) / "duo.mp4"),
+                "download_url": "/exports/videos/export-duo/download",
                 "session_id": None,
                 "avatar_id": kwargs["avatar_id"],
                 "model": kwargs["model"],
@@ -330,6 +373,58 @@ def test_video_creation_tts_text_passes_voice_model_without_audio_preview(tmp_pa
     assert response.json()["export_video"]["model"] == "quicktalk"
 
 
+def test_video_creation_route_passes_duo_dialog_payload(tmp_path: Path, monkeypatch) -> None:
+    client, creators = _client(tmp_path, monkeypatch)
+    payload = {
+        "lines": [
+            {"id": "line-1", "role": "male", "text": "大家好，我是男主持。"},
+            {"id": "line-2", "role": "female", "text": "我是女主持，欢迎收看。"},
+        ],
+        "voices": {"male": "zh-CN-YunxiNeural", "female": "zh-CN-XiaoxiaoNeural"},
+        "gap_ms": 120,
+    }
+    composition = {"background_id": "bg-news", "avatar_scale": 1.1}
+    with client:
+        response = client.post(
+            "/video-creation/jobs",
+            data={
+                "model": "quicktalk",
+                "avatar_id": "anchor",
+                "audio_source": "duo_dialog",
+                "title": "双人对话",
+                "tts_provider": "edge",
+                "tts_model": "edge-tts",
+                "duo_dialog": json.dumps(payload),
+                "composition_config": json.dumps(composition),
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    call_type, kwargs = creators[0].calls[0]
+    assert call_type == "duo_dialog"
+    assert kwargs["duo_dialog"] == payload
+    assert kwargs["tts_provider"] == "edge"
+    assert kwargs["tts_model"] == "edge-tts"
+    assert kwargs["composition_config"] == composition
+    assert response.json()["source"] == "duo_dialog"
+
+
+def test_video_creation_route_rejects_invalid_duo_dialog_json(tmp_path: Path, monkeypatch) -> None:
+    client, _creators = _client(tmp_path, monkeypatch)
+    with client:
+        response = client.post(
+            "/video-creation/jobs",
+            data={
+                "model": "quicktalk",
+                "avatar_id": "anchor",
+                "audio_source": "duo_dialog",
+                "title": "Broken duo",
+                "duo_dialog": "{",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "duo_dialog must be valid JSON"
 
 
 def test_video_creation_reference_video_passes_duration(tmp_path: Path, monkeypatch) -> None:
@@ -966,6 +1061,314 @@ async def test_video_creation_service_renders_quicktalk_via_omnirt(
     assert client.closed is True
     assert result["source"] == "upload"
     assert result["export_video"]["model"] == "quicktalk"
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_renders_quicktalk_duo_dialog_with_role_voices(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    quicktalk_root = tmp_path / "quicktalk-model"
+    quicktalk_root.mkdir()
+    _write_duo_avatar(avatars)
+    tts_calls: list[tuple[str, str | None]] = []
+    worker_scripts: list[dict[str, object]] = []
+    worker_kwargs: list[dict[str, object]] = []
+    muxed_audio: dict[str, np.ndarray] = {}
+
+    class FakeTTS:
+        async def synthesize_stream(self, text: str, *, voice: str | None = None):
+            tts_calls.append((text, voice))
+            size = 1600 if voice == "zh-CN-YunxiNeural" else 800
+            value = 100 if voice == "zh-CN-YunxiNeural" else 200
+            yield AudioChunk(
+                data=np.full(size, value, dtype=np.int16),
+                sample_rate=16000,
+                duration_ms=float(size) / 16.0,
+            )
+
+        async def aclose(self) -> None:
+            pass
+
+    class FakeMultiFaceWorker:
+        def __init__(self, **kwargs: object) -> None:
+            self.fps = 25
+            worker_kwargs.append(kwargs)
+
+        def generate_frames_from_script(self, script: dict[str, object]):
+            worker_scripts.append(script)
+            return iter([np.zeros((48, 64, 3), dtype=np.uint8) for _ in range(7)])
+
+    async def fake_mux(_ffmpeg_bin: str, _video_in: Path, audio_in: Path, out_mp4: Path) -> None:
+        with wave.open(str(audio_in), "rb") as wf:
+            muxed_audio["pcm"] = np.frombuffer(wf.readframes(wf.getnframes()), dtype="<i2").copy()
+        out_mp4.write_bytes(b"mp4")
+
+    def fake_create_video_export(root: Path, **kwargs: object) -> dict[str, object]:
+        return {
+            "id": "export-duo",
+            "kind": "video_creation",
+            "title": kwargs["title"],
+            "duration_sec": kwargs["duration_sec"],
+            "size_bytes": len(kwargs["content"]),
+            "mime_type": "video/mp4",
+            "created_at": "2026-06-04T00:00:00Z",
+            "path": str(root / "export-duo.mp4"),
+            "session_id": kwargs["session_id"],
+            "avatar_id": kwargs["avatar_id"],
+            "model": kwargs["model"],
+        }
+
+    monkeypatch.setattr(video_creation_module, "build_tts_adapter", lambda **_kwargs: FakeTTS())
+    monkeypatch.setattr(video_creation_module, "MultiFaceRealtimeV3Worker", FakeMultiFaceWorker, raising=False)
+    monkeypatch.setattr(video_creation_module, "resolve_quicktalk_asset_root", lambda _settings: quicktalk_root, raising=False)
+    monkeypatch.setattr(video_creation_module, "_write_video_only", lambda path, _frames, _fps: path.write_bytes(b"video"))
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", fake_mux)
+    monkeypatch.setattr(video_creation_module, "create_video_export", fake_create_video_export)
+    monkeypatch.setattr(
+        video_creation_module,
+        "resolve_model_backend",
+        lambda model, _settings: SimpleNamespace(model=model, backend="local", ws_url=""),
+    )
+
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            export_max_bytes=1024 * 1024,
+            ffmpeg_bin="ffmpeg",
+            tts_sample_rate=16000,
+            torch_device="cpu",
+            quicktalk_device="cpu",
+            quicktalk_hubert_device="cpu",
+            quicktalk_model_backend="pth",
+        )
+    )
+
+    result = await service.create_from_duo_dialog(
+        model="quicktalk",
+        avatar_id="duo-anchor",
+        title="QuickTalk duo take",
+        duo_dialog={
+            "lines": [
+                {"id": "line-1", "role": "male", "text": "男方开场"},
+                {"id": "line-2", "role": "female", "text": "女方回应"},
+            ],
+            "voices": {"male": "zh-CN-YunxiNeural", "female": "zh-CN-XiaoxiaoNeural"},
+            "gap_ms": 120,
+        },
+        tts_provider="edge",
+        tts_model=None,
+        composition_config=None,
+    )
+
+    assert tts_calls == [("男方开场", "zh-CN-YunxiNeural"), ("女方回应", "zh-CN-XiaoxiaoNeural")]
+    assert worker_kwargs[0]["asset_root"] == quicktalk_root
+    assert worker_kwargs[0]["template_video"].name == "source_video.mp4"
+    assert worker_scripts[0]["speaker_faces"] == {"male": "left", "female": "right"}
+    segments = worker_scripts[0]["segments"]
+    assert segments == [
+        {"speaker_id": "male", "start_ms": 0, "end_ms": 100, "audio": segments[0]["audio"]},
+        {"speaker_id": "female", "start_ms": 220, "end_ms": 270, "audio": segments[1]["audio"]},
+    ]
+    assert Path(segments[0]["audio"]).is_file()
+    assert Path(segments[1]["audio"]).is_file()
+    assert muxed_audio["pcm"].size == 4320
+    assert muxed_audio["pcm"][:1600].tolist() == [100] * 1600
+    assert np.all(muxed_audio["pcm"][1600:3520] == 0)
+    assert muxed_audio["pcm"][3520:].tolist() == [200] * 800
+    assert result["source"] == "duo_dialog"
+    assert result["export_video"]["model"] == "quicktalk"
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_renders_duo_dialog_with_per_role_tts_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    quicktalk_root = tmp_path / "quicktalk-model"
+    quicktalk_root.mkdir()
+    _write_duo_avatar(avatars)
+    tts_build_calls: list[dict[str, object]] = []
+    tts_calls: list[tuple[str, str | None, str | None]] = []
+    worker_scripts: list[dict[str, object]] = []
+
+    class FakeTTS:
+        def __init__(self, provider: str | None) -> None:
+            self.provider = provider
+
+        async def synthesize_stream(self, text: str, *, voice: str | None = None):
+            tts_calls.append((text, voice, self.provider))
+            size = 1600 if self.provider == "edge" else 800
+            yield AudioChunk(
+                data=np.full(size, 100, dtype=np.int16),
+                sample_rate=16000,
+                duration_ms=float(size) / 16.0,
+            )
+
+        async def aclose(self) -> None:
+            pass
+
+    class FakeMultiFaceWorker:
+        def __init__(self, **_kwargs: object) -> None:
+            self.fps = 25
+
+        def generate_frames_from_script(self, script: dict[str, object]):
+            worker_scripts.append(script)
+            return iter([np.zeros((48, 64, 3), dtype=np.uint8) for _ in range(7)])
+
+    def fake_build_tts_adapter(**kwargs):
+        tts_build_calls.append(kwargs)
+        return FakeTTS(kwargs.get("tts_provider"))
+
+    async def fake_mux(_ffmpeg_bin: str, _video_in: Path, _audio_in: Path, out_mp4: Path) -> None:
+        out_mp4.write_bytes(b"mp4")
+
+    def fake_create_video_export(root: Path, **kwargs: object) -> dict[str, object]:
+        return {
+            "id": "export-duo-role-tts",
+            "kind": "video_creation",
+            "title": kwargs["title"],
+            "duration_sec": kwargs["duration_sec"],
+            "size_bytes": len(kwargs["content"]),
+            "mime_type": "video/mp4",
+            "created_at": "2026-06-04T00:00:00Z",
+            "path": str(root / "export-duo-role-tts.mp4"),
+            "session_id": kwargs["session_id"],
+            "avatar_id": kwargs["avatar_id"],
+            "model": kwargs["model"],
+        }
+
+    monkeypatch.setattr(video_creation_module, "build_tts_adapter", fake_build_tts_adapter)
+    monkeypatch.setattr(video_creation_module, "MultiFaceRealtimeV3Worker", FakeMultiFaceWorker, raising=False)
+    monkeypatch.setattr(video_creation_module, "resolve_quicktalk_asset_root", lambda _settings: quicktalk_root, raising=False)
+    monkeypatch.setattr(video_creation_module, "_write_video_only", lambda path, _frames, _fps: path.write_bytes(b"video"))
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", fake_mux)
+    monkeypatch.setattr(video_creation_module, "create_video_export", fake_create_video_export)
+    monkeypatch.setattr(
+        video_creation_module,
+        "resolve_model_backend",
+        lambda model, _settings: SimpleNamespace(model=model, backend="local", ws_url=""),
+    )
+
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            export_max_bytes=1024 * 1024,
+            ffmpeg_bin="ffmpeg",
+            tts_sample_rate=16000,
+            torch_device="cpu",
+            quicktalk_device="cpu",
+            quicktalk_hubert_device="cpu",
+            quicktalk_model_backend="pth",
+        )
+    )
+
+    await service.create_from_duo_dialog(
+        model="quicktalk",
+        avatar_id="duo-anchor",
+        title="QuickTalk duo per role TTS",
+        duo_dialog={
+            "lines": [
+                {"id": "line-1", "role": "male", "text": "男方开场"},
+                {"id": "line-2", "role": "female", "text": "女方回应"},
+            ],
+            "speakers": {
+                "male": {"tts_provider": "edge", "voice": "zh-CN-YunxiNeural"},
+                "female": {"tts_provider": "xiaomi_mimo", "tts_model": "mimo-v2.5-tts", "voice": "冰糖"},
+            },
+        },
+        tts_provider="edge",
+        tts_model=None,
+        composition_config=None,
+    )
+
+    assert [(c["tts_provider"], c["tts_model"], c["default_voice"]) for c in tts_build_calls] == [
+        ("edge", None, "zh-CN-YunxiNeural"),
+        ("xiaomi_mimo", "mimo-v2.5-tts", "冰糖"),
+    ]
+    assert tts_calls == [("男方开场", "zh-CN-YunxiNeural", "edge"), ("女方回应", "冰糖", "xiaomi_mimo")]
+    assert [segment["speaker_id"] for segment in worker_scripts[0]["segments"]] == ["male", "female"]
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_rejects_duo_dialog_for_non_quicktalk(tmp_path: Path) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_duo_avatar(avatars)
+    service = VideoCreationService(SimpleNamespace(avatars_dir=str(avatars), exports_dir=str(exports)))
+
+    with pytest.raises(ValueError, match="duo_dialog only supports quicktalk"):
+        await service.create_from_duo_dialog(
+            model="wav2lip",
+            avatar_id="duo-anchor",
+            title="Wrong model",
+            duo_dialog={"lines": [{"role": "male", "text": "hello"}]},
+            tts_provider="edge",
+            tts_model=None,
+            composition_config=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_video_creation_service_rejects_duo_dialog_avatar_without_capability(tmp_path: Path) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    avatar = _write_avatar(avatars)
+    manifest = json.loads((avatar / "manifest.json").read_text(encoding="utf-8"))
+    manifest["model_type"] = "quicktalk"
+    (avatar / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    service = VideoCreationService(SimpleNamespace(avatars_dir=str(avatars), exports_dir=str(exports)))
+
+    with pytest.raises(ValueError, match="avatar does not support duo_dialog"):
+        await service.create_from_duo_dialog(
+            model="quicktalk",
+            avatar_id="anchor",
+            title="No duo metadata",
+            duo_dialog={"lines": [{"role": "male", "text": "hello"}]},
+            tts_provider="edge",
+            tts_model=None,
+            composition_config=None,
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"lines": []}, "duo_dialog.lines must be a non-empty list"),
+        ({"lines": [{"role": "host", "text": "hello"}]}, "invalid duo_dialog role: host"),
+    ],
+)
+async def test_video_creation_service_rejects_invalid_duo_dialog_payload(
+    tmp_path: Path,
+    payload: dict[str, object],
+    message: str,
+) -> None:
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_duo_avatar(avatars)
+    service = VideoCreationService(SimpleNamespace(avatars_dir=str(avatars), exports_dir=str(exports)))
+
+    with pytest.raises(ValueError, match=message):
+        await service.create_from_duo_dialog(
+            model="quicktalk",
+            avatar_id="duo-anchor",
+            title="Invalid duo payload",
+            duo_dialog=payload,
+            tts_provider="edge",
+            tts_model=None,
+            composition_config=None,
+        )
 
 
 @pytest.mark.asyncio

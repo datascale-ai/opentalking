@@ -8,6 +8,9 @@ import {
   createVideoCreationJob,
   apiPostForm,
   type AvatarSummary,
+  type DuoDialogLine,
+  type DuoDialogRequest,
+  type DuoDialogSpeakerTTS,
   type ExportVideoItem,
   type IndexTTSConfig,
   type SceneBackgroundAsset,
@@ -17,14 +20,32 @@ import {
 } from "../lib/api";
 import type { VoiceCloneApplication } from "../lib/voiceCloneApply";
 import { EDGE_ZH_VOICES } from "../constants/edgeZhVoices";
-import type { TtsProviderExtended } from "../constants/ttsBailian";
-import { buildTTSPreviewPayload, requestTTSPreview } from "../lib/ttsPreview";
+import {
+  COSYVOICE_MODEL_OPTIONS,
+  COSYVOICE_VOICE_OPTIONS,
+  LOCAL_COSYVOICE_MODEL_OPTIONS,
+  LOCAL_F5_TTS_MODEL_OPTIONS,
+  LOCAL_INDEXTTS_MODEL_OPTIONS,
+  LOCAL_TTS_VOICE_OPTIONS,
+  SAMBERT_MODEL_OPTIONS,
+  XIAOMI_MIMO_MODEL_OPTIONS,
+  XIAOMI_MIMO_VOICE_OPTIONS,
+  type TtsProviderExtended,
+} from "../constants/ttsBailian";
+import {
+  QWEN_TTS_MODEL_OPTIONS,
+  QWEN_TTS_VOICE_OPTIONS,
+  QWEN_VOICE_CLONE_TARGET_OPTIONS,
+} from "../constants/ttsQwen";
+import { buildTTSPreviewPayload, requestDuoDialogPreview, requestTTSPreview } from "../lib/ttsPreview";
 
-export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone";
+export type VideoCreationAudioSource = "upload" | "tts_text" | "duo_dialog";
 type VideoCreationMode = "spoken_video" | "reference_video";
 type VideoCreationOutputAspect = "16:9" | "9:16" | "1:1";
 
 type VoiceOpt = { id: string; label: string; targetModel?: string | null };
+type DuoDialogRole = DuoDialogLine["role"];
+type DuoDialogSpeakers = Record<DuoDialogRole, DuoDialogSpeakerTTS>;
 
 type VideoCreationWorkspaceProps = {
   avatars: AvatarSummary[];
@@ -54,11 +75,13 @@ type VideoCreationWorkspaceProps = {
   onFasterLivePortraitConfigChange: (config: FasterLivePortraitConfig) => void;
 };
 
+const UPLOAD_AUDIO_SOURCE_OPTION: { id: VideoCreationAudioSource; label: string } = { id: "upload", label: "上传音频" };
+const TTS_TEXT_AUDIO_SOURCE_OPTION: { id: VideoCreationAudioSource; label: string } = { id: "tts_text", label: "口播合成" };
 const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = [
-  { id: "upload", label: "上传音频" },
-  { id: "tts_text", label: "文本合成" },
-  { id: "voice_clone", label: "复刻音色" },
+  UPLOAD_AUDIO_SOURCE_OPTION,
+  TTS_TEXT_AUDIO_SOURCE_OPTION,
 ];
+const DUO_DIALOG_AUDIO_SOURCE_OPTION: { id: VideoCreationAudioSource; label: string } = { id: "duo_dialog", label: "双人对话" };
 
 const REFERENCE_DURATION_OPTIONS = [
   { value: 10, label: "10s" },
@@ -82,6 +105,72 @@ const VIDEO_CREATION_OUTPUT_SIZES = {
 } as const satisfies Record<VideoCreationOutputAspect, { label: string; width: number; height: number; previewClassName: string }>;
 const VIDEO_CREATION_OUTPUT_ASPECTS = Object.keys(VIDEO_CREATION_OUTPUT_SIZES) as VideoCreationOutputAspect[];
 const VIDEO_CREATION_SCRIPT_MAX_CHARS = 1000;
+const DUO_DIALOG_LINE_MAX_CHARS = 500;
+const DEFAULT_DUO_DIALOG_GAP_MS = 120;
+const DEFAULT_DUO_DIALOG_VOICES: Record<DuoDialogRole, string> = {
+  male: "zh-CN-YunxiNeural",
+  female: "zh-CN-XiaoxiaoNeural",
+};
+const DUO_DIALOG_ROLE_LABELS: Record<DuoDialogRole, string> = { male: "男声", female: "女声" };
+const TTS_PROVIDER_OPTIONS: TtsProviderExtended[] = ["edge", "dashscope", "cosyvoice", "sambert", "local_cosyvoice", "indextts", "local_f5_tts", "xiaomi_mimo", "openai_compatible"];
+
+function modelOptionsForProvider(provider: TtsProviderExtended): { id: string; label: string }[] {
+  if (provider === "dashscope") {
+    const ids = new Set(QWEN_TTS_MODEL_OPTIONS.map((item) => item.id));
+    return [...QWEN_TTS_MODEL_OPTIONS, ...QWEN_VOICE_CLONE_TARGET_OPTIONS.filter((item) => !ids.has(item.id))];
+  }
+  if (provider === "cosyvoice") return COSYVOICE_MODEL_OPTIONS;
+  if (provider === "sambert") return SAMBERT_MODEL_OPTIONS;
+  if (provider === "local_cosyvoice") return LOCAL_COSYVOICE_MODEL_OPTIONS;
+  if (provider === "indextts") return LOCAL_INDEXTTS_MODEL_OPTIONS;
+  if (provider === "local_f5_tts") return LOCAL_F5_TTS_MODEL_OPTIONS;
+  if (provider === "xiaomi_mimo") return XIAOMI_MIMO_MODEL_OPTIONS;
+  return [];
+}
+
+function baseVoiceOptionsForProvider(provider: TtsProviderExtended): VoiceOpt[] {
+  if (provider === "edge") return EDGE_ZH_VOICES.map((voice) => ({ id: voice.id, label: voice.label }));
+  if (provider === "dashscope") return QWEN_TTS_VOICE_OPTIONS;
+  if (provider === "cosyvoice") return COSYVOICE_VOICE_OPTIONS;
+  if (provider === "xiaomi_mimo") return XIAOMI_MIMO_VOICE_OPTIONS;
+  if (provider === "local_cosyvoice" || provider === "indextts" || provider === "local_f5_tts") return LOCAL_TTS_VOICE_OPTIONS;
+  return [];
+}
+
+function voiceOptionsForProvider(provider: TtsProviderExtended, model: string | undefined, voiceCatalog: VoiceCatalogItem[]): VoiceOpt[] {
+  const options = [...baseVoiceOptionsForProvider(provider)];
+  for (const item of voiceCatalog) {
+    if (item.provider !== provider) continue;
+    if (item.target_model && model && item.target_model !== model) continue;
+    options.push({ id: item.voice_id, label: item.display_label || item.voice_id, targetModel: item.target_model });
+  }
+  const seen = new Set<string>();
+  return options.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function defaultModelForProvider(provider: TtsProviderExtended): string | undefined {
+  return modelOptionsForProvider(provider)[0]?.id;
+}
+
+function defaultVoiceForProvider(provider: TtsProviderExtended, model: string | undefined, voiceCatalog: VoiceCatalogItem[], fallback?: string): string | undefined {
+  if (fallback && provider === "edge") return fallback;
+  return voiceOptionsForProvider(provider, model, voiceCatalog)[0]?.id ?? fallback;
+}
+
+function normalizedSpeakerForProvider(provider: TtsProviderExtended, voiceCatalog: VoiceCatalogItem[], fallbackVoice?: string): DuoDialogSpeakerTTS {
+  const model = defaultModelForProvider(provider);
+  const voice = defaultVoiceForProvider(provider, model, voiceCatalog, fallbackVoice);
+  return {
+    tts_provider: provider,
+    ...(model ? { tts_model: model } : {}),
+    ...(voice && provider !== "sambert" && provider !== "openai_compatible" ? { voice } : {}),
+  };
+}
+
 const FASTERLIVEPORTRAIT_ANIMATION_REGION_OPTIONS: { id: FasterLivePortraitConfig["animation_region"]; label: string }[] = [
   { id: "lip", label: "嘴部" },
   { id: "all", label: "全表情" },
@@ -241,6 +330,37 @@ function indexTTSRequestConfig(config: IndexTTSConfig): IndexTTSConfig {
   return out;
 }
 
+function freshDuoDialogLines(): DuoDialogLine[] {
+  return [
+    { id: "line-1", role: "male", text: "大家好，欢迎来到今天的双人对话。" },
+    { id: "line-2", role: "female", text: "我们会用一问一答的方式介绍重点内容。" },
+  ];
+}
+
+function duoDialogDefaultSpeakers(avatar: AvatarSummary | null, voiceCatalog: VoiceCatalogItem[] = []): DuoDialogSpeakers {
+  const defaults = avatar?.duo_dialog?.default_voices ?? {};
+  return {
+    male: normalizedSpeakerForProvider("edge", voiceCatalog, defaults.male || DEFAULT_DUO_DIALOG_VOICES.male),
+    female: normalizedSpeakerForProvider("edge", voiceCatalog, defaults.female || DEFAULT_DUO_DIALOG_VOICES.female),
+  };
+}
+
+function duoDialogVoicesFromSpeakers(speakers: DuoDialogSpeakers): Record<DuoDialogRole, string> {
+  return {
+    male: speakers.male.voice || DEFAULT_DUO_DIALOG_VOICES.male,
+    female: speakers.female.voice || DEFAULT_DUO_DIALOG_VOICES.female,
+  };
+}
+
+function duoDialogRequest(lines: DuoDialogLine[], speakers: DuoDialogSpeakers, gapMs: number): DuoDialogRequest {
+  return {
+    lines: lines.map((line) => ({ id: line.id, role: line.role, text: line.text.trim() })),
+    voices: duoDialogVoicesFromSpeakers(speakers),
+    speakers,
+    gap_ms: gapMs,
+  };
+}
+
 function providerLabel(provider: TtsProviderExtended): string {
   if (provider === "edge") return "Edge TTS";
   if (provider === "dashscope") return "Qwen TTS";
@@ -297,10 +417,15 @@ export function VideoCreationWorkspace({
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [sourceAssetBusy, setSourceAssetBusy] = useState(false);
   const [text, setText] = useState("欢迎使用 OpenTalking 视频创作。请选择数字人形象和音色，生成一段离线口播视频。");
+  const [duoDialogLines, setDuoDialogLines] = useState<DuoDialogLine[]>(() => freshDuoDialogLines());
+  const [duoDialogSpeakers, setDuoDialogSpeakers] = useState<DuoDialogSpeakers>(() => duoDialogDefaultSpeakers(selectedAvatar, voiceCatalog));
+  const [duoDialogGapMs, setDuoDialogGapMs] = useState(DEFAULT_DUO_DIALOG_GAP_MS);
+  const [draggingDuoLineId, setDraggingDuoLineId] = useState<string | null>(null);
   const [title, setTitle] = useState("数字人口播视频");
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<ExportVideoItem | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
+  const [duoCloneTargetRole, setDuoCloneTargetRole] = useState<DuoDialogRole | null>(null);
   const [ttsPreviewing, setTtsPreviewing] = useState(false);
   const [indexttsConfig, setIndexttsConfig] = useState<IndexTTSConfig>(() => freshIndexTTSConfig());
   const [indexttsEmotionAudioFile, setIndexttsEmotionAudioFile] = useState<File | null>(null);
@@ -321,10 +446,16 @@ export function VideoCreationWorkspace({
       : qwenVoiceOptions.find((voice) => voice.id === qwenVoice)?.label ?? qwenVoice;
   const cloneVoiceCount = voiceCatalog.filter((item) => item.source === "clone").length;
   const isReferenceVideoMode = creationMode === "reference_video";
-  const canPreviewTts = !isReferenceVideoMode && audioSource !== "upload";
-  const showIndexTTSControls = !isReferenceVideoMode && audioSource !== "upload" && INDEXTTS_PROVIDER_SET.has(ttsProvider);
+  const duoDialogAvailable = !isReferenceVideoMode && effectiveModel === "quicktalk" && Boolean(selectedAvatar?.duo_dialog);
+  const duoDialogSelected = duoDialogAvailable && audioSource === "duo_dialog";
+  const canPreviewTts = !isReferenceVideoMode && audioSource !== "upload" && !duoDialogSelected;
+  const showIndexTTSControls = !isReferenceVideoMode && audioSource !== "upload" && audioSource !== "duo_dialog" && INDEXTTS_PROVIDER_SET.has(ttsProvider);
   const effectiveIndexTTSConfig = showIndexTTSControls ? buildIndexTTSQualityConfig(indexTTSRequestConfig(indexttsConfig)) : undefined;
   const showIndexTTSEmotionStrength = indexttsConfig.emotion_mode !== "voice";
+  const availableAudioSourceOptions = useMemo(
+    () => duoDialogAvailable ? [UPLOAD_AUDIO_SOURCE_OPTION, DUO_DIALOG_AUDIO_SOURCE_OPTION] : AUDIO_SOURCE_OPTIONS,
+    [duoDialogAvailable],
+  );
   const selectedScene = useMemo(() => {
     if (!selectedAvatar) return null;
     const selectedSceneId = selectedSceneIdsByAvatar[selectedAvatar.id];
@@ -432,6 +563,23 @@ export function VideoCreationWorkspace({
     setVideoAvatarAdjust({ x: 0, y: 0, scale: 1 });
   }, [selectedAvatar?.id, selectedScene?.id, selectedScene?.background_id]);
 
+  useEffect(() => {
+    if (selectedAvatar?.duo_dialog && models.includes("quicktalk")) {
+      setModel("quicktalk");
+    }
+    setDuoDialogSpeakers(duoDialogDefaultSpeakers(selectedAvatar, voiceCatalog));
+  }, [models, selectedAvatar, voiceCatalog]);
+
+  useEffect(() => {
+    if (duoDialogAvailable && audioSource !== "duo_dialog") {
+      setAudioSource("duo_dialog");
+      return;
+    }
+    if (!duoDialogAvailable && audioSource === "duo_dialog") {
+      setAudioSource("tts_text");
+    }
+  }, [audioSource, duoDialogAvailable]);
+
   const handleSourceAsset = useCallback(async (file: File | null) => {
     if (!file || !selectedAvatar) return;
     const isVideo = file.type.startsWith("video/");
@@ -468,11 +616,106 @@ export function VideoCreationWorkspace({
     onTtsProviderChange(application.provider);
     onQwenModelChange(application.model);
     onQwenVoiceChange(application.voice);
+    if (duoCloneTargetRole) {
+      setDuoDialogSpeakers((current) => ({
+        ...current,
+        [duoCloneTargetRole]: {
+          tts_provider: application.provider,
+          tts_model: application.model,
+          voice: application.voice,
+        },
+      }));
+    } else {
+      setAudioSource("tts_text");
+    }
+    setDuoCloneTargetRole(null);
     setCloneOpen(false);
-    setAudioSource("voice_clone");
-  }, [onQwenModelChange, onQwenVoiceChange, onTtsProviderChange, onVoiceCloned]);
+  }, [duoCloneTargetRole, onQwenModelChange, onQwenVoiceChange, onTtsProviderChange, onVoiceCloned]);
+
+  const addDuoDialogLine = useCallback(() => {
+    setDuoDialogLines((current) => {
+      const lastLine = current[current.length - 1];
+      const nextRole: DuoDialogRole = lastLine?.role === "male" ? "female" : "male";
+      return [
+        ...current,
+        { id: `line-${Date.now()}`, role: nextRole, text: "" },
+      ];
+    });
+  }, []);
+
+  const updateDuoDialogLine = useCallback((lineId: string, patch: Partial<Pick<DuoDialogLine, "role" | "text">>) => {
+    setDuoDialogLines((current) => current.map((line) => line.id === lineId ? { ...line, ...patch } : line));
+  }, []);
+
+  const removeDuoDialogLine = useCallback((lineId: string) => {
+    setDuoDialogLines((current) => current.length <= 1 ? current : current.filter((line) => line.id !== lineId));
+  }, []);
+
+  const moveDuoDialogLine = useCallback((lineId: string, direction: -1 | 1) => {
+    setDuoDialogLines((current) => {
+      const index = current.findIndex((line) => line.id === lineId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }, []);
+
+  const dropDuoDialogLine = useCallback((targetId: string) => {
+    setDuoDialogLines((current) => {
+      if (!draggingDuoLineId || draggingDuoLineId === targetId) return current;
+      const from = current.findIndex((line) => line.id === draggingDuoLineId);
+      const to = current.findIndex((line) => line.id === targetId);
+      if (from < 0 || to < 0) return current;
+      const next = [...current];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    setDraggingDuoLineId(null);
+  }, [draggingDuoLineId]);
+
+  const updateDuoDialogSpeaker = useCallback((role: DuoDialogRole, patch: Partial<DuoDialogSpeakerTTS>) => {
+    setDuoDialogSpeakers((current) => ({ ...current, [role]: { ...current[role], ...patch } }));
+  }, []);
+
+  const updateDuoDialogSpeakerProvider = useCallback((role: DuoDialogRole, provider: TtsProviderExtended) => {
+    setDuoDialogSpeakers((current) => ({
+      ...current,
+      [role]: normalizedSpeakerForProvider(provider, voiceCatalog, current[role]?.voice),
+    }));
+  }, [voiceCatalog]);
 
   const handlePreviewTts = useCallback(async () => {
+    if (duoDialogSelected) {
+      if (duoDialogLines.some((line) => !line.text.trim())) {
+        onNotify?.("请补全双人对话文本。", "info");
+        return;
+      }
+      setTtsPreviewing(true);
+      try {
+        const blob = await requestDuoDialogPreview(duoDialogRequest(duoDialogLines, duoDialogSpeakers, duoDialogGapMs));
+        if (ttsPreviewUrlRef.current) {
+          URL.revokeObjectURL(ttsPreviewUrlRef.current);
+        }
+        const url = URL.createObjectURL(blob);
+        ttsPreviewUrlRef.current = url;
+        const audio = ttsPreviewAudioRef.current ?? new Audio();
+        ttsPreviewAudioRef.current = audio;
+        audio.src = url;
+        await audio.play();
+        onNotify?.("正在播放双人对话试听。", "success");
+      } catch (error) {
+        console.warn("video creation duo dialog preview failed", error);
+        const detail = error instanceof ApiError ? error.detail : null;
+        onNotify?.(detail ? `试听失败：${detail}` : "试听失败，请确认男女音色、模型和后端密钥配置。", "error");
+      } finally {
+        setTtsPreviewing(false);
+      }
+      return;
+    }
+
     const previewText = text.trim();
     if (!previewText) {
       onNotify?.("请输入要试听的口播文本。", "info");
@@ -516,7 +759,7 @@ export function VideoCreationWorkspace({
     } finally {
       setTtsPreviewing(false);
     }
-  }, [edgeVoice, effectiveIndexTTSConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, onNotify, qwenModel, qwenVoice, showIndexTTSControls, text, ttsProvider]);
+  }, [duoDialogGapMs, duoDialogLines, duoDialogSelected, duoDialogSpeakers, edgeVoice, effectiveIndexTTSConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, onNotify, qwenModel, qwenVoice, showIndexTTSControls, text, ttsProvider]);
 
   const handleGenerate = useCallback(async () => {
     if (!selectedAvatar) {
@@ -531,7 +774,17 @@ export function VideoCreationWorkspace({
       onNotify?.("请先上传音频文件。", "info");
       return;
     }
-    if (!isReferenceVideoMode && audioSource !== "upload" && !text.trim()) {
+    if (!isReferenceVideoMode && audioSource === "duo_dialog") {
+      if (!duoDialogAvailable) {
+        onNotify?.("当前形象不支持 QuickTalk 双人对话。", "info");
+        return;
+      }
+      if (duoDialogLines.some((line) => !line.text.trim())) {
+        onNotify?.("请补全双人对话文本。", "info");
+        return;
+      }
+    }
+    if (!isReferenceVideoMode && audioSource !== "upload" && audioSource !== "duo_dialog" && !text.trim()) {
       onNotify?.("请输入要合成的口播文本。", "info");
       return;
     }
@@ -554,6 +807,24 @@ export function VideoCreationWorkspace({
         setResult(response.export_video);
         onExportCreated?.(response.export_video);
         onNotify?.(`参考视频已保存到资产库：${response.export_video.title}`, "success");
+        return;
+      }
+      if (audioSource === "duo_dialog") {
+        const response = await createVideoCreationJob({
+          model: effectiveModel,
+          avatarId: selectedAvatar.id,
+          title,
+          audioSource: "duo_dialog",
+          ttsProvider,
+          ttsModel: ttsProvider === "edge" || ttsProvider === "openai_compatible" ? undefined : qwenModel,
+          indexttsConfig: effectiveIndexTTSConfig,
+          indexttsEmotionAudioFile,
+          duoDialog: duoDialogRequest(duoDialogLines, duoDialogSpeakers, duoDialogGapMs),
+          compositionConfig,
+        });
+        setResult(response.export_video);
+        onExportCreated?.(response.export_video);
+        onNotify?.(`视频创作已保存到资产库：${response.export_video.title}`, "success");
         return;
       }
       const response = await createVideoCreationJob({
@@ -581,7 +852,7 @@ export function VideoCreationWorkspace({
     } finally {
       setGenerating(false);
     }
-  }, [audioFile, audioSource, compositionConfig, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, isReferenceVideoMode, models, onExportCreated, onNotify, qwenModel, qwenVoice, referenceDurationSec, selectedAvatar, showIndexTTSControls, text, title, ttsProvider]);
+  }, [audioFile, audioSource, compositionConfig, duoDialogAvailable, duoDialogGapMs, duoDialogLines, duoDialogSpeakers, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, isReferenceVideoMode, models, onExportCreated, onNotify, qwenModel, qwenVoice, referenceDurationSec, selectedAvatar, showIndexTTSControls, text, title, ttsProvider]);
 
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
@@ -758,7 +1029,7 @@ export function VideoCreationWorkspace({
               <div className="mt-5">
                 <p className="text-sm font-semibold text-slate-800">音频来源</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {AUDIO_SOURCE_OPTIONS.map((option) => (
+                  {availableAudioSourceOptions.map((option) => (
                     <button
                       key={option.id}
                       type="button"
@@ -808,6 +1079,109 @@ export function VideoCreationWorkspace({
                 <input type="file" accept="audio/*,.webm,.mp3,.wav,.m4a,.aac,.flac,.ogg" className="mt-3 block w-full text-xs" onChange={(event) => setAudioFile(event.currentTarget.files?.[0] ?? null)} />
                 {audioFile ? <span className="mt-2 block text-xs font-medium text-cyan-700">已选择：{audioFile.name}</span> : null}
               </label>
+            ) : !isReferenceVideoMode && duoDialogSelected ? (
+              <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-slate-800">双人对话设置</p>
+                  <button type="button" onClick={addDuoDialogLine} className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 hover:bg-cyan-100">＋</button>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {(["male", "female"] as DuoDialogRole[]).map((role) => {
+                    const speaker = duoDialogSpeakers[role];
+                    const provider = (speaker.tts_provider || "edge") as TtsProviderExtended;
+                    const modelOptions = modelOptionsForProvider(provider);
+                    const voiceOptions = voiceOptionsForProvider(provider, speaker.tts_model, voiceCatalog);
+                    const voiceItems = speaker.voice && !voiceOptions.some((item) => item.id === speaker.voice)
+                      ? [{ id: speaker.voice, label: speaker.voice }, ...voiceOptions]
+                      : voiceOptions;
+                    return (
+                      <div key={role} className="rounded-lg border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold text-slate-800">{DUO_DIALOG_ROLE_LABELS[role]}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDuoCloneTargetRole(role);
+                              setCloneOpen(true);
+                            }}
+                            className="rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 hover:bg-cyan-100"
+                          >
+                            复刻/添加
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                          <label className="block text-xs font-medium text-slate-600">
+                            TTS
+                            <select value={provider} onChange={(event) => updateDuoDialogSpeakerProvider(role, event.target.value as TtsProviderExtended)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm">
+                              {TTS_PROVIDER_OPTIONS.map((item) => <option key={item} value={item}>{providerLabel(item)}</option>)}
+                            </select>
+                          </label>
+                          <label className="block text-xs font-medium text-slate-600">
+                            模型
+                            <select disabled={!modelOptions.length} value={speaker.tts_model || ""} onChange={(event) => updateDuoDialogSpeaker(role, { tts_model: event.target.value || undefined })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm disabled:bg-slate-100">
+                              {!modelOptions.length ? <option value="">默认</option> : modelOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                            </select>
+                          </label>
+                          <label className="block text-xs font-medium text-slate-600">
+                            音色
+                            {provider === "openai_compatible" ? (
+                              <input disabled value="后端默认" className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-100 px-2 py-2 text-sm text-slate-500" />
+                            ) : provider === "sambert" ? (
+                              <input disabled value="随模型" className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-100 px-2 py-2 text-sm text-slate-500" />
+                            ) : voiceItems.length ? (
+                              <select value={speaker.voice || ""} onChange={(event) => updateDuoDialogSpeaker(role, { voice: event.target.value || undefined })} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm">
+                                {voiceItems.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                              </select>
+                            ) : (
+                              <input value={speaker.voice || ""} onChange={(event) => updateDuoDialogSpeaker(role, { voice: event.target.value || undefined })} placeholder="输入 voice_id" className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm" />
+                            )}
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
+                  <label className="block text-sm font-medium text-slate-700">
+                    间隔 ms
+                    <input type="number" min={0} max={5000} step={20} value={duoDialogGapMs} onChange={(event) => setDuoDialogGapMs(Math.max(0, Math.min(5000, Number(event.target.value) || 0)))} className="ml-2 w-28 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handlePreviewTts()}
+                    disabled={ttsPreviewing || duoDialogLines.some((line) => !line.text.trim())}
+                    className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {ttsPreviewing ? "试听中..." : "试听对话"}
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {duoDialogLines.map((line, index) => (
+                    <div
+                      key={line.id}
+                      draggable
+                      onDragStart={() => setDraggingDuoLineId(line.id)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => dropDuoDialogLine(line.id)}
+                      onDragEnd={() => setDraggingDuoLineId(null)}
+                      className={`grid gap-3 rounded-lg border bg-white p-3 transition md:grid-cols-[2.5rem_7rem_minmax(0,1fr)_6rem] md:items-center ${draggingDuoLineId === line.id ? "border-cyan-300 bg-cyan-50" : "border-slate-200"}`}
+                    >
+                      <button type="button" className="h-9 w-9 cursor-grab rounded-lg border border-slate-200 bg-slate-50 text-lg leading-none text-slate-400 active:cursor-grabbing" aria-label="拖拽排序">⋮⋮</button>
+                      <select value={line.role} onChange={(event) => updateDuoDialogLine(line.id, { role: event.target.value as DuoDialogRole })} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-semibold text-slate-700">
+                        <option value="male">男声</option>
+                        <option value="female">女声</option>
+                      </select>
+                      <textarea value={line.text} onChange={(event) => updateDuoDialogLine(line.id, { text: event.target.value })} rows={2} maxLength={DUO_DIALOG_LINE_MAX_CHARS} className="min-h-16 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800" />
+                      <div className="flex justify-end gap-1">
+                        <span className="mr-1 rounded-md bg-blue-100 px-2 py-1.5 text-xs font-semibold text-blue-700">{index + 1}</span>
+                        <button type="button" onClick={() => moveDuoDialogLine(line.id, -1)} disabled={index === 0} className="h-8 w-8 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 disabled:opacity-40">↑</button>
+                        <button type="button" onClick={() => moveDuoDialogLine(line.id, 1)} disabled={index === duoDialogLines.length - 1} className="h-8 w-8 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 disabled:opacity-40">↓</button>
+                        <button type="button" onClick={() => removeDuoDialogLine(line.id)} disabled={duoDialogLines.length <= 1} className="h-8 w-8 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 disabled:opacity-40">×</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : !isReferenceVideoMode ? (
               <div className="mt-4 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <label className="block text-sm font-medium text-slate-700">
@@ -1024,12 +1398,19 @@ export function VideoCreationWorkspace({
                     ) : null}
                   </div>
                 ) : null}
-                {audioSource === "voice_clone" ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
-                    <span>复刻音色：已有 {cloneVoiceCount} 个复刻音色，当前使用 {selectedVoiceLabel || "未选择"}</span>
-                    <button type="button" onClick={() => setCloneOpen(true)} className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500">录制/上传复刻</button>
-                  </div>
-                ) : null}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-800">
+                  <span>复刻音色：已有 {cloneVoiceCount} 个复刻音色，当前使用 {selectedVoiceLabel || "未选择"}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDuoCloneTargetRole(null);
+                      setCloneOpen(true);
+                    }}
+                    className="rounded-lg bg-cyan-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-cyan-500"
+                  >
+                    录制/上传复刻
+                  </button>
+                </div>
                 {canPreviewTts ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
                     <span className="text-xs font-medium text-slate-500">试听当前文本、模型和音色后再生成视频。</span>

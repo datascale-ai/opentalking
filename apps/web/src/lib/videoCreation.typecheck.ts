@@ -81,3 +81,23 @@ const indexTtsVideoCreationVoiceClone: CreateVideoCreationJobInput = {
 };
 
 void indexTtsVideoCreationVoiceClone;
+
+
+const duoDialogPerRoleTtsJob: CreateVideoCreationJobInput = {
+  model: "quicktalk",
+  avatarId: "duo-anchor",
+  audioSource: "duo_dialog",
+  duoDialog: {
+    lines: [
+      { id: "line-1", role: "male", text: "男方开场" },
+      { id: "line-2", role: "female", text: "女方回应" },
+    ],
+    speakers: {
+      male: { tts_provider: "edge", voice: "zh-CN-YunxiNeural" },
+      female: { tts_provider: "xiaomi_mimo", tts_model: "mimo-v2.5-tts", voice: "冰糖" },
+    },
+    gap_ms: 120,
+  },
+};
+
+void duoDialogPerRoleTtsJob;

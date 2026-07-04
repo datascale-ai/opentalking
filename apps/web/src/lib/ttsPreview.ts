@@ -1,4 +1,4 @@
-import { apiPostBlob, apiPostFormBlob, type IndexTTSConfig } from "./api";
+import { apiPostBlob, apiPostFormBlob, type DuoDialogRequest, type IndexTTSConfig } from "./api";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
 
 export const DEFAULT_TTS_PREVIEW_TEXT = "你好，我正在测试音色。";
@@ -60,4 +60,10 @@ export async function requestTTSPreview(payload: TTSPreviewPayload): Promise<Blo
     return apiPostFormBlob("/tts/preview", form);
   }
   return apiPostBlob("/tts/preview", payload);
+}
+
+export type DuoDialogPreviewPayload = DuoDialogRequest;
+
+export async function requestDuoDialogPreview(payload: DuoDialogPreviewPayload): Promise<Blob> {
+  return apiPostBlob("/tts/preview-duo-dialog", payload);
 }
