@@ -689,6 +689,181 @@ def test_quicktalk_adapter_warmup_runs_silence_and_restores_stream_state() -> No
     assert state.session_state == {"existing": True}
 
 
+def test_quicktalk_adapter_renders_silence_as_idle_frames_without_model() -> None:
+    adapter = QuickTalkAdapter()
+    prepare_calls = 0
+    generate_calls = 0
+    idle_indices: list[int] = []
+
+    class FakeWorker:
+        fps = 25
+
+        def prepare_pcm_features(self, pcm, sample_rate):
+            nonlocal prepare_calls
+            prepare_calls += 1
+            return [np.zeros((10, 1024), dtype=np.float32)], 0.01
+
+        def generate_frames_from_reps(self, reps, state=None):
+            nonlocal generate_calls
+            generate_calls += 1
+            del reps, state
+            yield np.zeros((4, 4, 3), dtype=np.uint8)
+
+    state = types.SimpleNamespace(
+        worker=FakeWorker(),
+        fps=25,
+        frame_index=3,
+        session_state={"existing": True},
+    )
+
+    def fake_idle_frame(avatar_state, frame_idx):
+        assert avatar_state is state
+        idle_indices.append(frame_idx)
+        return VideoFrameData(
+            data=np.full((4, 4, 3), frame_idx, dtype=np.uint8),
+            width=4,
+            height=4,
+            timestamp_ms=frame_idx * 40.0,
+        )
+
+    adapter.idle_frame = fake_idle_frame  # type: ignore[method-assign]
+
+    features, frames = adapter.render_audio_chunk(
+        state,  # type: ignore[arg-type]
+        AudioChunk(
+            data=np.zeros(3200, dtype=np.int16),
+            sample_rate=16000,
+            duration_ms=200.0,
+        ),
+    )
+
+    assert features.reps == []
+    assert features.render_reps == []
+    assert features.output_fps == 25
+    assert len(frames) == 5
+    assert idle_indices == [3, 4, 5, 6, 7]
+    assert state.frame_index == 8
+    assert prepare_calls == 0
+    assert generate_calls == 0
+    assert state.session_state == {"existing": True}
+
+
+def test_quicktalk_adapter_gates_silent_frames_inside_audio_chunk() -> None:
+    adapter = QuickTalkAdapter()
+    generated_rep_ids: list[int] = []
+    idle_indices: list[int] = []
+
+    class FakeWorker:
+        fps = 25
+
+        def prepare_pcm_features(self, pcm, sample_rate):
+            del pcm, sample_rate
+            return [np.full((1, 1), i, dtype=np.float32) for i in range(4)], 0.01
+
+        def generate_frames_from_reps(self, reps, state=None):
+            del state
+            for rep in reps:
+                rep_id = int(rep[0, 0])
+                generated_rep_ids.append(rep_id)
+                yield np.full((4, 4, 3), 100 + rep_id, dtype=np.uint8)
+
+    state = types.SimpleNamespace(
+        worker=FakeWorker(),
+        fps=25,
+        frame_index=0,
+        session_state={"existing": True},
+    )
+
+    def fake_idle_frame(avatar_state, frame_idx):
+        assert avatar_state is state
+        idle_indices.append(frame_idx)
+        return VideoFrameData(
+            data=np.full((4, 4, 3), frame_idx, dtype=np.uint8),
+            width=4,
+            height=4,
+            timestamp_ms=frame_idx * 40.0,
+        )
+
+    adapter.idle_frame = fake_idle_frame  # type: ignore[method-assign]
+    frame_samples = 640
+    pcm = np.concatenate(
+        [
+            np.zeros(frame_samples, dtype=np.int16),
+            np.full(frame_samples, 1000, dtype=np.int16),
+            np.zeros(frame_samples, dtype=np.int16),
+            np.full(frame_samples, 1000, dtype=np.int16),
+        ]
+    )
+
+    features, frames = adapter.render_audio_chunk(
+        state,  # type: ignore[arg-type]
+        AudioChunk(data=pcm, sample_rate=16000, duration_ms=160.0),
+    )
+
+    assert features.frame_count == 4
+    assert len(frames) == 4
+    assert idle_indices == [0, 2]
+    assert generated_rep_ids == [1, 3]
+    assert np.all(frames[0].data == 0)
+    assert np.all(frames[1].data == 101)
+    assert np.all(frames[2].data == 2)
+    assert np.all(frames[3].data == 103)
+    assert state.frame_index == 4
+
+
+def test_quicktalk_silence_gate_advances_live_render_pipeline() -> None:
+    from opentalking.pipeline.speak.render_pipeline import render_audio_chunk_sync
+
+    adapter = QuickTalkAdapter()
+    idle_indices: list[int] = []
+
+    class FakeWorker:
+        fps = 25
+
+        def prepare_pcm_features(self, pcm, sample_rate):
+            raise AssertionError("silent chunks should not extract HuBERT features")
+
+        def generate_frames_from_reps(self, reps, state=None):
+            raise AssertionError("silent chunks should not run QuickTalk inference")
+
+    state = types.SimpleNamespace(
+        worker=FakeWorker(),
+        fps=25,
+        frame_index=0,
+        extra={},
+        session_state={"existing": True},
+    )
+
+    def fake_idle_frame(avatar_state, frame_idx):
+        assert avatar_state is state
+        idle_indices.append(frame_idx)
+        return VideoFrameData(
+            data=np.full((4, 4, 3), frame_idx, dtype=np.uint8),
+            width=4,
+            height=4,
+            timestamp_ms=frame_idx * 40.0,
+        )
+
+    adapter.idle_frame = fake_idle_frame  # type: ignore[method-assign]
+
+    next_frame_idx, frames = render_audio_chunk_sync(
+        adapter,
+        state,
+        AudioChunk(
+            data=np.zeros(3200, dtype=np.int16),
+            sample_rate=16000,
+            duration_ms=200.0,
+        ),
+        frame_index_start=10,
+        speech_frame_index_start=10,
+    )
+
+    assert next_frame_idx == 15
+    assert len(frames) == 5
+    assert idle_indices == [10, 11, 12, 13, 14]
+    assert np.all(frames[-1].data == 14)
+
+
 def test_quicktalk_adapter_can_downsample_generated_frames_for_mac(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -718,7 +893,7 @@ def test_quicktalk_adapter_can_downsample_generated_frames_for_mac(
     features, frames = adapter.render_audio_chunk(
         state,  # type: ignore[arg-type]
         AudioChunk(
-            data=np.zeros(13714, dtype=np.int16),
+            data=np.full(13714, 1000, dtype=np.int16),
             sample_rate=16000,
             duration_ms=857.125,
         ),
@@ -763,7 +938,7 @@ def test_quicktalk_adapter_downsamples_through_live_render_pipeline(
         adapter,
         state,
         AudioChunk(
-            data=np.zeros(13714, dtype=np.int16),
+            data=np.full(13714, 1000, dtype=np.int16),
             sample_rate=16000,
             duration_ms=857.125,
         ),

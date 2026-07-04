@@ -30,6 +30,18 @@ class QuickTalkFeatures:
     audio_feature_seconds: float
     render_reps: list[np.ndarray] | None = None
     output_fps: float | None = None
+    silent_frame_mask: list[bool] | None = None
+    idle_frame_count: int = 0
+
+    @property
+    def frame_count(self) -> int:
+        if self.idle_frame_count > 0:
+            return self.idle_frame_count
+        if self.silent_frame_mask is not None:
+            return len(self.silent_frame_mask)
+        if self.render_reps is not None:
+            return len(self.render_reps)
+        return len(self.reps)
 
 
 @dataclass
@@ -143,26 +155,34 @@ def _optional_positive_int_env(name: str) -> int | None:
     return value if value > 0 else None
 
 
-def _downsample_sequence(items: list[np.ndarray], target_count: int) -> list[np.ndarray]:
-    if target_count >= len(items):
-        return items
+def _downsample_indices(item_count: int, target_count: int) -> list[int]:
+    if target_count >= item_count:
+        return list(range(item_count))
     if target_count <= 1:
-        return [items[0]]
-    last = len(items) - 1
-    return [items[int(round(i * last / float(target_count - 1)))] for i in range(target_count)]
+        return [0]
+    last = item_count - 1
+    return [int(round(i * last / float(target_count - 1))) for i in range(target_count)]
 
 
-def _quicktalk_render_plan(
-    reps: list[np.ndarray],
+def _quicktalk_output_fps(worker_fps: float) -> float:
+    target_fps = _optional_positive_int_env("OPENTALKING_QUICKTALK_FPS")
+    if target_fps is None or target_fps >= worker_fps:
+        return worker_fps
+    return float(target_fps)
+
+
+def _quicktalk_render_indices(
+    item_count: int,
     *,
     worker_fps: float,
-) -> tuple[list[np.ndarray], float]:
-    target_fps = _optional_positive_int_env("OPENTALKING_QUICKTALK_FPS")
-    output_fps = worker_fps
-    if target_fps is None or target_fps >= worker_fps or not reps:
-        return reps, output_fps
-    target_count = max(1, int(round(float(len(reps)) * float(target_fps) / worker_fps)))
-    return _downsample_sequence(list(reps), target_count), float(target_fps)
+) -> tuple[list[int], float]:
+    output_fps = _quicktalk_output_fps(worker_fps)
+    if item_count <= 0:
+        return [], output_fps
+    if output_fps >= worker_fps:
+        return list(range(item_count)), output_fps
+    target_count = max(1, int(round(float(item_count) * output_fps / worker_fps)))
+    return _downsample_indices(item_count, target_count), output_fps
 
 
 def _close_worker(worker: Any) -> None:
@@ -434,6 +454,14 @@ class QuickTalkAdapter:
             if settings is not None
             else "auto",
         )
+        self._silence_gate_enabled = (
+            _env_value("OPENTALKING_QUICKTALK_SILENCE_GATE", "1").lower()
+            not in {"0", "false", "no", "off"}
+        )
+        self._silence_rms_threshold = self._read_float_env(
+            "OPENTALKING_QUICKTALK_SILENCE_RMS",
+            32.0,
+        )
         # Idle frame selection. The template video typically contains the source
         # speaker talking, so cycling all frames during idle makes the avatar
         # appear to keep speaking. We restrict idle to a configurable still
@@ -452,6 +480,16 @@ class QuickTalkAdapter:
             return default
         try:
             return int(raw)
+        except ValueError:
+            return default
+
+    @staticmethod
+    def _read_float_env(name: str, default: float) -> float:
+        raw = _env_value(name)
+        if not raw:
+            return default
+        try:
+            return float(raw)
         except ValueError:
             return default
 
@@ -762,13 +800,14 @@ class QuickTalkAdapter:
         samples = max(3200, sample_rate // 4)
         silence = np.zeros(samples, dtype=np.int16)
         try:
-            self.render_audio_chunk(
+            self._render_audio_chunk(
                 avatar_state,
                 AudioChunk(
                     data=silence,
                     sample_rate=sample_rate,
                     duration_ms=1000.0 * float(samples) / float(sample_rate),
                 ),
+                gate_silence=False,
             )
         finally:
             avatar_state.frame_index = previous_frame_index
@@ -782,24 +821,117 @@ class QuickTalkAdapter:
         audio_chunk: AudioChunk,
         avatar_state: QuickTalkState,
     ) -> QuickTalkFeatures:
+        return self._extract_features_for_stream(
+            audio_chunk,
+            avatar_state,
+            gate_silence=True,
+        )
+
+    def _extract_features_for_stream(
+        self,
+        audio_chunk: AudioChunk,
+        avatar_state: QuickTalkState,
+        *,
+        gate_silence: bool,
+    ) -> QuickTalkFeatures:
+        pcm = np.asarray(audio_chunk.data, dtype=np.int16).reshape(-1)
+        sample_rate = int(audio_chunk.sample_rate)
+        worker_fps = float(getattr(avatar_state.worker, "fps", 25) or 25)
+        output_fps = _quicktalk_output_fps(worker_fps)
+        if gate_silence and self._is_pcm_silent(pcm):
+            idle_frame_count = self._audio_frame_count(audio_chunk, output_fps, sample_count=pcm.size)
+            avatar_state.fps = output_fps
+            return QuickTalkFeatures(
+                reps=[],
+                audio_feature_seconds=0.0,
+                render_reps=[],
+                output_fps=output_fps,
+                silent_frame_mask=[True] * idle_frame_count,
+                idle_frame_count=idle_frame_count,
+            )
         reps, feature_seconds = avatar_state.worker.prepare_pcm_features(
-            np.asarray(audio_chunk.data, dtype=np.int16).reshape(-1),
-            int(audio_chunk.sample_rate),
+            pcm,
+            sample_rate,
         )
-        render_reps, output_fps = _quicktalk_render_plan(
-            reps,
-            worker_fps=float(getattr(avatar_state.worker, "fps", 25) or 25),
-        )
+        render_indices, output_fps = _quicktalk_render_indices(len(reps), worker_fps=worker_fps)
+        render_reps = [reps[idx] for idx in render_indices]
+        silent_frame_mask = None
+        if gate_silence:
+            source_mask = self._frame_silence_mask(pcm, len(reps))
+            silent_frame_mask = [source_mask[idx] for idx in render_indices]
+            if not any(silent_frame_mask):
+                silent_frame_mask = None
         avatar_state.fps = output_fps
         return QuickTalkFeatures(
             reps=reps,
             audio_feature_seconds=feature_seconds,
             render_reps=render_reps,
             output_fps=output_fps,
+            silent_frame_mask=silent_frame_mask,
         )
 
-    def infer(self, features: QuickTalkFeatures, avatar_state: QuickTalkState) -> Iterator[np.ndarray]:
+    def _is_pcm_silent(self, pcm: np.ndarray) -> bool:
+        if not self._silence_gate_enabled:
+            return False
+        threshold = max(0.0, float(self._silence_rms_threshold))
+        return self._pcm_rms(pcm) <= threshold
+
+    @staticmethod
+    def _pcm_rms(pcm: np.ndarray) -> float:
+        arr = np.asarray(pcm).reshape(-1)
+        if arr.size == 0:
+            return 0.0
+        arr_f = arr.astype(np.float64, copy=False)
+        return float(np.sqrt(np.mean(arr_f * arr_f)))
+
+    @staticmethod
+    def _audio_frame_count(audio_chunk: AudioChunk, output_fps: float, *, sample_count: int) -> int:
+        duration_ms = float(audio_chunk.duration_ms or 0.0)
+        if duration_ms <= 0.0 and audio_chunk.sample_rate > 0 and sample_count > 0:
+            duration_ms = 1000.0 * float(sample_count) / float(audio_chunk.sample_rate)
+        if duration_ms <= 0.0:
+            return 0
+        return max(1, int(round(duration_ms * float(output_fps) / 1000.0)))
+
+    def _frame_silence_mask(self, pcm: np.ndarray, frame_count: int) -> list[bool]:
+        if not self._silence_gate_enabled or frame_count <= 0:
+            return [False] * max(0, frame_count)
+        arr = np.asarray(pcm, dtype=np.int16).reshape(-1)
+        if arr.size == 0:
+            return [True] * frame_count
+        mask: list[bool] = []
+        for idx in range(frame_count):
+            start = int(round(idx * arr.size / float(frame_count)))
+            end = int(round((idx + 1) * arr.size / float(frame_count)))
+            segment = arr[start:end]
+            mask.append(self._pcm_rms(segment) <= max(0.0, float(self._silence_rms_threshold)))
+        return mask
+
+    def _infer_with_silence_mask(
+        self,
+        render_reps: list[np.ndarray],
+        silent_frame_mask: list[bool],
+        avatar_state: QuickTalkState,
+    ) -> Iterator[Any]:
+        for rep, is_silent in zip(render_reps, silent_frame_mask):
+            if is_silent:
+                yield None
+                continue
+            yield from avatar_state.worker.generate_frames_from_reps(
+                [rep],
+                state=avatar_state.session_state,
+            )
+
+    def infer(self, features: QuickTalkFeatures, avatar_state: QuickTalkState) -> Iterator[Any]:
+        if features.idle_frame_count > 0:
+            return iter([None] * features.idle_frame_count)
         render_reps = features.render_reps if features.render_reps is not None else features.reps
+        if features.silent_frame_mask is not None:
+            return self._infer_with_silence_mask(
+                list(render_reps),
+                features.silent_frame_mask,
+                avatar_state,
+            )
         if features.output_fps is not None:
             avatar_state.fps = features.output_fps
         return avatar_state.worker.generate_frames_from_reps(
@@ -826,28 +958,24 @@ class QuickTalkAdapter:
             frame_idx * (1000.0 / max(1.0, float(avatar_state.fps))),
         )
 
-    def render_audio_chunk(self, avatar_state: QuickTalkState, audio_chunk: AudioChunk) -> tuple[QuickTalkFeatures, list[VideoFrameData]]:
-        reps, feature_seconds = avatar_state.worker.prepare_pcm_features(
-            np.asarray(audio_chunk.data, dtype=np.int16).reshape(-1),
-            int(audio_chunk.sample_rate),
-        )
-        render_reps, output_fps = _quicktalk_render_plan(
-            reps,
-            worker_fps=float(getattr(avatar_state.worker, "fps", 25) or 25),
-        )
-        features = QuickTalkFeatures(
-            reps=reps,
-            audio_feature_seconds=feature_seconds,
-            render_reps=render_reps,
-            output_fps=output_fps,
+    def _render_audio_chunk(
+        self,
+        avatar_state: QuickTalkState,
+        audio_chunk: AudioChunk,
+        *,
+        gate_silence: bool,
+    ) -> tuple[QuickTalkFeatures, list[VideoFrameData]]:
+        features = self._extract_features_for_stream(
+            audio_chunk,
+            avatar_state,
+            gate_silence=gate_silence,
         )
         frames = []
         previous_fps = getattr(avatar_state, "fps", None)
-        avatar_state.fps = output_fps
+        if features.output_fps is not None:
+            avatar_state.fps = features.output_fps
         try:
-            predictions = avatar_state.worker.generate_frames_from_reps(
-                render_reps, state=avatar_state.session_state
-            )
+            predictions = self.infer(features, avatar_state)
             for prediction in predictions:
                 frames.append(self.compose_frame(avatar_state, avatar_state.frame_index, prediction))
                 avatar_state.frame_index += 1
@@ -855,3 +983,10 @@ class QuickTalkAdapter:
             if previous_fps is not None:
                 avatar_state.fps = previous_fps
         return features, frames
+
+    def render_audio_chunk(self, avatar_state: QuickTalkState, audio_chunk: AudioChunk) -> tuple[QuickTalkFeatures, list[VideoFrameData]]:
+        return self._render_audio_chunk(
+            avatar_state,
+            audio_chunk,
+            gate_silence=True,
+        )
