@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
+from opentalking.core.model_paths import local_audio_model_root, model_repo_root
 from opentalking.providers.tts.edge.adapter import EdgeTTSAdapter
 from opentalking.providers.tts.providers import (
     CORE_TTS_PROVIDERS,
@@ -127,11 +128,7 @@ def _local_cosyvoice_service_url() -> str:
 
 
 def _local_audio_model_root() -> str:
-    return (
-        os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
-        or _settings_value("local_audio_model_root", "")
-        or "./models/local-audio"
-    )
+    return str(local_audio_model_root(_settings_value("local_audio_model_root", "")).resolve())
 
 
 def _local_cosyvoice_model_dir(model: str) -> str:
@@ -211,7 +208,11 @@ def _local_f5_tts_model_dir(model: str) -> str:
 
 
 def _local_f5_tts_runtime_dir() -> str:
-    return _provider_env("local_f5_tts", "RUNTIME_DIR") or _settings_value("tts_local_f5_tts_runtime_dir", "") or str(Path(_local_audio_model_root()) / "runtime" / "F5-TTS")
+    return (
+        _provider_env("local_f5_tts", "RUNTIME_DIR")
+        or _settings_value("tts_local_f5_tts_runtime_dir", "")
+        or str((model_repo_root() / "F5-TTS").expanduser().resolve())
+    )
 
 
 def _local_f5_tts_service_url() -> str:
@@ -1077,11 +1078,24 @@ def create_tts_adapter(
     if p == "local_qwen3_tts":
         from opentalking.providers.tts.local_qwen3_tts.adapter import LocalQwen3TTSAdapter
 
+        model = (
+            (tts_model or "").strip()
+            or os.environ.get("OPENTALKING_TTS_LOCAL_QWEN3_TTS_MODEL", "").strip()
+            or os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_MODEL", "").strip()
+            or _settings_value("local_qwen3_tts_model", "")
+            or "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+        )
+        service_url = (
+            os.environ.get("OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL", "").strip()
+            or os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_SERVICE_URL", "").strip()
+            or _settings_value("local_qwen3_tts_service_url", "")
+        )
         return LocalQwen3TTSAdapter(
             default_voice=default_voice,
             sample_rate=sample_rate,
             chunk_ms=chunk_ms,
-            model=tts_model,
+            model=model,
+            service_url=service_url,
         )
     if p == "local_f5_tts":
         from opentalking.providers.tts.local_f5_tts.adapter import LocalF5TTSAdapter

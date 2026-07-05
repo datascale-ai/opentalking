@@ -9,7 +9,7 @@ This page explains:
 - How to think about TTS providers and voices.
 - How to start with the default voice.
 - How to switch and preview voices in WebUI.
-- How to clone voices with DashScope / Qwen, CosyVoice, or IndexTTS.
+- How to clone voices with DashScope / Qwen or CosyVoice.
 - How to troubleshoot unavailable voices, preview failures, and clone failures.
 
 ## TTS Provider Selection
@@ -21,7 +21,6 @@ Common choices:
 - `edge`: good for quick validation.
 - `dashscope` / `qwen`: for DashScope / Tongyi TTS capabilities.
 - `cosyvoice`: for CosyVoice voices and voice cloning.
-- `indextts`: for local controllable speech, emotion control, and reference-audio voice cloning; the actual runtime is selected through the `local` or `omnirt` backend.
 - `sambert`: for compatibility with existing Sambert setups.
 
 For the first run, use the default provider and voice. Configure cloud providers or cloned voices when a business-specific voice is needed.
@@ -53,15 +52,16 @@ If the voice identifier is invalid, the provider may return a missing voice, inv
 
 WebUI supports voice preview before session creation. Keep preview text short; the current preview endpoint accepts up to 1000 characters.
 
-![Voice and TTS panel in WebUI.](../../../assets/images/usage/webui/voice-tts-panel.png)
-
-*Voice and TTS panel in WebUI. Select a provider and voice, then click the preview button.*
+<div class="ot-figure-placeholder">
+  <strong>Screenshot placeholder: voice preview</strong>
+  <span>To be added: TTS provider, voice selector, and preview button.</span>
+</div>
 
 If preview fails, check provider credentials, network access, voice identifier, and backend logs.
 
 ## Voice Cloning
 
-Voice cloning creates a new voice from sample audio. The current WebUI clone flow supports DashScope / Qwen, CosyVoice, IndexTTS, and Xiaomi MiMo.
+Voice cloning creates a new voice from sample audio. The current WebUI clone flow focuses on DashScope / Qwen and CosyVoice.
 
 ### Prepare Sample Audio
 
@@ -89,10 +89,6 @@ Apply the new voice to the current session, then preview or test it with a short
 CosyVoice cloning usually requires the provider to access the sample audio URL. For local deployments, configure `OPENTALKING_PUBLIC_BASE_URL` if the external service cannot reach local temporary URLs.
 
 If cloning fails, check public access, upload status, provider health, and backend logs.
-
-### IndexTTS
-
-IndexTTS cloning stores the reference audio in the local voice directory and marks the voice asset as `provider=indextts`. Synthesis can later use either the same-host sidecar or the OmniRT backend; switching backend does not require cloning the voice again.
 
 ## Use Voice in WebUI
 

@@ -14,13 +14,26 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+try:
+    from _standalone_model_paths import load_model_paths
+except ModuleNotFoundError:
+    from scripts._standalone_model_paths import load_model_paths
+
+repo_root = Path(__file__).resolve().parents[1]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+_model_paths = load_model_paths()
+local_audio_model_root = _model_paths.local_audio_model_root
+model_repo_root = _model_paths.model_repo_root
+
 
 DEFAULT_MODEL = "SWivid/F5-TTS/F5TTS_v1_Base"
 DEFAULT_SERVICE_SAMPLE_RATE = 24000
 
 
 def _local_audio_model_root() -> Path:
-    return Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio")).expanduser().resolve()
+    return local_audio_model_root().resolve()
 
 
 def _default_model_dir(root: Path) -> Path:
@@ -28,7 +41,7 @@ def _default_model_dir(root: Path) -> Path:
 
 
 def _default_runtime_dir(root: Path) -> Path:
-    return root / "runtime" / "F5-TTS"
+    return model_repo_root() / "F5-TTS"
 
 
 def _env_bool(name: str, default: bool) -> bool:

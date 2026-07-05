@@ -11,6 +11,8 @@ from typing import Any, Sequence
 import cv2
 import numpy as np
 
+from opentalking.core.model_paths import quicktalk_asset_root, wav2lip_model_root
+
 
 class CacheValidationError(RuntimeError):
     """Raised when a generated runtime cache is missing or malformed."""
@@ -538,14 +540,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     avatars_root = args.avatars_root.expanduser().resolve()
-    quicktalk_asset_root = args.quicktalk_asset_root or args.quicktalk_model_root
-    if "quicktalk" in args.model and quicktalk_asset_root is None:
-        raise SystemExit("--quicktalk-asset-root is required when --model quicktalk is selected")
+    quicktalk_asset_root_arg = (
+        args.quicktalk_asset_root
+        or args.quicktalk_model_root
+        or (quicktalk_asset_root() if "quicktalk" in args.model else None)
+    )
     rebuild = None
     if "quicktalk" in args.model:
         from opentalking.models.quicktalk.runtime_v2 import QuickTalkRebuild
 
-        quicktalk_root = quicktalk_asset_root.expanduser().resolve()
+        if quicktalk_asset_root_arg is None:
+            raise ValueError("QuickTalk asset root is required when preparing QuickTalk cache")
+        quicktalk_root = Path(quicktalk_asset_root_arg).expanduser().resolve()
         rebuild = QuickTalkRebuild(
             asset_root=quicktalk_root,
             device=args.device,
@@ -559,12 +565,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.wav2lip_face_det_device:
             os.environ["OPENTALKING_WAV2LIP_FACE_DET_DEVICE"] = str(args.wav2lip_face_det_device)
-        wav2lip_model_root = (
-            args.wav2lip_model_root
-            or Path(os.environ.get("OPENTALKING_WAV2LIP_MODEL_ROOT", "./models/wav2lip"))
-        )
+        wav2lip_model_root_arg = args.wav2lip_model_root or wav2lip_model_root()
         wav2lip_runtime = Wav2LipRealtimeRuntime(
-            models_dir=wav2lip_model_root.expanduser().resolve(),
+            models_dir=wav2lip_model_root_arg.expanduser().resolve(),
             device=args.device,
         )
     results: list[PreparedAssetResult] = []

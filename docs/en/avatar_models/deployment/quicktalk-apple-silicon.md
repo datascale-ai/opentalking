@@ -14,19 +14,19 @@ Keep the same layout as Linux local mode:
 
 ```bash title="Terminal"
 cd "$DIGITAL_HUMAN_HOME/opentalking"
-mkdir -p models/quicktalk/checkpoints
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
+mkdir -p "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 
 uv pip install -U "huggingface_hub[cli]"
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints
+  --local-dir "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 ```
+
+`datascale-ai/quicktalk` includes QuickTalk, HuBERT, and InsightFace `buffalo_l`;
+after downloading, `checkpoints/auxiliary/models/buffalo_l/` should exist.
 
 If this machine is only used for documentation and asset checks, you can skip CUDA-specific dependencies and only verify weights, shared avatars, and optional template assets.
 
@@ -39,13 +39,14 @@ cd "$DIGITAL_HUMAN_HOME/opentalking"
 uv sync --extra dev --extra models --extra quicktalk-cpu --python 3.11
 
 export OPENTALKING_TORCH_DEVICE=mps
-export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
 export OPENTALKING_QUICKTALK_WORKER_CACHE=0
 
 bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5280
 ```
 
-If a dependency or operator does not support MPS, use `--backend mock` for product-flow checks, or sync the same `models/quicktalk/` directory to a CUDA machine.
+If a dependency or operator does not support MPS, use `--backend mock` for product-flow checks, or sync the same `$DIGITAL_HUMAN_HOME/models/quicktalk/` directory to a CUDA machine.
 
 ## Verification
 
@@ -64,3 +65,13 @@ On Apple Silicon, `connected=false` does not always mean the assets are wrong. R
 | ONNX Runtime provider mismatch | Use `quicktalk-cpu` dependencies or switch to Linux CUDA. |
 | Template video not found | If a fixed template video is configured, use a reachable absolute path or a repository asset path. |
 | Slow downloads | Set `HF_ENDPOINT`, or download on another network and sync the files. |
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and local model processes started by
+`scripts/start_unified.sh` or the quickstart helpers:
+
+```bash title="Terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

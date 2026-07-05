@@ -72,3 +72,14 @@ curl -s http://127.0.0.1:8310/models | jq '.statuses[] | select(.id=="wav2lip")'
 | `reason=omnirt_unavailable` | 检查 OpenTalking 的 `--omnirt` 地址和 OmniRT 健康状态。 |
 | 端到端延迟高 | 降低 batch size、限制 `MAX_LONG_EDGE`，并启用 `OMNIRT_WAV2LIP_PRELOAD=1`。 |
 | avatar 资源不可用 | 确认 avatar 资源可读取，并检查会话配置是否完整。 |
+
+## 关闭服务
+
+停止由 `scripts/start_unified.sh` 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和 OmniRT 进程：
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```
+
+如果 OmniRT 是通过前台 `omnirt serve-avatar-ws ...` 手动启动的，请在对应终端按 `Ctrl+C` 结束该进程。

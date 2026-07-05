@@ -3,9 +3,12 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "$script_dir/.." && pwd)"
+digital_home="${DIGITAL_HUMAN_HOME:-$(cd -- "$repo_root/.." && pwd)}"
+model_repo_root="${OPENTALKING_MODEL_REPO_ROOT:-$digital_home/model-repos}"
+runtime_root="${OPENTALKING_RUNTIME_ROOT:-$digital_home/runtimes}"
 
-venv_dir="${OPENTALKING_COSYVOICE_VENV_DIR:-$repo_root/.venv-cosyvoice}"
-runtime_dir="${OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR:-$repo_root/models/local-audio/runtime/CosyVoice}"
+venv_dir="${OPENTALKING_COSYVOICE_VENV_DIR:-$runtime_root/cosyvoice/venv}"
+runtime_dir="${OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR:-$model_repo_root/CosyVoice}"
 requirements_file="${OPENTALKING_COSYVOICE_REQUIREMENTS:-$runtime_dir/requirements.txt}"
 
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"

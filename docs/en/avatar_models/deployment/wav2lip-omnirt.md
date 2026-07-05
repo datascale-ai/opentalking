@@ -72,3 +72,16 @@ curl -s http://127.0.0.1:8310/models | jq '.statuses[] | select(.id=="wav2lip")'
 | `reason=omnirt_unavailable` | Check the OpenTalking `--omnirt` URL and OmniRT health. |
 | End-to-end latency is high | Lower batch size, limit `MAX_LONG_EDGE`, and enable `OMNIRT_WAV2LIP_PRELOAD=1`. |
 | Avatar asset unavailable | Confirm the avatar asset is readable and the session configuration is complete. |
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and OmniRT processes started by
+`scripts/start_unified.sh` or the quickstart helpers:
+
+```bash title="Terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```
+
+If OmniRT was started manually in the foreground with `omnirt serve-avatar-ws ...`,
+press `Ctrl+C` in that terminal to stop it.

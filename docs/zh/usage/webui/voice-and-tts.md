@@ -9,7 +9,7 @@
 - 如何理解 TTS Provider 和音色。
 - 如何使用默认音色开始验证。
 - 如何在 WebUI 中切换和试听音色。
-- 如何使用 DashScope / Qwen、CosyVoice 或 IndexTTS 进行声音复刻。
+- 如何使用 DashScope / Qwen 或 CosyVoice 进行声音复刻。
 - 声音不可用、试听失败或复刻失败时如何排查。
 
 ## TTS Provider 选择
@@ -21,7 +21,6 @@ TTS Provider 是实际合成语音的服务或模型。不同 Provider 的配置
 - `edge`：适合快速验证，使用成本低。
 - `dashscope` / `qwen`：适合使用百炼 / 通义相关 TTS 能力。
 - `cosyvoice`：适合接入 CosyVoice 音色和声音复刻能力。
-- `indextts`：适合本地可控配音、情绪控制和参考音频复刻；具体运行方式由 `local` 或 `omnirt` backend 决定。
 - `sambert`：适合兼容已有 Sambert 配置的场景。
 
 如果你只是第一次跑通流程，先使用默认 Provider 和默认音色。需要业务化声音时，再配置云端 Provider 或声音复刻。
@@ -53,15 +52,16 @@ TTS Provider 是实际合成语音的服务或模型。不同 Provider 的配置
 
 WebUI 支持在创建会话前试听音色。试听文本建议控制在较短范围内，当前预览接口最多处理 1000 个字符。
 
-![WebUI 音色与 TTS 面板。](../../../assets/images/usage/webui/voice-tts-panel.png)
-
-*WebUI 音色与 TTS 面板：选择 Provider、音色，并点击“试听一句”预览声音。*
+<div class="ot-figure-placeholder">
+  <strong>截图占位：音色试听</strong>
+  <span>后续补充：展示 TTS Provider、voice 选择和试听按钮。</span>
+</div>
 
 试听失败时，先检查 Provider Key、网络访问和 voice 标识，再查看后端日志。
 
 ## 声音复刻
 
-声音复刻用于根据一段样本音频创建新的 voice。当前 WebUI 中支持 DashScope / Qwen、CosyVoice、IndexTTS 和小米 MiMo 等复刻入口。
+声音复刻用于根据一段样本音频创建新的 voice。当前 WebUI 中支持的复刻入口主要面向 DashScope / Qwen 和 CosyVoice。
 
 ### 准备样本音频
 
@@ -89,10 +89,6 @@ DashScope / Qwen 路径通常依赖 Provider Key。配置成功后，可以在 W
 CosyVoice 复刻通常需要服务端能够访问样本音频地址。部署在本机时，如果外部服务无法访问本机地址，需要配置可公开访问的 `OPENTALKING_PUBLIC_BASE_URL`。
 
 如果复刻请求失败，优先检查公开访问地址、文件上传、Provider 服务状态和后端日志。
-
-### IndexTTS
-
-IndexTTS 复刻会把参考音频保存到本地音色目录，音色资产统一标记为 `provider=indextts`。实际合成时可以走同机 sidecar，也可以走 OmniRT backend；切换 backend 不需要重新复刻音色。
 
 ## 在 WebUI 中使用音色
 

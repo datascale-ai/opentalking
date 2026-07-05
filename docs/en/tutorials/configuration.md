@@ -155,15 +155,9 @@ mode. The single-process unified mode (`opentalking-unified`) ignores all entrie
 | `OPENTALKING_WORKER_URL` | `http://127.0.0.1:9001` | URL through which the API reaches the Worker. |
 | `OPENTALKING_TORCH_DEVICE` | `cpu` | Device used for orchestration-side audio and frame post-processing. |
 | `OPENTALKING_AVATARS_DIR` | `./examples/avatars` | Avatar bundle root directory. |
-| `OPENTALKING_AVATAR_MATTING_PROVIDER` | `rembg` | Optional matting provider for custom avatar uploads; called only when the upload dialog option is enabled. |
-| `OPENTALKING_AVATAR_MATTING_DEVICE` | `cpu` | Reserved device setting for matting providers. |
-| `OPENTALKING_AVATAR_MATTING_MODEL_PATH` | empty | Local `u2net.onnx` model file path for the `rembg` provider. |
-| `OPENTALKING_AVATAR_MATTING_TIMEOUT_SEC` | `60` | Reserved timeout setting for matting providers. |
 | `OPENTALKING_VOICES_DIR` | `./var/voices` | Storage for cloned voices. |
 | `OPENTALKING_SQLITE_PATH` | `./data/opentalking.sqlite3` | Local metadata database file. |
 | `OPENTALKING_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated list of permitted frontend origins. |
-
-Custom avatar uploads do not remove the background by default. PNG uploads with an existing alpha channel are detected automatically as transparent-ready. To enable the local `rembg` provider, install the optional dependency first: `uv pip install --python .venv/bin/python '.[avatar-matting]'`. The `rembg` provider does not download models at runtime; download `u2net.onnx` ahead of time and point `OPENTALKING_AVATAR_MATTING_MODEL_PATH` at that file.
 
 ## 4. Advanced tuning
 

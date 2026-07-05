@@ -10,6 +10,8 @@ from dotenv import dotenv_values
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from opentalking.core.model_paths import local_audio_model_root, model_root
+
 
 def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
     if not raw:
@@ -353,7 +355,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     avatars_dir: str = "./examples/avatars"
-    models_dir: str = "./models"
+    models_dir: str = Field(default_factory=lambda: str(model_root()))
     worker_url: str = "http://127.0.0.1:9001"
     exports_dir: str = "./data/exports"
     scene_assets_dir: str = "./data/scene-assets"
@@ -610,7 +612,7 @@ class Settings(BaseSettings):
     stt_xiaomi_audio_format: str = "wav"
 
     #: Shared local model root for local STT/TTS assets.
-    local_audio_model_root: str = "./models/local-audio"
+    local_audio_model_root: str = Field(default_factory=lambda: str(local_audio_model_root()))
     local_audio_device: str = "auto"
     local_qwen3_tts_model: str = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
     local_qwen3_tts_service_url: str = ""

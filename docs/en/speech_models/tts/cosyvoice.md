@@ -21,9 +21,11 @@ consume PCM audio over HTTP.
 ```bash title="Terminal"
 cd "$OPENTALKING_HOME"
 uv sync --extra dev --extra models --extra local-audio --python 3.11
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models/local-audio}"
 
 python scripts/download_local_audio_models.py \
-  --root ./avatar_models/local-audio \
+  --root "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT" \
   --model fun-cosyvoice3-0.5b-2512
 ```
 
@@ -34,8 +36,12 @@ them in the same CosyVoice3 model directory:
 env HF_ENDPOINT=https://huggingface.co \
   python - <<'PY'
 from huggingface_hub import hf_hub_download
+import os
 repo = "yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX"
-target = "./avatar_models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512"
+target = os.path.join(
+    os.environ["OPENTALKING_LOCAL_AUDIO_MODEL_ROOT"],
+    "FunAudioLLM__Fun-CosyVoice3-0.5B-2512",
+)
 for name in [
     "flow.decoder.estimator.autocast_fp16.onnx",
     "flow.decoder.estimator.streaming.autocast_fp16.onnx",
@@ -58,16 +64,33 @@ target host.
 Prepare the CosyVoice runtime:
 
 ```bash title="Terminal"
-mkdir -p ./avatar_models/local-audio/runtime
-git clone https://github.com/FunAudioLLM/CosyVoice.git ./avatar_models/local-audio/runtime/CosyVoice
-cd ./avatar_models/local-audio/runtime/CosyVoice
+cd "$OPENTALKING_HOME"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="${OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR:-$DIGITAL_HUMAN_HOME/model-repos/CosyVoice}"
+mkdir -p "$(dirname "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR")"
+# Optional: use a GitHub proxy prefix when GitHub access is slow.
+# export GITHUB_PROXY_PREFIX=https://gh-proxy.com/
+if [ ! -d "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR/.git" ]; then
+  git clone "${GITHUB_PROXY_PREFIX:-}https://github.com/FunAudioLLM/CosyVoice.git" "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR"
+fi
+cd "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR"
+# Optional: if submodules still fetch from GitHub, set a repo-local mirror rule.
+# git config url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/"
+# git submodule sync --recursive
 git submodule update --init --recursive
+test -d third_party/Matcha-TTS/matcha
 ```
+
+If the last command fails, the `Matcha-TTS` submodule is incomplete. Re-run
+`git submodule update --init --recursive` until `third_party/Matcha-TTS/matcha`
+exists.
 
 Create the sidecar venv:
 
 ```bash title="Terminal"
 cd "$OPENTALKING_HOME"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="${OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR:-$DIGITAL_HUMAN_HOME/model-repos/CosyVoice}"
 OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
   bash scripts/prepare_cosyvoice_venv.sh
 ```
@@ -76,11 +99,23 @@ If TensorRT is required, install TRT dependencies into the CosyVoice sidecar ven
 into the main OpenTalking `.venv`:
 
 ```bash title="Terminal"
-PIP_EXTRA_INDEX_URL=https://pypi.nvidia.com/ \
+cd "$OPENTALKING_HOME"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="$DIGITAL_HUMAN_HOME/model-repos/CosyVoice"
+
+export OPENTALKING_COSYVOICE_PIP_RETRIES=20
+export OPENTALKING_COSYVOICE_PIP_RESUME_RETRIES=20
+export OPENTALKING_COSYVOICE_PIP_TIMEOUT=300
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export PIP_EXTRA_INDEX_URL=https://pypi.nvidia.com/
+
 OPENTALKING_COSYVOICE_INSTALL_TENSORRT=1 \
 OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
   bash scripts/prepare_cosyvoice_venv.sh
 ```
+
+If pip hits an SSL interruption during download, rerun the same command. The script
+reuses the existing `.venv-cosyvoice`; deleting the venv is not required.
 
 ## Configuration
 
@@ -90,8 +125,8 @@ Local sidecar:
 OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
 OPENTALKING_TTS_ENABLED_PROVIDERS=local_cosyvoice,dashscope,edge
 OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL=FunAudioLLM/Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=./avatar_models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=./avatar_models/local-audio/runtime/CosyVoice
+OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=$DIGITAL_HUMAN_HOME/models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=$DIGITAL_HUMAN_HOME/model-repos/CosyVoice
 OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
 OPENTALKING_TTS_LOCAL_COSYVOICE_DEVICE=cuda:0
 OPENTALKING_TTS_LOCAL_COSYVOICE_FP16=auto
@@ -132,17 +167,31 @@ CosyVoice runtime builds a GPU-specific TensorRT plan. Startup can take longer t
 the default mode. `start_local_cosyvoice.sh` automatically adds the sidecar venv's
 `site-packages/tensorrt_libs` directory to `LD_LIBRARY_PATH`.
 
-Start OpenTalking from another terminal:
+After the CosyVoice sidecar is up, start OpenTalking + QuickTalk. You can continue
+in the same terminal; if you switch to a new terminal, restore deployment variables
+such as `OPENTALKING_HOME` and `DIGITAL_HUMAN_HOME` first. This is the recommended
+real pipeline: OpenTalking uses the local CosyVoice sidecar for TTS and local
+QuickTalk as the avatar backend.
 
 ```bash title="Terminal"
-bash scripts/start_unified.sh --backend mock --model mock --api-port 8000 --web-port 5173
+cd "$OPENTALKING_HOME"
+
+export OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
+export OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
+
+export OPENTALKING_TORCH_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/models/quicktalk"
+export OPENTALKING_QUICKTALK_WORKER_CACHE=1
+
+bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5283
 ```
 
 ## Verification
 
 ```bash title="Terminal"
 curl -fsS http://127.0.0.1:19090/health
-curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8210/health
 ```
 
 Check that the sidecar enabled FP16 / TRT as expected:
@@ -154,38 +203,28 @@ curl -fsS http://127.0.0.1:19090/health | python3 -m json.tool
 The health payload should show `fp16=true`; when TRT is enabled, it should show
 `load_trt=true`.
 
-After creating a `mock` session, call `/speak` to confirm that OpenTalking receives
-CosyVoice audio:
+After creating a `quicktalk` session, call `/speak` to confirm that OpenTalking
+receives CosyVoice audio and drives QuickTalk:
 
 ```bash title="Terminal"
 SID=<session-id>
-curl -s -X POST "http://127.0.0.1:8000/sessions/$SID/speak" \
+curl -s -X POST "http://127.0.0.1:8210/sessions/$SID/speak" \
   -H 'content-type: application/json' \
   -d '{"text":"Hello, this is a local CosyVoice speech test."}'
 ```
 
 ## Benchmark Baseline
 
-The benchmark called sidecar `/synthesize` directly and measured TTFB as first
-PCM-byte arrival. The RTX 3090 baseline used a CosyVoice3 standalone sidecar venv
-with `FP16 + LOAD_TRT=1` and the autocast fp16 TensorRT plan loaded. The RTX 4090
-results were measured on the same OpenTalking sidecar path with `TOKEN_HOP_LEN=8`,
-`TOKEN_MAX_HOP_LEN=16`, and `STREAM_SCALE_FACTOR=1`.
+Test environment: NVIDIA RTX 3090 Linux server, CosyVoice3 standalone sidecar venv,
+`FP16 + LOAD_TRT=1`, and the autocast fp16 TensorRT plan loaded. The benchmark called
+sidecar `/synthesize` directly and measured TTFB as first PCM-byte arrival.
 
-| Device | Mode | Text length | TTFB | Wall time | Audio duration | RTF |
-|---|---|---:|---:|---:|---:|---:|
-| RTX 3090 | FP16 + TRT autocast | 43 chars | 0.683 s | 6.215 s | 7.200 s | 0.863 |
-| RTX 3090 | FP16 + TRT autocast | 42 chars | 0.642 s | 5.858 s | 6.960 s | 0.842 |
-| RTX 3090 | FP16 + TRT autocast | 29 chars | 0.639 s | 5.771 s | 6.520 s | 0.885 |
-| RTX 3090 | **Average** | **-** | **0.655 s** | **5.948 s** | **6.893 s** | **0.863** |
-| RTX 4090 | FP16 CUDA | 39 chars | 1.316 s | 11.662 s | 6.800 s | 1.715 |
-| RTX 4090 | FP16 CUDA | 38 chars | 0.895 s | 11.199 s | 7.120 s | 1.573 |
-| RTX 4090 | FP16 CUDA | 21 chars | 1.110 s | 9.493 s | 5.640 s | 1.683 |
-| RTX 4090 | **FP16 CUDA average** | **-** | **1.107 s** | **10.785 s** | **6.520 s** | **1.657** |
-| RTX 4090 | FP16 + TRT autocast | 39 chars | 0.772 s | 7.507 s | 6.800 s | 1.104 |
-| RTX 4090 | FP16 + TRT autocast | 38 chars | 0.560 s | 5.613 s | 7.120 s | 0.788 |
-| RTX 4090 | FP16 + TRT autocast | 21 chars | 0.507 s | 4.435 s | 5.640 s | 0.786 |
-| RTX 4090 | **FP16 + TRT autocast average** | **-** | **0.613 s** | **5.852 s** | **6.520 s** | **0.893** |
+| Text length | TTFB | Wall time | Audio duration | RTF |
+|---:|---:|---:|---:|---:|
+| 43 chars | 0.683 s | 6.215 s | 7.200 s | 0.863 |
+| 42 chars | 0.642 s | 5.858 s | 6.960 s | 0.842 |
+| 29 chars | 0.639 s | 5.771 s | 6.520 s | 0.885 |
+| **Average** | **0.655 s** | **5.948 s** | **6.893 s** | **0.863** |
 
 This baseline covers only the TTS sidecar. It does not include STT, LLM, QuickTalk,
 WebRTC, or browser playback latency.

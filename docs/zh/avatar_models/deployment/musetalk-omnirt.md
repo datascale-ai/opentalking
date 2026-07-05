@@ -68,3 +68,12 @@ curl -s http://127.0.0.1:8310/models | jq '.statuses[] | select(.id=="musetalk")
 | `reason=omnirt_unavailable` | 检查 OpenTalking `--omnirt` 地址和 OmniRT 端口。 |
 | MuseTalk 子服务端口冲突 | 调整 `OMNIRT_MUSETALK_PORT`。 |
 | 首次加载慢 | MuseTalk 预加载和 avatar 预处理耗时较长，生产环境建议预热。 |
+
+## 关闭服务
+
+停止由 `scripts/start_unified.sh` 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和 OmniRT 进程：
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

@@ -24,6 +24,7 @@ from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.avatar.matting import MattingError, image_has_transparency, remove_avatar_background
 from opentalking.avatar.validator import list_avatar_dirs
 from opentalking.models.quicktalk.paths import resolve_quicktalk_asset_root
+from opentalking.core.model_paths import quicktalk_asset_root
 from opentalking.models.registry import get_adapter
 from opentalking.providers.synthesis.backends import resolve_model_backend
 from opentalking.providers.synthesis.omnirt import auth_headers
@@ -376,7 +377,7 @@ def _settings_quicktalk_model_root(settings: Any) -> Path:
     resolved = resolve_quicktalk_asset_root(settings)
     if resolved is not None:
         return resolved
-    return (Path("./models") / "quicktalk").expanduser().resolve()
+    return quicktalk_asset_root().expanduser().resolve()
 
 
 def _settings_int(settings: Any, name: str, env_name: str, default: int) -> int:

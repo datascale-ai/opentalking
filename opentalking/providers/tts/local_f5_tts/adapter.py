@@ -12,8 +12,14 @@ from typing import Any
 import httpx
 import numpy as np
 
+from opentalking.core.model_paths import local_audio_model_root as resolve_local_audio_model_root
+from opentalking.core.model_paths import model_repo_root
 from opentalking.core.types.frames import AudioChunk
-from opentalking.providers.tts.voice_assets import LOCAL_F5_TTS_PROVIDER, resolve_voice_asset
+from opentalking.providers.tts.voice_assets import (
+    LOCAL_F5_TTS_PROVIDER,
+    iter_voice_assets,
+    resolve_voice_asset,
+)
 
 
 def _settings_value(name: str, default: str = "") -> str:
@@ -28,13 +34,13 @@ def _settings_value(name: str, default: str = "") -> str:
 
 
 def _local_audio_model_root() -> Path:
-    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
+    configured = ""
     try:
         from opentalking.core.config import get_settings
-        raw = raw or (get_settings().local_audio_model_root or "").strip()
+        configured = (get_settings().local_audio_model_root or "").strip()
     except Exception:
         pass
-    return Path(raw or "./models/local-audio").expanduser().resolve()
+    return resolve_local_audio_model_root(configured).resolve()
 
 
 def _audio_format_from_content_type(content_type: str | None) -> str | None:
@@ -103,6 +109,9 @@ class F5VoicePrompt:
     prompt_text: str
 
 
+DEFAULT_F5_TTS_VOICE_ID = "local-anchor-cherry"
+
+
 class LocalF5TTSAdapter:
     def __init__(self, default_voice: str | None = None, sample_rate: int = 16000, chunk_ms: float = 20.0, *, model: str | None = None, model_dir: str | None = None, runtime_dir: str | None = None, ckpt_file: str | None = None, vocoder_local_path: str | None = None, service_url: str | None = None, prompt_audio: str | None = None, prompt_text: str | None = None, device: str = "auto") -> None:
         self.default_voice = default_voice or "local-default"
@@ -110,7 +119,7 @@ class LocalF5TTSAdapter:
         self.chunk_ms = chunk_ms
         self.model = (model or "SWivid/F5-TTS/F5TTS_v1_Base").strip()
         self.model_dir = str(Path(model_dir or _local_audio_model_root() / self.model.replace("/", "__")).expanduser())
-        self.runtime_dir = str(Path(runtime_dir or _local_audio_model_root() / "runtime" / "F5-TTS").expanduser())
+        self.runtime_dir = str(Path(runtime_dir or model_repo_root() / "F5-TTS").expanduser())
         self.ckpt_file = str(Path(ckpt_file or Path(self.model_dir) / "model_1250000.safetensors").expanduser())
         self.vocoder_local_path = str(Path(vocoder_local_path).expanduser()) if vocoder_local_path else ""
         self.service_url = (service_url or os.environ.get("OPENTALKING_TTS_LOCAL_F5_TTS_SERVICE_URL", "").strip() or _settings_value("tts_local_f5_tts_service_url", "")).strip()
@@ -126,16 +135,40 @@ class LocalF5TTSAdapter:
         async for chunk in self._synthesize_via_service(text, voice=voice):
             yield chunk
 
+    def _voice_prompt_from_asset(self, asset: Any) -> F5VoicePrompt:
+        text = asset.prompt_text.read_text(encoding="utf-8").strip() if asset.prompt_text else ""
+        return F5VoicePrompt(prompt_audio=asset.prompt_audio, prompt_text=text)
+
+    def _resolve_default_voice_prompt(self) -> F5VoicePrompt | None:
+        root = _local_audio_model_root()
+        preferred = resolve_voice_asset(
+            DEFAULT_F5_TTS_VOICE_ID,
+            provider=LOCAL_F5_TTS_PROVIDER,
+            sources=("system",),
+            model_root=root,
+            require_prompt_text=False,
+        )
+        if preferred is not None:
+            return self._voice_prompt_from_asset(preferred)
+        assets = iter_voice_assets(
+            provider=LOCAL_F5_TTS_PROVIDER,
+            sources=("system", "clones"),
+            model_root=root,
+            require_prompt_text=False,
+        )
+        if assets:
+            return self._voice_prompt_from_asset(assets[0])
+        return None
+
     def _resolve_voice_prompt(self, voice: str | None) -> F5VoicePrompt | None:
         voice_id = (voice or "").strip()
         if voice_id and voice_id != "local-default" and re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
             asset = resolve_voice_asset(voice_id, provider=LOCAL_F5_TTS_PROVIDER, sources=("clones", "system"), model_root=_local_audio_model_root(), require_prompt_text=False)
             if asset is not None:
-                text = asset.prompt_text.read_text(encoding="utf-8").strip() if asset.prompt_text else ""
-                return F5VoicePrompt(prompt_audio=asset.prompt_audio, prompt_text=text)
+                return self._voice_prompt_from_asset(asset)
         if self.prompt_audio:
             return F5VoicePrompt(prompt_audio=Path(self.prompt_audio), prompt_text=self.prompt_text)
-        return None
+        return self._resolve_default_voice_prompt()
 
     async def _synthesize_via_service(self, text: str, voice: str | None = None) -> AsyncIterator[AudioChunk]:
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=30.0)

@@ -21,15 +21,10 @@ uv pip install -U "huggingface_hub[cli]"
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
   --local-dir "$OMNIRT_MODEL_ROOT/quicktalk/checkpoints"
 ```
 
-确认 `quicktalk.pth`、`repair.npy`、HuBERT 和 InsightFace `buffalo_l` 都在 QuickTalk 模型目录下；InsightFace 准备方式见 [Local](quicktalk-local.md)。
+确认 `quicktalk.pth`、`repair.npy`、HuBERT 和 InsightFace `auxiliary/models/buffalo_l/` 都在 QuickTalk 模型目录下。
 
 ## 启动命令
 
@@ -80,3 +75,14 @@ OpenTalking 侧期望 `backend=omnirt`、`connected=true`。
 | OmniRT 未列出 `quicktalk` | 检查 `OMNIRT_QUICKTALK_RUNTIME=1`、checkpoint 路径和启动日志。 |
 | 首帧慢或显存高 | 调整 `OMNIRT_QUICKTALK_MAX_LONG_EDGE`、HuBERT device 或预热策略。 |
 | avatar 资源不可用 | 检查所选 avatar 是否已上传、可读取，并确认会话配置完整。 |
+
+## 关闭服务
+
+停止由 `scripts/start_unified.sh` 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和 OmniRT 进程：
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```
+
+如果 OmniRT 是通过前台 `omnirt serve-avatar-ws ...` 手动启动的，请在对应终端按 `Ctrl+C` 结束该进程。

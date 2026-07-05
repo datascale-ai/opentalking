@@ -21,15 +21,11 @@ uv pip install -U "huggingface_hub[cli]"
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
   --local-dir "$OMNIRT_MODEL_ROOT/quicktalk/checkpoints"
 ```
 
-Confirm `quicktalk.pth`, `repair.npy`, HuBERT, and InsightFace `buffalo_l` all exist under the QuickTalk model directory. Prepare InsightFace as shown in [Local](quicktalk-local.md).
+Confirm `quicktalk.pth`, `repair.npy`, HuBERT, and InsightFace
+`auxiliary/models/buffalo_l/` all exist under the QuickTalk model directory.
 
 ## Start Command
 
@@ -80,3 +76,16 @@ OpenTalking should report `backend=omnirt` and `connected=true`.
 | OmniRT does not list `quicktalk` | Check `OMNIRT_QUICKTALK_RUNTIME=1`, checkpoint paths, and startup logs. |
 | Slow first frame or high VRAM | Tune `OMNIRT_QUICKTALK_MAX_LONG_EDGE`, HuBERT device, or prewarm strategy. |
 | Avatar asset unavailable | Check that the selected avatar is uploaded, readable, and the session configuration is complete. |
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and OmniRT processes started by
+`scripts/start_unified.sh` or the quickstart helpers:
+
+```bash title="Terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```
+
+If OmniRT was started manually in the foreground with `omnirt serve-avatar-ws ...`,
+press `Ctrl+C` in that terminal to stop it.

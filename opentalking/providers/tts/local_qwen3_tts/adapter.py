@@ -40,18 +40,22 @@ class LocalQwen3TTSAdapter:
         chunk_ms: float = 20.0,
         *,
         model: str | None = None,
+        service_url: str | None = None,
     ) -> None:
         self.default_voice = default_voice or "local-default"
         self.sample_rate = sample_rate
         self.chunk_ms = chunk_ms
         self.model = (
             model
+            or os.environ.get("OPENTALKING_TTS_LOCAL_QWEN3_TTS_MODEL")
             or os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_MODEL")
             or _settings_value("local_qwen3_tts_model", "")
             or "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
         ).strip()
         self.service_url = (
-            os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_SERVICE_URL", "").strip()
+            (service_url or "").strip()
+            or os.environ.get("OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL", "").strip()
+            or os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_SERVICE_URL", "").strip()
             or _settings_value("local_qwen3_tts_service_url", "")
         )
 
@@ -60,7 +64,7 @@ class LocalQwen3TTSAdapter:
             return
         if not self.service_url:
             raise RuntimeError(
-                "Local Qwen3-TTS requires OPENTALKING_LOCAL_QWEN3_TTS_SERVICE_URL. "
+                "Local Qwen3-TTS requires OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL. "
                 "Run a local Qwen3-TTS service and point this variable at its synthesize endpoint."
             )
         timeout = httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=30.0)

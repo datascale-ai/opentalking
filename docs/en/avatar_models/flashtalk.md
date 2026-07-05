@@ -34,7 +34,9 @@ For domestic mirrors, search ModelScope or Modelers for `SoulX-FlashTalk-14B` an
 ```text
 $OMNIRT_MODEL_ROOT/
 ├── SoulX-FlashTalk-14B/
-├── chinese-wav2vec2-base/
+└── chinese-wav2vec2-base/
+
+$DIGITAL_HUMAN_HOME/model-repos/
 └── SoulX-FlashTalk/        # Optional for custom CUDA/manual paths
 ```
 

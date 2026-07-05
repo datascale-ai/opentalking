@@ -153,11 +153,13 @@ source .venv/bin/activate
 
 ### 3. 准备 QuickTalk 权重
 
-QuickTalk 本地权重和依赖建议统一放在仓库根目录的 `models/quicktalk/`。
+QuickTalk 本地权重和依赖建议统一放在部署根目录的 `models/quicktalk/`。
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
-mkdir -p models/quicktalk/checkpoints
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
+mkdir -p "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 
 uv pip install -U "huggingface_hub[cli]"
 
@@ -165,27 +167,10 @@ uv pip install -U "huggingface_hub[cli]"
 export HF_ENDPOINT=https://hf-mirror.com
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints
+  --local-dir "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 ```
 
-QuickTalk 权重和 HuBERT 文件已经包含在 `datascale-ai/quicktalk` 中。QuickTalk 还需要单独准备 InsightFace `buffalo_l`：
-
-```bash
-# 下载并解压 InsightFace buffalo_l 到 QuickTalk auxiliary 目录。
-mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
-curl -L \
-  -o /tmp/opentalking-insightface/buffalo_l.zip \
-  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
-unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
-  -d /tmp/opentalking-insightface
-rsync -a /tmp/opentalking-insightface/buffalo_l/ \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
-```
+QuickTalk 权重、HuBERT 文件和 InsightFace `buffalo_l` 已经包含在 `datascale-ai/quicktalk` 中。下载后应能看到 `$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints/auxiliary/models/buffalo_l/`。
 
 建议校验关键文件 SHA256：
 
@@ -200,16 +185,16 @@ chinese-hubert-large/pytorch_model.bin: 9cf43abec3f0410ad6854afa4d376c69ccb364b4
 检查关键文件：
 
 ```bash
-stat models/quicktalk/checkpoints/quicktalk.pth
-stat models/quicktalk/checkpoints/repair.npy
-stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
-stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/quicktalk.pth"
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/repair.npy"
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/chinese-hubert-large/pytorch_model.bin"
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx"
 ```
 
 目录结构应类似：
 
 ```text
-models/
+$DIGITAL_HUMAN_HOME/models/
   quicktalk/
     checkpoints/
       quicktalk.pth
@@ -237,7 +222,8 @@ models/
 
 ```bash
 export OPENTALKING_TORCH_DEVICE=cuda:0
-export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
 export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
 cd "$DIGITAL_HUMAN_HOME/opentalking"
@@ -287,6 +273,15 @@ nvidia-smi
 
 如果 WebUI 能看到动态视频结果，说明 QuickTalk 本地链路已经跑通。
 
+## 关闭服务
+
+停止由 `scripts/start_unified.sh` 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和模型进程：
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```
+
 ## 常见问题
 
 ### 端口被占用
@@ -326,7 +321,7 @@ API key；使用 DashScope TTS 时需要配置 `OPENTALKING_TTS_DASHSCOPE_API_KE
 
 ### GPU / 权重路径错误
 
-确认 `OPENTALKING_TORCH_DEVICE`、`OPENTALKING_QUICKTALK_ASSET_ROOT` 和 `models/quicktalk`
+确认 `OPENTALKING_TORCH_DEVICE`、`OPENTALKING_QUICKTALK_ASSET_ROOT` 和 `$DIGITAL_HUMAN_HOME/models/quicktalk`
 目录结构一致。如果使用离线权重，只要最终文件路径与本页示例一致即可。
 
 ## 下一步

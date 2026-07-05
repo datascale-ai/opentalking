@@ -66,3 +66,12 @@ curl -s http://127.0.0.1:18000/models | jq '.statuses[] | select(.id=="musetalk"
 | 预处理失败 | 检查 `OPENTALKING_MUSETALK_REPO`、`dwpose`、`face-parse-bisenet`。 |
 | 首次会话慢 | 预处理和 VAE 加载耗时正常；可提前为常用 avatar 生成 `prepared/`。 |
 | avatar 资源不可用 | 检查 avatar 是否已上传、可读取，并确认会话配置完整。 |
+
+## 关闭服务
+
+停止由 `scripts/start_unified.sh` 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和本地模型进程：
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

@@ -40,7 +40,7 @@ OmniRT 侧需要一个 FasterLivePortrait 源码目录和一个 checkpoint 目�
 export DIGITAL_HUMAN_HOME=/opt/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
 export OMNIRT_HOME="$DIGITAL_HUMAN_HOME/omnirt"
-export FASTERLIVEPORTRAIT_HOME="$DIGITAL_HUMAN_HOME/FasterLivePortrait"
+export FASTERLIVEPORTRAIT_HOME="$DIGITAL_HUMAN_HOME/model-repos/LivePortrait"
 export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
 ```
 

@@ -329,6 +329,17 @@ function ttsModelSelectable(provider: TtsProviderExtended): boolean {
   return !isEdgeTts(provider) && provider !== "openai_compatible";
 }
 
+function resolveSelectableTtsVoice(
+  provider: TtsProviderExtended,
+  voice: string,
+  options: VoiceOpt[],
+): string {
+  if (!hasSelectableTtsVoice(provider)) return "";
+  const trimmed = voice.trim();
+  if (trimmed && options.some((option) => option.id === trimmed)) return trimmed;
+  return options[0]?.id ?? "";
+}
+
 type StoredAvatarSelection = { id: string; source: string | null };
 
 function readStoredAvatarSelection(): StoredAvatarSelection | null {
@@ -2201,6 +2212,7 @@ export default function App() {
     let createdSessionId: string | null = null;
     try {
       const knowledgeBaseIds = normalizeKnowledgeBaseIds(agentConfig.knowledgeBaseIds);
+      const selectedTtsVoice = resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices);
       const created = await apiPost<CreateSessionResponse>("/sessions", {
         persona_id: selectedPersonaId || undefined,
         avatar_id: avatarId,
@@ -2212,7 +2224,7 @@ export default function App() {
           ? edgeVoice
           : !hasSelectableTtsVoice(ttsProvider)
             ? undefined
-            : qwenVoice,
+            : selectedTtsVoice || undefined,
         tts_model: ttsModelSelectable(ttsProvider) ? qwenModel : undefined,
         wav2lip_postprocess_mode:
           model === "wav2lip" && wav2lipPostprocessMode !== "auto" ? wav2lipPostprocessMode : undefined,
@@ -2294,6 +2306,7 @@ export default function App() {
     agentConfig,
     asrProvider,
     avatarId,
+    bailianVoices,
     clientUserId,
     clearSubtitleState,
     closePeerConnection,
@@ -2465,9 +2478,7 @@ export default function App() {
     try {
       const voice = isEdgeTts(ttsProvider)
         ? edgeVoice
-        : !hasSelectableTtsVoice(ttsProvider)
-          ? ""
-          : qwenVoice;
+        : resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices);
       if (hasSelectableTtsVoice(ttsProvider) && !voice.trim()) {
         notify("当前模型没有可用音色，请先复刻音色或切换模型。", "info");
         return;
@@ -2497,7 +2508,7 @@ export default function App() {
     } finally {
       setTtsPreviewing(false);
     }
-  }, [edgeVoice, notify, qwenModel, qwenVoice, ttsPreviewText, ttsProvider]);
+  }, [bailianVoices, edgeVoice, notify, qwenModel, qwenVoice, ttsPreviewText, ttsProvider]);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -2516,6 +2527,7 @@ export default function App() {
         void apiPost(`/sessions/${sessionId}/interrupt`, {}).catch(() => {});
       }
       const endpoint = "speak";
+      const selectedTtsVoice = resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices);
       const payload = {
         text,
         voice:
@@ -2523,7 +2535,7 @@ export default function App() {
             ? edgeVoice
             : !hasSelectableTtsVoice(ttsProvider)
               ? undefined
-              : qwenVoice,
+              : selectedTtsVoice || undefined,
         tts_provider: ttsProvider,
         tts_model: ttsModelSelectable(ttsProvider) ? qwenModel : undefined,
       };
@@ -2534,7 +2546,7 @@ export default function App() {
         notify(`发送失败：${detail}`, "error");
       });
     },
-    [appendAssistantError, edgeVoice, isSpeaking, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
+    [appendAssistantError, bailianVoices, edgeVoice, isSpeaking, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
   );
 
   /** 流式 STT（WebSocket PCM）成功后仅追加本地消息（speak 已由后端入队） */
@@ -2561,7 +2573,9 @@ export default function App() {
       fd.append("file", blob, "speech.webm");
       fd.append(
         "voice",
-        isEdgeTts(ttsProvider) ? edgeVoice : hasSelectableTtsVoice(ttsProvider) ? qwenVoice : "",
+        isEdgeTts(ttsProvider)
+          ? edgeVoice
+          : resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices),
       );
       fd.append("tts_provider", ttsProvider);
       fd.append("stt_provider", activeAsrProvider || normalizeAsrProvider(asrProvider, "dashscope"));
@@ -2591,7 +2605,7 @@ export default function App() {
         }
       }
     },
-    [activeAsrProvider, appendAssistantError, asrProvider, edgeVoice, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
+    [activeAsrProvider, appendAssistantError, asrProvider, bailianVoices, edgeVoice, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
   );
 
   const handleInterrupt = useCallback(() => {

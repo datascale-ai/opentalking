@@ -18,9 +18,11 @@ CosyVoice 可通过两种 provider 接入 OpenTalking：
 ```bash title="终端"
 cd "$OPENTALKING_HOME"
 uv sync --extra dev --extra models --extra local-audio --python 3.11
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models/local-audio}"
 
 python scripts/download_local_audio_models.py \
-  --root ./avatar_models/local-audio \
+  --root "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT" \
   --model fun-cosyvoice3-0.5b-2512
 ```
 
@@ -31,8 +33,12 @@ CosyVoice3 模型目录：
 env HF_ENDPOINT=https://huggingface.co \
   python - <<'PY'
 from huggingface_hub import hf_hub_download
+import os
 repo = "yuekai/Fun-CosyVoice3-0.5B-2512-FP16-ONNX"
-target = "./avatar_models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512"
+target = os.path.join(
+    os.environ["OPENTALKING_LOCAL_AUDIO_MODEL_ROOT"],
+    "FunAudioLLM__Fun-CosyVoice3-0.5B-2512",
+)
 for name in [
     "flow.decoder.estimator.autocast_fp16.onnx",
     "flow.decoder.estimator.streaming.autocast_fp16.onnx",
@@ -54,16 +60,33 @@ TensorRT 环境之间复制；换机器后应从 ONNX 重新构建。
 准备 CosyVoice runtime：
 
 ```bash title="终端"
-mkdir -p ./avatar_models/local-audio/runtime
-git clone https://github.com/FunAudioLLM/CosyVoice.git ./avatar_models/local-audio/runtime/CosyVoice
-cd ./avatar_models/local-audio/runtime/CosyVoice
+cd "$OPENTALKING_HOME"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="${OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR:-$DIGITAL_HUMAN_HOME/model-repos/CosyVoice}"
+mkdir -p "$(dirname "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR")"
+# 可选：GitHub 访问慢时，可临时启用代理前缀。
+# export GITHUB_PROXY_PREFIX=https://gh-proxy.com/
+if [ ! -d "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR/.git" ]; then
+  git clone "${GITHUB_PROXY_PREFIX:-}https://github.com/FunAudioLLM/CosyVoice.git" "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR"
+fi
+cd "$OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR"
+# 可选：submodule 仍然走 GitHub 时，也可以只对当前 runtime repo 设置镜像。
+# git config url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/"
+# git submodule sync --recursive
 git submodule update --init --recursive
+test -d third_party/Matcha-TTS/matcha
 ```
+
+如果最后一行失败，说明 `Matcha-TTS` submodule 没拉完整。重新执行
+`git submodule update --init --recursive`，直到 `third_party/Matcha-TTS/matcha`
+目录存在。
 
 创建 sidecar venv：
 
 ```bash title="终端"
 cd "$OPENTALKING_HOME"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="${OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR:-$DIGITAL_HUMAN_HOME/model-repos/CosyVoice}"
 OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
   bash scripts/prepare_cosyvoice_venv.sh
 ```
@@ -72,11 +95,23 @@ OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
 主 `.venv`：
 
 ```bash title="终端"
-PIP_EXTRA_INDEX_URL=https://pypi.nvidia.com/ \
+cd "$OPENTALKING_HOME"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$(cd "$OPENTALKING_HOME/.." && pwd)}"
+export OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="$DIGITAL_HUMAN_HOME/model-repos/CosyVoice"
+
+export OPENTALKING_COSYVOICE_PIP_RETRIES=20
+export OPENTALKING_COSYVOICE_PIP_RESUME_RETRIES=20
+export OPENTALKING_COSYVOICE_PIP_TIMEOUT=300
+export PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+export PIP_EXTRA_INDEX_URL=https://pypi.nvidia.com/
+
 OPENTALKING_COSYVOICE_INSTALL_TENSORRT=1 \
 OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
   bash scripts/prepare_cosyvoice_venv.sh
 ```
+
+如果网络中途出现 pip SSL 断流，直接重跑上面的命令即可。脚本会复用已有
+`.venv-cosyvoice`，不需要删除 venv。
 
 ## 配置项
 
@@ -86,8 +121,8 @@ OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
 OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
 OPENTALKING_TTS_ENABLED_PROVIDERS=local_cosyvoice,dashscope,edge
 OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL=FunAudioLLM/Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=./avatar_models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=./avatar_models/local-audio/runtime/CosyVoice
+OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=$DIGITAL_HUMAN_HOME/models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=$DIGITAL_HUMAN_HOME/model-repos/CosyVoice
 OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
 OPENTALKING_TTS_LOCAL_COSYVOICE_DEVICE=cuda:0
 OPENTALKING_TTS_LOCAL_COSYVOICE_FP16=auto
@@ -127,17 +162,30 @@ bash scripts/quickstart/start_local_cosyvoice.sh --port 19090
 TensorRT plan，启动时间会比普通模式更久。`start_local_cosyvoice.sh` 会自动把 sidecar
 venv 中的 `site-packages/tensorrt_libs` 加入 `LD_LIBRARY_PATH`。
 
-另开终端启动 OpenTalking：
+确认 CosyVoice sidecar 已启动后，继续启动 OpenTalking + QuickTalk。可以在同一个
+终端执行；如果换到新终端，需先恢复 `OPENTALKING_HOME` 和 `DIGITAL_HUMAN_HOME`
+等部署环境变量。下面是推荐的真实链路启动方式；它会让 OpenTalking 使用本地
+CosyVoice sidecar 作为 TTS，同时用本地 QuickTalk 作为数字人后端：
 
 ```bash title="终端"
-bash scripts/start_unified.sh --backend mock --model mock --api-port 8000 --web-port 5173
+cd "$OPENTALKING_HOME"
+
+export OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
+export OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
+
+export OPENTALKING_TORCH_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/models/quicktalk"
+export OPENTALKING_QUICKTALK_WORKER_CACHE=1
+
+bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5283
 ```
 
 ## 验证命令
 
 ```bash title="终端"
 curl -fsS http://127.0.0.1:19090/health
-curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8210/health
 ```
 
 检查 sidecar 是否按预期启用 FP16 / TRT：
@@ -148,36 +196,28 @@ curl -fsS http://127.0.0.1:19090/health | python3 -m json.tool
 
 健康信息中应看到 `fp16=true`；启用 TRT 时应看到 `load_trt=true`。
 
-创建 `mock` 会话后调用 `/speak`，确认 OpenTalking 能拿到 CosyVoice 音频：
+创建 `quicktalk` 会话后调用 `/speak`，确认 OpenTalking 能拿到 CosyVoice 音频并驱动
+QuickTalk：
 
 ```bash title="终端"
 SID=<session-id>
-curl -s -X POST "http://127.0.0.1:8000/sessions/$SID/speak" \
+curl -s -X POST "http://127.0.0.1:8210/sessions/$SID/speak" \
   -H 'content-type: application/json' \
   -d '{"text":"你好，这是一次 CosyVoice 本地语音测试。"}'
 ```
 
 ## Benchmark 基线
 
-测试直接请求 sidecar `/synthesize`，TTFB 按第一批 PCM 字节到达时间计算。
-3090 基线使用 CosyVoice3 独立 sidecar venv，已加载 `FP16 + LOAD_TRT=1`
-和 autocast fp16 TensorRT plan。4090 数据在同一套 OpenTalking sidecar 上测得，
-streaming 参数为 `TOKEN_HOP_LEN=8`、`TOKEN_MAX_HOP_LEN=16`、`STREAM_SCALE_FACTOR=1`。
+测试环境为 NVIDIA RTX 3090 Linux 服务器、CosyVoice3 独立 sidecar venv，已加载
+`FP16 + LOAD_TRT=1` 和 autocast fp16 TensorRT plan。测试直接请求 sidecar
+`/synthesize`，TTFB 按第一批 PCM 字节到达时间计算。
 
-| 设备 | 模式 | 文本长度 | TTFB | 总耗时 | 音频时长 | RTF |
-|---|---|---:|---:|---:|---:|---:|
-| RTX 3090 | FP16 + TRT autocast | 43 字 | 0.683 s | 6.215 s | 7.200 s | 0.863 |
-| RTX 3090 | FP16 + TRT autocast | 42 字 | 0.642 s | 5.858 s | 6.960 s | 0.842 |
-| RTX 3090 | FP16 + TRT autocast | 29 字 | 0.639 s | 5.771 s | 6.520 s | 0.885 |
-| RTX 3090 | **平均** | **-** | **0.655 s** | **5.948 s** | **6.893 s** | **0.863** |
-| RTX 4090 | FP16 CUDA | 39 字 | 1.316 s | 11.662 s | 6.800 s | 1.715 |
-| RTX 4090 | FP16 CUDA | 38 字 | 0.895 s | 11.199 s | 7.120 s | 1.573 |
-| RTX 4090 | FP16 CUDA | 21 字 | 1.110 s | 9.493 s | 5.640 s | 1.683 |
-| RTX 4090 | **FP16 CUDA 平均** | **-** | **1.107 s** | **10.785 s** | **6.520 s** | **1.657** |
-| RTX 4090 | FP16 + TRT autocast | 39 字 | 0.772 s | 7.507 s | 6.800 s | 1.104 |
-| RTX 4090 | FP16 + TRT autocast | 38 字 | 0.560 s | 5.613 s | 7.120 s | 0.788 |
-| RTX 4090 | FP16 + TRT autocast | 21 字 | 0.507 s | 4.435 s | 5.640 s | 0.786 |
-| RTX 4090 | **FP16 + TRT autocast 平均** | **-** | **0.613 s** | **5.852 s** | **6.520 s** | **0.893** |
+| 文本长度 | TTFB | 总耗时 | 音频时长 | RTF |
+|---:|---:|---:|---:|---:|
+| 43 字 | 0.683 s | 6.215 s | 7.200 s | 0.863 |
+| 42 字 | 0.642 s | 5.858 s | 6.960 s | 0.842 |
+| 29 字 | 0.639 s | 5.771 s | 6.520 s | 0.885 |
+| **平均** | **0.655 s** | **5.948 s** | **6.893 s** | **0.863** |
 
 该基线只覆盖 TTS sidecar，不包含 STT、LLM、QuickTalk、WebRTC 或浏览器播放耗时。
 

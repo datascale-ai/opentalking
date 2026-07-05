@@ -27,6 +27,7 @@ FasterLivePortrait 当前也走 OmniRT `audio2video` 兼容路径。OpenTalking 
 需要两个目录：FasterLivePortrait 源码 checkout，以及真实 checkpoint 目录。不要用软链接时，直接复制或下载到模型根目录即可。
 
 ```bash title="终端"
+mkdir -p "$(dirname "$FASTERLIVEPORTRAIT_HOME")"
 if [ ! -d "$FASTERLIVEPORTRAIT_HOME/.git" ]; then
   git clone https://github.com/KlingAIResearch/LivePortrait.git "$FASTERLIVEPORTRAIT_HOME"
 fi

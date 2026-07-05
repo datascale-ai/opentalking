@@ -4,6 +4,7 @@ import argparse
 import io
 import importlib
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -143,10 +144,82 @@ class LocalIndexTTSService:
         return self._engine
 
     def _patch_local_runtime_assets(self, module: Any) -> None:
+        self._patch_index_tts_model_download()
         self._patch_w2v_bert_runtime(module)
         self._patch_hf_hub_download(module)
         self._patch_bigvgan_runtime()
         self._patch_torchaudio_save(module)
+
+    def _patch_index_tts_model_download(self) -> None:
+        try:
+            model_download = importlib.import_module("indextts.utils.model_download")
+        except ImportError:
+            return
+        original = getattr(model_download, "ensure_models_available", None)
+
+        def ensure_models_available(model_dir: str, bigvgan_repo: str | None = None) -> dict[str, str]:
+            cache_dir = Path(model_dir or self.model_dir).expanduser() / "hf_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            w2v_dir = self._existing_dir(self.w2v_bert_dir, "preprocessor_config.json")
+            maskgct_file = self._existing_file(self.maskgct_dir, "semantic_codec/model.safetensors")
+            campplus_file = self._existing_file(self.campplus_dir, "campplus_cn_common.bin")
+            bigvgan_dir = self._existing_dir(self.bigvgan_dir, "config.json")
+            if bigvgan_dir is not None and not (bigvgan_dir / "bigvgan_generator.pt").is_file():
+                bigvgan_dir = None
+
+            if all((w2v_dir, maskgct_file, campplus_file, bigvgan_dir)):
+                cached_w2v_dir = cache_dir / "w2v-bert-2.0"
+                cached_semantic_file = cache_dir / "semantic_codec_model.safetensors"
+                cached_semantic_nested = cache_dir / "semantic_codec" / "model.safetensors"
+                cached_campplus_file = cache_dir / "campplus_cn_common.bin"
+                cached_bigvgan_dir = cache_dir / "bigvgan"
+
+                self._mirror_dir(w2v_dir, cached_w2v_dir)
+                self._mirror_file(maskgct_file, cached_semantic_file)
+                self._mirror_file(maskgct_file, cached_semantic_nested)
+                self._mirror_file(campplus_file, cached_campplus_file)
+                self._mirror_dir(bigvgan_dir, cached_bigvgan_dir)
+                print(
+                    "using local IndexTTS auxiliary assets "
+                    f"w2v={w2v_dir} maskgct={maskgct_file} "
+                    f"campplus={campplus_file} bigvgan={bigvgan_dir}",
+                    flush=True,
+                )
+                return {
+                    "w2v_bert": str(cached_w2v_dir),
+                    "semantic_codec": str(cached_semantic_file),
+                    "campplus": str(cached_campplus_file),
+                    "bigvgan": str(cached_bigvgan_dir),
+                }
+
+            if callable(original):
+                if bigvgan_repo is None:
+                    return original(model_dir)
+                return original(model_dir, bigvgan_repo=bigvgan_repo)
+            return {}
+
+        model_download.ensure_models_available = ensure_models_available
+
+    @staticmethod
+    def _mirror_dir(source: Path, target: Path) -> None:
+        if target.exists():
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.symlink_to(source, target_is_directory=True)
+        except Exception:
+            shutil.copytree(source, target, dirs_exist_ok=True)
+
+    @staticmethod
+    def _mirror_file(source: Path, target: Path) -> None:
+        if target.exists():
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.symlink_to(source)
+        except Exception:
+            shutil.copy2(source, target)
 
     def _patch_w2v_bert_runtime(self, module: Any) -> None:
         local_dir = self._existing_dir(self.w2v_bert_dir, "preprocessor_config.json")
@@ -373,7 +446,16 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _local_audio_root() -> Path:
-    return Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio")).expanduser()
+    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    raw = os.environ.get("OPENTALKING_MODEL_ROOT", "").strip()
+    if raw:
+        return (Path(raw).expanduser() / "local-audio")
+    raw = os.environ.get("DIGITAL_HUMAN_HOME", "").strip()
+    if raw:
+        return Path(raw).expanduser() / "models" / "local-audio"
+    return Path("./models/local-audio").expanduser()
 
 
 def _existing_dir(value: str, required_file: str) -> Path | None:

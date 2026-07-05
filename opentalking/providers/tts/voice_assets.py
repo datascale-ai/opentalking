@@ -1,10 +1,29 @@
 from __future__ import annotations
 
+import importlib.util
 import json
-import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
+
+
+def _load_model_paths_module() -> Any:
+    module_name = "_opentalking_core_model_paths_standalone"
+    module = sys.modules.get(module_name)
+    if module is not None:
+        return module
+    module_path = Path(__file__).resolve().parents[2] / "core" / "model_paths.py"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load model path helpers from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+resolve_local_audio_model_root = _load_model_paths_module().local_audio_model_root
 
 
 INDEXTTS_PROVIDER = "indextts"
@@ -27,14 +46,14 @@ class VoiceAsset:
 
 
 def local_audio_model_root() -> Path:
-    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
+    configured = ""
     try:
         from opentalking.core.config import get_settings
 
-        raw = raw or (get_settings().local_audio_model_root or "").strip()
+        configured = (get_settings().local_audio_model_root or "").strip()
     except Exception:
         pass
-    return Path(raw or "./models/local-audio").expanduser().resolve()
+    return resolve_local_audio_model_root(configured).resolve()
 
 
 def bundled_system_voice_root() -> Path:

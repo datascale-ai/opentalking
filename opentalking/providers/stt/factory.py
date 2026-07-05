@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from opentalking.core.model_paths import local_audio_model_root
+
 STT_PROVIDERS = frozenset({"dashscope", "openai_compatible", "xiaomi_mimo", "funasr", "sensevoice", "sherpa_onnx"})
 LOCAL_STT_PROVIDERS = frozenset({"funasr", "sensevoice", "sherpa_onnx"})
 _SENSEVOICE_TAG_RE = re.compile(r"<\|[^|<>]+\|>")
@@ -67,12 +69,7 @@ def _provider() -> str:
 
 
 def _model_root() -> Path:
-    raw = (
-        os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
-        or _settings_value("local_audio_model_root", "")
-        or "./models/local-audio"
-    )
-    return Path(raw).expanduser()
+    return local_audio_model_root(_settings_value("local_audio_model_root", ""))
 
 
 def _device() -> str:

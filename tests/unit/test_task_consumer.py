@@ -318,6 +318,49 @@ def test_create_runner_uses_model_specific_device_for_local_quicktalk(
     assert captured["audio2video_client"].device == "cuda:3"
 
 
+def test_create_runner_does_not_pass_disabled_memory_scope_to_local_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeFlashTalkRunner:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    class FakeLocalAudio2VideoClient:
+        def __init__(self, adapter: object, *, device: str) -> None:
+            self.adapter = adapter
+            self.device = device
+
+    monkeypatch.setattr("opentalking.runtime.task_consumer.FlashTalkRunner", FakeFlashTalkRunner)
+    monkeypatch.setattr("opentalking.runtime.task_consumer.LocalAudio2VideoClient", FakeLocalAudio2VideoClient)
+    monkeypatch.setattr("opentalking.runtime.task_consumer.get_adapter", lambda model: object())
+    monkeypatch.setattr(
+        task_consumer,
+        "resolve_model_backend",
+        lambda *_args, **_kwargs: type("Backend", (), {"backend": "local"})(),
+    )
+
+    runner = task_consumer._create_runner(
+        {
+            "session_id": "sess_quicktalk_no_memory",
+            "avatar_id": "anime-handsome-guy",
+            "model": "quicktalk",
+            "agent_enabled": True,
+            "memory_enabled": False,
+            "memory_profile_id": "default",
+            "character_id": "anime-handsome-guy",
+            "knowledge_enabled": True,
+        },
+        InMemoryRedis(),
+        Path("examples/avatars"),
+        "cpu",
+    )
+
+    assert isinstance(runner, FakeFlashTalkRunner)
+    assert captured["memory_scope"] is None
+
+
 def test_create_runner_wraps_omnirt_ws_client_in_audio2video_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

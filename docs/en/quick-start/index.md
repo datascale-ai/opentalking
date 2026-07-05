@@ -147,11 +147,13 @@ source .venv/bin/activate
 
 ### 3. Prepare QuickTalk Weights
 
-Place local QuickTalk weights and dependencies under repository-root `models/quicktalk/`.
+Place local QuickTalk weights and dependencies under deployment-root `models/quicktalk/`.
 
 ```bash
 cd "$DIGITAL_HUMAN_HOME/opentalking"
-mkdir -p models/quicktalk/checkpoints
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
+mkdir -p "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 
 uv pip install -U "huggingface_hub[cli]"
 
@@ -159,27 +161,12 @@ uv pip install -U "huggingface_hub[cli]"
 export HF_ENDPOINT=https://hf-mirror.com
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints
+  --local-dir "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 ```
 
-QuickTalk weights and HuBERT files are included in `datascale-ai/quicktalk`. QuickTalk still needs InsightFace `buffalo_l` prepared separately:
-
-```bash
-# Download and unpack InsightFace buffalo_l into the QuickTalk auxiliary directory.
-mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
-curl -L \
-  -o /tmp/opentalking-insightface/buffalo_l.zip \
-  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
-unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
-  -d /tmp/opentalking-insightface
-rsync -a /tmp/opentalking-insightface/buffalo_l/ \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
-```
+QuickTalk weights, HuBERT files, and InsightFace `buffalo_l` are included in
+`datascale-ai/quicktalk`. After downloading, `$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints/auxiliary/models/buffalo_l/`
+should exist.
 
 Recommended SHA256 checks:
 
@@ -194,16 +181,16 @@ chinese-hubert-large/pytorch_model.bin: 9cf43abec3f0410ad6854afa4d376c69ccb364b4
 Check key files:
 
 ```bash
-stat models/quicktalk/checkpoints/quicktalk.pth
-stat models/quicktalk/checkpoints/repair.npy
-stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
-stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/quicktalk.pth"
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/repair.npy"
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/chinese-hubert-large/pytorch_model.bin"
+stat "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx"
 ```
 
 The directory layout should look like:
 
 ```text
-models/
+$DIGITAL_HUMAN_HOME/models/
   quicktalk/
     checkpoints/
       quicktalk.pth
@@ -230,7 +217,8 @@ You can start with the built-in QuickTalk example avatar. Later, if you want to 
 
 ```bash
 export OPENTALKING_TORCH_DEVICE=cuda:0
-export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
 export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
 cd "$DIGITAL_HUMAN_HOME/opentalking"
@@ -252,6 +240,16 @@ The first startup may build face cache and worker state, so it can take longer t
 ### 6. Select QuickTalk in WebUI
 
 After opening WebUI, select a `QuickTalk` avatar and the `quicktalk` model, then start a session. If the video frame is generated along with audio, the local QuickTalk rendering path is available.
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and model processes started by `scripts/start_unified.sh`
+or the quickstart helpers:
+
+```bash
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```
 
 ## Next Steps
 

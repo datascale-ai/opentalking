@@ -6,6 +6,7 @@ repo_name: datascale-ai/opentalking
 edit_uri: edit/main/docs/
 
 exclude_docs: |
+  superpowers/
   requirements.txt
   */design/architecture-review.md
   */design/realtime-digital-human-research.md
@@ -235,10 +236,8 @@ nav:
       - Examples:
           - Examples Overview: examples/index.md
           - Emotional Companion: examples/companion.md
-          - AI Customer Support: examples/customer-support.md
           - Product Demo and Live Sales: examples/product-demo-live-sales.md
           - Course and News Presenter: examples/course-news-presenter.md
-          - Private Digital Human Assistant: examples/private-assistant.md
           - WeChat Memory Import: examples/Wechat_import.md
           - Huangshan Digital Human Guide: examples/huangshan-digital-human-guide.md
       - Model Support:
@@ -326,10 +325,8 @@ nav:
   - Examples:
       - Examples Overview: examples/index.md
       - Emotional Companion: examples/companion.md
-      - AI Customer Support: examples/customer-support.md
       - Product Demo and Live Sales: examples/product-demo-live-sales.md
       - Course and News Presenter: examples/course-news-presenter.md
-      - Private Digital Human Assistant: examples/private-assistant.md
       - WeChat Memory Import: examples/Wechat_import.md
       - Huangshan Digital Human Guide: examples/huangshan-digital-human-guide.md
   - Model Support:

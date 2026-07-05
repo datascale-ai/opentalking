@@ -24,7 +24,7 @@ WebRTC track 以及底层流水线的生命周期状态。
 |------|------|------|------|
 | `avatar_id` | string | 是 | 来自 `GET /avatars` 的 avatar 标识符。 |
 | `model` | string | 是 | 合成模型，须在 `GET /models` 中 `connected=true`。 |
-| `tts_provider` | string \| null | 否 | 仅此会话覆盖 `OPENTALKING_TTS_DEFAULT_PROVIDER`。常用值：`edge`、`dashscope`、`local_cosyvoice`、`indextts`、`cosyvoice`、`elevenlabs`、`openai_compatible`、`xiaomi_mimo`。 |
+| `tts_provider` | string \| null | 否 | 仅此会话覆盖 `OPENTALKING_TTS_DEFAULT_PROVIDER`。可选值：`edge`、`dashscope`、`cosyvoice`、`elevenlabs`。 |
 | `tts_voice` | string \| null | 否 | 覆盖默认音色，格式取决于 provider。 |
 | `llm_system_prompt` | string \| null | 否 | 仅此会话覆盖 `OPENTALKING_LLM_SYSTEM_PROMPT`。 |
 | `wav2lip_postprocess_mode` | string \| null | 否 | wav2lip 专属后处理开关，所选 Wav2Lip backend 支持时转发。 |
@@ -129,7 +129,7 @@ curl -s -X POST http://localhost:8000/sessions \
 |------|------|------|------|
 | `text` | string | 是 | 待合成文本。 |
 | `voice` | string \| null | 否 | 音色覆盖。Edge：`zh-CN-*Neural` 短名；DashScope：控制台中的音色名；ElevenLabs：`voice_id`。 |
-| `tts_provider` | string \| null | 否 | `edge`、`dashscope`、`local_cosyvoice`、`indextts`、`cosyvoice`、`elevenlabs`、`openai_compatible`、`xiaomi_mimo`、`qwen_tts`、`sambert` 之一。 |
+| `tts_provider` | string \| null | 否 | `edge`、`dashscope`、`cosyvoice`、`elevenlabs`、`qwen_tts`、`sambert` 之一。 |
 | `tts_model` | string \| null | 否 | provider 专属模型。例：`qwen3-tts-flash-realtime`、`cosyvoice-v3-flash`、`eleven_flash_v2_5`。 |
 
 **响应 — `200 OK`** —— 响应体为空。流水线输出经 SSE 与 WebRTC 推送。

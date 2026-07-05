@@ -27,6 +27,7 @@ This path is intended for single-GPU realtime avatars. The default live profile 
 You need a FasterLivePortrait source checkout and a real checkpoint directory. If you do not want symlinks, copy or download the files directly into the model root.
 
 ```bash title="terminal"
+mkdir -p "$(dirname "$FASTERLIVEPORTRAIT_HOME")"
 if [ ! -d "$FASTERLIVEPORTRAIT_HOME/.git" ]; then
   git clone https://github.com/KlingAIResearch/LivePortrait.git "$FASTERLIVEPORTRAIT_HOME"
 fi

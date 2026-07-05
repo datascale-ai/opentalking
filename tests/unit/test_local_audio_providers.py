@@ -56,10 +56,13 @@ def test_local_tts_providers_are_supported(provider: str, expected_cls: str, mon
     assert adapter.model == "test-model"
 
 
-def test_local_f5_tts_status_uses_local_model_root(monkeypatch):
+def test_local_f5_tts_status_uses_local_model_root(monkeypatch, tmp_path):
     from opentalking.providers.tts.factory import tts_provider_config
 
-    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "/tmp/opentalking-local-audio")
+    local_audio_root = tmp_path / "local-audio"
+    model_repo_root = tmp_path / "model-repos"
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(local_audio_root))
+    monkeypatch.setenv("OPENTALKING_MODEL_REPO_ROOT", str(model_repo_root))
     monkeypatch.setenv("OPENTALKING_TTS_LOCAL_F5_TTS_SERVICE_URL", "http://127.0.0.1:19095/synthesize")
     monkeypatch.setattr(
         "opentalking.providers.tts.factory._settings_value",
@@ -81,23 +84,26 @@ def test_local_f5_tts_status_uses_local_model_root(monkeypatch):
     assert status == {
         "provider": "local_f5_tts",
         "model": "SWivid/F5-TTS/F5TTS_v1_Base",
-        "model_dir": "/tmp/opentalking-local-audio/SWivid__F5-TTS__F5TTS_v1_Base",
+        "model_dir": str(local_audio_root / "SWivid__F5-TTS__F5TTS_v1_Base"),
         "voice": "local-default",
         "device": "auto",
         "key_set": False,
         "service_url": "http://127.0.0.1:19095/synthesize",
         "service_url_set": True,
-        "runtime_dir": "/tmp/opentalking-local-audio/runtime/F5-TTS",
-        "ckpt_file": "/tmp/opentalking-local-audio/SWivid__F5-TTS__F5TTS_v1_Base/model_1250000.safetensors",
+        "runtime_dir": str(model_repo_root / "F5-TTS"),
+        "ckpt_file": str(
+            local_audio_root / "SWivid__F5-TTS__F5TTS_v1_Base" / "model_1250000.safetensors"
+        ),
         "vocoder_local_path": "",
         "prompt_audio_set": False,
     }
 
 
-def test_local_indextts_status_uses_local_model_root(monkeypatch):
+def test_local_indextts_status_uses_local_model_root(monkeypatch, tmp_path):
     from opentalking.providers.tts.factory import tts_provider_config
 
-    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "/tmp/opentalking-local-audio")
+    local_audio_root = tmp_path / "local-audio"
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(local_audio_root))
     monkeypatch.setenv("OPENTALKING_TTS_LOCAL_INDEXTTS_SERVICE_URL", "http://127.0.0.1:19092/synthesize")
     monkeypatch.setattr(
         "opentalking.providers.tts.factory._settings_value",
@@ -118,18 +124,18 @@ def test_local_indextts_status_uses_local_model_root(monkeypatch):
     assert status == {
         "provider": "local_indextts",
         "model": "IndexTeam/IndexTTS-2",
-        "model_dir": "/tmp/opentalking-local-audio/IndexTeam__IndexTTS-2",
+        "model_dir": str(local_audio_root / "IndexTeam__IndexTTS-2"),
         "voice": "local-default",
         "device": "auto",
         "key_set": False,
         "service_url": "http://127.0.0.1:19092/synthesize",
         "service_url_set": True,
-        "cfg_path": "/tmp/opentalking-local-audio/IndexTeam__IndexTTS-2/config.yaml",
+        "cfg_path": str(local_audio_root / "IndexTeam__IndexTTS-2" / "config.yaml"),
         "prompt_audio_set": False,
-        "w2v_bert_dir": "/tmp/opentalking-local-audio/facebook__w2v-bert-2.0",
-        "maskgct_dir": "/tmp/opentalking-local-audio/amphion__MaskGCT",
-        "campplus_dir": "/tmp/opentalking-local-audio/funasr__campplus",
-        "bigvgan_dir": "/tmp/opentalking-local-audio/nvidia__bigvgan_v2_22khz_80band_256x",
+        "w2v_bert_dir": str(local_audio_root / "facebook__w2v-bert-2.0"),
+        "maskgct_dir": str(local_audio_root / "amphion__MaskGCT"),
+        "campplus_dir": str(local_audio_root / "funasr__campplus"),
+        "bigvgan_dir": str(local_audio_root / "nvidia__bigvgan_v2_22khz_80band_256x"),
     }
 
 def test_indextts_public_provider_routes_to_configured_backend(monkeypatch):
@@ -1083,6 +1089,8 @@ def test_local_tts_adapters_read_settings_when_env_is_absent(monkeypatch):
         "OPENTALKING_LOCAL_TTS_DEVICE",
         "OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL",
         "OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL",
+        "OPENTALKING_TTS_LOCAL_QWEN3_TTS_MODEL",
+        "OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL",
         "OPENTALKING_LOCAL_QWEN3_TTS_MODEL",
         "OPENTALKING_LOCAL_QWEN3_TTS_SERVICE_URL",
     ]:
@@ -1108,6 +1116,24 @@ def test_local_tts_adapters_read_settings_when_env_is_absent(monkeypatch):
     assert cosy.device == "cpu"
     assert qwen3.model == "settings/Qwen3-TTS"
     assert qwen3.service_url == "http://127.0.0.1:19091/qwen3"
+
+
+def test_local_qwen3_provider_env_reaches_adapter(monkeypatch):
+    monkeypatch.setenv("OPENTALKING_TTS_LOCAL_QWEN3_TTS_MODEL", "provider/Qwen3")
+    monkeypatch.setenv(
+        "OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL",
+        "http://127.0.0.1:19091/synthesize",
+    )
+
+    adapter = create_tts_adapter(
+        sample_rate=16000,
+        chunk_ms=20.0,
+        default_voice="local-voice",
+        tts_provider="local_qwen3_tts",
+    )
+
+    assert adapter.model == "provider/Qwen3"
+    assert adapter.service_url == "http://127.0.0.1:19091/synthesize"
 
 
 def test_tts_local_cosyvoice_service_url_map_routes_by_model(monkeypatch):
@@ -1306,6 +1332,7 @@ def test_stt_device_prefers_local_audio_env_over_default_settings(monkeypatch):
 
 def test_download_script_default_models_use_verified_12g_set(monkeypatch):
     monkeypatch.delenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", raising=False)
+    monkeypatch.setenv("OPENTALKING_MODEL_ROOT", "/opt/digital-human/models")
     from scripts import download_local_audio_models as downloader
 
     downloader = importlib.reload(downloader)
@@ -1320,7 +1347,7 @@ def test_download_script_default_models_use_verified_12g_set(monkeypatch):
         "indextts2-campplus",
         "indextts2-bigvgan",
     }.issubset(downloader.MODELS)
-    assert downloader.DEFAULT_ROOT == Path("./models/local-audio")
+    assert downloader.DEFAULT_ROOT == Path("/opt/digital-human/models/local-audio")
     assert "/data2" not in Path("scripts/download_local_audio_models.py").read_text(encoding="utf-8")
 
 

@@ -62,3 +62,12 @@ curl -s http://127.0.0.1:8210/models | jq '.statuses[] | select(.id=="wav2lip")'
 | 显存不足 | 降低 `OPENTALKING_WAV2LIP_BATCH_SIZE` 或 `OPENTALKING_WAV2LIP_MAX_LONG_EDGE`。 |
 | 首帧慢 | 设置 `OPENTALKING_PREWARM_AVATARS=singer` 预热常用 avatar。 |
 | 画质增强报错 | `easy_enhanced` 需要 GFPGAN，并配置 `OPENTALKING_WAV2LIP_GFPGAN_CHECKPOINT`。 |
+
+## 关闭服务
+
+停止由 `scripts/start_unified.sh` 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和本地模型进程：
+
+```bash title="终端"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

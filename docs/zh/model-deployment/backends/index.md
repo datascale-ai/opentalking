@@ -12,12 +12,19 @@ OpenTalking 把会话编排、LLM、STT、TTS、Avatar 管理和 WebRTC 留在 O
 ## 推荐工作目录
 
 ```bash title="终端"
-export DIGITAL_HUMAN_HOME="$HOME/digital-human"
+# 改成你自己的部署根目录
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
-export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
-export OMNIRT_HOME="$OMNIRT_REPO/.omnirt"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OMNIRT_REPO="$OPENTALKING_MODEL_REPO_ROOT/omnirt"
+export OMNIRT_HOME="$DIGITAL_HUMAN_HOME"
 export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 
 mkdir -p "$DIGITAL_HUMAN_HOME" "$OPENTALKING_MODEL_ROOT" "$DIGITAL_HUMAN_HOME/logs" "$DIGITAL_HUMAN_HOME/run"
 ```

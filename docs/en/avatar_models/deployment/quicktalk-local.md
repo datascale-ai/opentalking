@@ -11,35 +11,35 @@ Local mode loads the QuickTalk adapter inside the OpenTalking process. Use it fo
 
 ## Weight Preparation
 
-Place weights under repository-root `models/quicktalk/`. Set `HF_ENDPOINT` when Hugging Face access is slow.
+Place weights under deployment-root `models/quicktalk/`. Set `HF_ENDPOINT` when Hugging Face access is slow.
 
 ```bash title="Terminal"
 cd "$DIGITAL_HUMAN_HOME/opentalking"
-mkdir -p models/quicktalk/checkpoints
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
+mkdir -p "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 
 uv pip install -U "huggingface_hub[cli]"
 export HF_ENDPOINT="${HF_ENDPOINT:-https://hf-mirror.com}"
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints
+  --local-dir "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 ```
 
-Prepare InsightFace `buffalo_l` separately:
+`datascale-ai/quicktalk` now includes QuickTalk, HuBERT, and InsightFace `buffalo_l`.
+Use the manual fallback below only when an older mirror or offline bundle is missing
+`auxiliary/models/buffalo_l/`:
 
 ```bash title="Terminal"
-mkdir -p /tmp/opentalking-insightface models/quicktalk/checkpoints/auxiliary/models
+TMP_DIR="$OPENTALKING_QUICKTALK_ASSET_ROOT/_tmp/insightface"
+mkdir -p "$TMP_DIR" "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models"
 curl -L \
-  -o /tmp/opentalking-insightface/buffalo_l.zip \
+  -o "$TMP_DIR/buffalo_l.zip" \
   https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
-unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
-  -d /tmp/opentalking-insightface
-rsync -a /tmp/opentalking-insightface/buffalo_l/ \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
+unzip -q -o "$TMP_DIR/buffalo_l.zip" \
+  -d "$TMP_DIR"
+rsync -a "$TMP_DIR/buffalo_l/" \
+  "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/"
 ```
 
 ## Start Command
@@ -49,7 +49,8 @@ cd "$DIGITAL_HUMAN_HOME/opentalking"
 uv sync --extra dev --extra models --extra quicktalk-cuda --python 3.11
 
 export OPENTALKING_TORCH_DEVICE=cuda:0
-export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/opentalking/models/quicktalk"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
 export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
 bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5280
@@ -82,7 +83,17 @@ opentalking-prepare-cache \
 
 | Symptom | Action |
 |---------|--------|
-| `connected=false` | Check `OPENTALKING_QUICKTALK_ASSET_ROOT`, the CUDA device, and `models/quicktalk/checkpoints`. |
+| `connected=false` | Check `OPENTALKING_QUICKTALK_ASSET_ROOT`, the CUDA device, and `$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints`. |
 | Long first turn | Enable `OPENTALKING_QUICKTALK_WORKER_CACHE=1` or run `opentalking-prepare-cache` in advance. |
 | Avatar load failure | Check that the avatar is readable; if a fixed template video is configured, confirm that path is reachable. |
 | Hugging Face download fails | Configure `HF_ENDPOINT`, or download offline and sync into the same directory. |
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and local model processes started by
+`scripts/start_unified.sh` or the quickstart helpers:
+
+```bash title="Terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

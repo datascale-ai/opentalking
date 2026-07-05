@@ -5,6 +5,14 @@
 ## 基本流程
 
 ```bash title="终端"
+# 改成你自己的部署根目录
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+
 cd "$OPENTALKING_HOME"
 uv sync --extra dev --extra models --python 3.11
 source .venv/bin/activate

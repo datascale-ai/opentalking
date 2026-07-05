@@ -66,3 +66,13 @@ Expect `backend=local` and `connected=true`.
 | Preprocessing fails | Check `OPENTALKING_MUSETALK_REPO`, `dwpose`, and `face-parse-bisenet`. |
 | First session is slow | Preprocessing and VAE loading are expected; pre-generate `prepared/` for common avatars. |
 | Avatar asset unavailable | Check that the avatar is uploaded, readable, and the session configuration is complete. |
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and local model processes started by
+`scripts/start_unified.sh` or the quickstart helpers:
+
+```bash title="Terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

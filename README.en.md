@@ -206,8 +206,10 @@ After Mock mode works, choose a real model path based on your machine. Weight do
 
 ```bash
 # Local QuickTalk: consumer-GPU single-machine path
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$HOME/digital-human}"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
 export OPENTALKING_TORCH_DEVICE=cuda:0
-export OPENTALKING_QUICKTALK_ASSET_ROOT="$PWD/models/quicktalk"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$OPENTALKING_MODEL_ROOT/quicktalk"
 export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5280
 

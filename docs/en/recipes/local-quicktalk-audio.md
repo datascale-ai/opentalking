@@ -53,19 +53,22 @@ models/local-audio/
 Place QuickTalk weights, HuBERT files, and InsightFace dependencies as described in [QuickTalk Local Deployment](../avatar_models/deployment/quicktalk-local.md):
 
 ```text
-models/quicktalk/checkpoints/
+$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints/
 ```
 
 The key setting is `OPENTALKING_QUICKTALK_ASSET_ROOT`, which must point to the directory containing `checkpoints/`.
 
 ## Prepare the CosyVoice Runtime
 
-The recommended `local_cosyvoice` shape is a standalone Python service. Runtime source should stay outside git-tracked files; placing it under the model directory is fine:
+The recommended `local_cosyvoice` shape is a standalone Python service. Runtime source should stay outside git-tracked files; place it under the deployment root's `model-repos/` directory:
 
 ```bash title="terminal"
-mkdir -p ./avatar_models/local-audio/runtime
-git clone https://github.com/FunAudioLLM/CosyVoice.git ./avatar_models/local-audio/runtime/CosyVoice
-cd ./avatar_models/local-audio/runtime/CosyVoice
+cd "$DIGITAL_HUMAN_HOME"
+mkdir -p model-repos
+if [ ! -d model-repos/CosyVoice/.git ]; then
+  git clone https://github.com/FunAudioLLM/CosyVoice.git model-repos/CosyVoice
+fi
+cd model-repos/CosyVoice
 git submodule update --init --recursive
 ```
 
@@ -73,6 +76,7 @@ Create the dedicated CosyVoice sidecar venv after the runtime checkout is ready:
 
 ```bash title="terminal"
 cd "$DIGITAL_HUMAN_HOME/opentalking"
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="$DIGITAL_HUMAN_HOME/model-repos/CosyVoice" \
 OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
   bash scripts/prepare_cosyvoice_venv.sh
 ```
@@ -101,8 +105,8 @@ OPENTALKING_STT_SENSEVOICE_DEVICE=cpu
 OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
 OPENTALKING_TTS_ENABLED_PROVIDERS=local_cosyvoice,dashscope,edge
 OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL=FunAudioLLM/Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=./avatar_models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=./avatar_models/local-audio/runtime/CosyVoice
+OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=$DIGITAL_HUMAN_HOME/models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=$DIGITAL_HUMAN_HOME/model-repos/CosyVoice
 OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
 OPENTALKING_TTS_LOCAL_COSYVOICE_DEVICE=cuda:0
 OPENTALKING_COSYVOICE_VENV_DIR=./.venv-cosyvoice
@@ -110,7 +114,7 @@ OPENTALKING_COSYVOICE_VENV_DIR=./.venv-cosyvoice
 # Video: QuickTalk local
 OPENTALKING_DEFAULT_MODEL=quicktalk
 OPENTALKING_QUICKTALK_BACKEND=local
-OPENTALKING_QUICKTALK_ASSET_ROOT=./avatar_models/quicktalk
+OPENTALKING_QUICKTALK_ASSET_ROOT=$DIGITAL_HUMAN_HOME/models/quicktalk
 OPENTALKING_QUICKTALK_WORKER_CACHE=1
 OPENTALKING_TORCH_DEVICE=cuda:0
 ```

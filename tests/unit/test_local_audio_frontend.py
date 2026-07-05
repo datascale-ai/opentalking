@@ -96,13 +96,14 @@ def test_realtime_indextts_clone_voice_and_model_are_sent_to_session_and_speak()
     create_block = app[create_start:app.index("wav2lip_postprocess_mode", create_start)]
     assert "tts_provider: ttsProvider" in create_block
     assert "tts_voice: isEdgeTts(ttsProvider)" in create_block
-    assert "qwenVoice" in create_block
+    assert "selectedTtsVoice" in create_block
+    assert "resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices)" in app
     assert "tts_model: ttsModelSelectable(ttsProvider) ? qwenModel : undefined" in create_block
 
     speak_start = app.index("const payload = {")
     speak_block = app[speak_start:app.index("void apiPost(`/sessions/${sessionId}/${endpoint}`", speak_start)]
     assert "voice:" in speak_block
-    assert "qwenVoice" in speak_block
+    assert "selectedTtsVoice" in speak_block
     assert "tts_model: ttsModelSelectable(ttsProvider) ? qwenModel : undefined" in speak_block
 
     stream_start = chat_input.index("ws.send(")
@@ -780,14 +781,12 @@ def test_indextts_local_deployment_docs_start_sidecar_from_opentalking_root():
 
     for doc in (zh, en):
         assert "cd \"$OPENTALKING_HOME\"" in doc
-        assert (
-            "./models/local-audio/runtime/index-tts/.venv/bin/python "
-            "scripts/local_indextts_service.py --host 127.0.0.1 --port 19092"
-        ) in doc
-        assert "cd ./models/local-audio/runtime/index-tts" in doc
-        start_pos = doc.index("scripts/local_indextts_service.py --host 127.0.0.1 --port 19092")
-        runtime_cd_pos = doc.index("cd ./models/local-audio/runtime/index-tts")
-        assert runtime_cd_pos < start_pos
+        assert "bash scripts/quickstart/start_local_indextts.sh --port 19092 --device cuda:0" in doc
+        assert "git clone \"${GITHUB_PROXY_PREFIX:-}https://github.com/index-tts/index-tts.git\" \"$OPENTALKING_MODEL_REPO_ROOT/index-tts\"" in doc
+        assert "\"$OPENTALKING_RUNTIME_ROOT/index-tts/venv/bin/python\" -m pip install -e ." in doc
+        start_pos = doc.index("scripts/quickstart/start_local_indextts.sh --port 19092 --device cuda:0")
+        install_pos = doc.index("-m pip install -e .")
+        assert install_pos < start_pos
 
 
 def test_local_audio_docs_use_public_runtime_status_route():
@@ -804,11 +803,9 @@ def test_indextts_local_deployment_docs_include_api_start_and_status_check():
     en = Path("docs/en/speech_models/tts/indextts.md").read_text(encoding="utf-8")
 
     for doc in (zh, en):
-        assert "bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8000 --web-port 5173" in doc
-        assert "http://127.0.0.1:8000/runtime/status" in doc
-        assert "tts_providers.indextts.backend" in doc
-        assert "tts_providers.indextts.resolved_provider" in doc
-        assert "local_indextts" in doc
-        assert "--max-time 300" in doc
-    assert "断点续传" in zh
-    assert "resumes" in en
+        assert "bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5283" in doc
+        assert "http://127.0.0.1:8210/runtime/status" in doc
+        assert "tts_providers.indextts.service_url_set" in doc
+        assert "OPENTALKING_TTS_LOCAL_INDEXTTS_SERVICE_URL=http://127.0.0.1:19092/synthesize" in doc
+    assert "复用已完整下载的模型目录" in zh
+    assert "reuses fully downloaded model directories" in en

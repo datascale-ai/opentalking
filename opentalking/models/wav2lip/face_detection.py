@@ -8,13 +8,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[4]
+from opentalking.core.model_paths import wav2lip_model_root
 
 
 def _default_s3fd_path() -> Path:
-    return _repo_root() / "models" / "s3fd.pth"
+    return wav2lip_model_root() / "s3fd.pth"
 
 
 class LandmarksType(Enum):

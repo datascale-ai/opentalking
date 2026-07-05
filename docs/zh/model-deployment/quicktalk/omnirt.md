@@ -5,11 +5,14 @@
 ## 1. 准备仓库和环境
 
 ```bash title="终端"
+# 改成你自己的部署根目录
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
-export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
-export OMNIRT_HOME="$OMNIRT_REPO/.omnirt"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OMNIRT_REPO="$OPENTALKING_MODEL_REPO_ROOT/omnirt"
+export OMNIRT_HOME="$DIGITAL_HUMAN_HOME"
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 
 # 网络较慢时先设置镜像。
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -19,7 +22,8 @@ export UV_LINK_MODE=copy
 
 cd "$DIGITAL_HUMAN_HOME"
 git clone https://github.com/datascale-ai/opentalking.git opentalking
-git clone https://github.com/datascale-ai/omnirt.git omnirt
+mkdir -p "$OPENTALKING_MODEL_REPO_ROOT"
+git clone https://github.com/datascale-ai/omnirt.git "$OPENTALKING_MODEL_REPO_ROOT/omnirt"
 
 cd "$OMNIRT_REPO"
 uv sync --extra server --python 3.11

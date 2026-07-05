@@ -3,6 +3,14 @@
 The `local` backend means OpenTalking imports the model adapter in-process and runs audio-to-video inference directly. It is the shortest single-machine validation path.
 
 ```bash title="Terminal"
+# Change this to your deployment root
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+
 cd "$OPENTALKING_HOME"
 uv sync --extra dev --extra models --python 3.11
 source .venv/bin/activate

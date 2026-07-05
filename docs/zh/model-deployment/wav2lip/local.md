@@ -5,8 +5,13 @@
 ## 1. 安装本地模型依赖
 
 ```bash title="终端"
+# 改成你自己的部署根目录
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
 
 # 网络较慢时先设置镜像。
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -22,7 +27,8 @@ source .venv/bin/activate
 ## 2. 准备 Wav2Lip 权重
 
 ```bash title="终端"
-export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_WAV2LIP_MODEL_ROOT="${OPENTALKING_WAV2LIP_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT/wav2lip}"
 mkdir -p "$OPENTALKING_WAV2LIP_MODEL_ROOT"
 
 hf download Pypa/wav2lip384 wav2lip384.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_ROOT"
@@ -34,8 +40,11 @@ hf download rippertnt/wav2lip s3fd.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_R
 ## 3. 启动 OpenTalking
 
 ```bash title="终端"
-export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
-export OPENTALKING_WAV2LIP_DEVICE=cuda
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_WAV2LIP_MODEL_ROOT="${OPENTALKING_WAV2LIP_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT/wav2lip}"
+# 将 1 改成要使用的物理 GPU；进程内仍使用 cuda:0。
+export CUDA_VISIBLE_DEVICES=1
+export OPENTALKING_WAV2LIP_DEVICE=cuda:0
 export OPENTALKING_WAV2LIP_BATCH_SIZE=16
 export OPENTALKING_WAV2LIP_MAX_LONG_EDGE=832
 export OPENTALKING_WAV2LIP_FACE_DET_DEVICE=cpu
@@ -63,7 +72,7 @@ bash scripts/quickstart/start_frontend.sh --api-port 8000 --web-port 5173 --host
 
 | 参数 | 默认建议 | 作用 |
 |------|----------|------|
-| `OPENTALKING_WAV2LIP_DEVICE` | `cuda` | 指定 runtime 设备；调试时可设 `cpu`。 |
+| `OPENTALKING_WAV2LIP_DEVICE` | `cuda:0` | 指定 runtime 设备；如需固定物理 GPU，优先设置 `CUDA_VISIBLE_DEVICES`；调试时可设 `cpu`。 |
 | `OPENTALKING_WAV2LIP_BATCH_SIZE` | `16` | 显存紧张时调低。 |
 | `OPENTALKING_WAV2LIP_MAX_LONG_EDGE` | `832` | 控制输入帧长边，降低延迟。 |
 | `OPENTALKING_WAV2LIP_JPEG_QUALITY` | `85` | 输出帧 JPEG 质量。 |

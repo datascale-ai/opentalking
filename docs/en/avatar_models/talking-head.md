@@ -32,7 +32,7 @@ export DIGITAL_HUMAN_HOME="$HOME/digital-human"
 export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
 export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
 export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
-export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
+export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/model-repos/LivePortrait}"
 
 mkdir -p "$DIGITAL_HUMAN_HOME" "$OMNIRT_MODEL_ROOT"
 cd "$DIGITAL_HUMAN_HOME"
@@ -50,6 +50,9 @@ $DIGITAL_HUMAN_HOME/
 │   ├── chinese-wav2vec2-base/
 │   ├── quicktalk/
 │   └── FasterLivePortrait/
+├── model-repos/
+│   ├── LivePortrait/
+│   └── SoulX-FlashTalk/
 ├── logs/
 └── run/
 ```

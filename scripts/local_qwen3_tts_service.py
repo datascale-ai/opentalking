@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,18 @@ import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+try:
+    from _standalone_model_paths import load_model_paths
+except ModuleNotFoundError:
+    from scripts._standalone_model_paths import load_model_paths
+
+repo_root = Path(__file__).resolve().parents[1]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+_model_paths = load_model_paths()
+local_audio_model_root = _model_paths.local_audio_model_root
 
 
 class SynthesizeRequest(BaseModel):
@@ -134,7 +147,7 @@ def build_service_from_env() -> Qwen3TTSService:
     return Qwen3TTSService(
         model_dir=os.environ.get(
             "OPENTALKING_LOCAL_QWEN3_TTS_MODEL_DIR",
-            str(Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio")).expanduser() / "Qwen__Qwen3-TTS-12Hz-0.6B-Base"),
+            str(local_audio_model_root().expanduser() / "Qwen__Qwen3-TTS-12Hz-0.6B-Base"),
         ),
         device=os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_DEVICE", "cuda:0"),
         dtype=os.environ.get("OPENTALKING_LOCAL_QWEN3_TTS_DTYPE", "bfloat16"),

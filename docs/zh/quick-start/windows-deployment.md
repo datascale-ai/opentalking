@@ -17,21 +17,20 @@ Windows Host
 推荐目录结构：
 
 ```text
-/root/test/
+$DIGITAL_HUMAN_HOME/
 ├── opentalking/
 │   ├── .venv/
 │   ├── apps/
 │   ├── configs/
-│   ├── scripts/
-│   └── models/quicktalk/checkpoints/
+│   └── scripts/
 ├── omnirt/
 │   ├── .venv/
 │   └── models/quicktalk/
 └── models/
-    └── quicktalk -> /root/test/opentalking/models/quicktalk
+    └── quicktalk/checkpoints/
 ```
 
-建议把代码放在 WSL2 自己的 Linux 文件系统中，例如 `/root/test` 或 `/home/<user>/test`，不要直接在 `/mnt/d/...` 下跑 benchmark。
+建议把代码放在 WSL2 自己的 Linux 文件系统中，例如 `$WSL_HOME/test` 或 `/home/<user>/test`，不要直接在 `/mnt/d/...` 下跑 benchmark。
 
 ---
 
@@ -174,8 +173,8 @@ nvidia-smi
 进入工作目录：
 
 ```bash
-mkdir -p /root/test
-cd /root/test
+mkdir -p $WSL_HOME/test
+cd $WSL_HOME/test
 ```
 
 拉取两个仓库：
@@ -188,15 +187,15 @@ git clone https://github.com/datascale-ai/omnirt.git
 最终结构应为：
 
 ```text
-/root/test/opentalking
-/root/test/omnirt
+$DIGITAL_HUMAN_HOME/opentalking
+$DIGITAL_HUMAN_HOME/omnirt
 ```
 
 检查：
 
 ```bash
-ls /root/test/opentalking
-ls /root/test/omnirt
+ls $DIGITAL_HUMAN_HOME/opentalking
+ls $DIGITAL_HUMAN_HOME/omnirt
 ```
 
 ### 路径说明
@@ -204,15 +203,15 @@ ls /root/test/omnirt
 如果 Windows 上已经有代码，也可以复制到 WSL2：
 
 ```bash
-rsync -a --info=progress2 /mnt/d/test_opentalking/opentalking/ /root/test/opentalking/
-rsync -a --info=progress2 /mnt/d/test_opentalking/omnirt/ /root/test/omnirt/
+rsync -a --info=progress2 /mnt/d/test_opentalking/opentalking/ $DIGITAL_HUMAN_HOME/opentalking/
+rsync -a --info=progress2 /mnt/d/test_opentalking/omnirt/ $DIGITAL_HUMAN_HOME/omnirt/
 ```
 
 如果服务器上已经下载好代码，也可以同步到 WSL2：
 
 ```bash
-rsync -avP root@<your-server-ip>:/root/lyf/temp/opentalking/ /root/test/opentalking/
-rsync -avP root@<your-server-ip>:/root/lyf/temp/omnirt/ /root/test/omnirt/
+rsync -avP <user>@<server-host>:$DIGITAL_HUMAN_HOME/opentalking/ $DIGITAL_HUMAN_HOME/opentalking/
+rsync -avP <user>@<server-host>:$DIGITAL_HUMAN_HOME/omnirt/ $DIGITAL_HUMAN_HOME/omnirt/
 ```
 
 ---
@@ -262,7 +261,7 @@ source ~/.bashrc
 进入 OpenTalking：
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 ```
 
 创建独立虚拟环境：
@@ -281,7 +280,7 @@ which python
 期望：
 
 ```text
-/root/test/opentalking/.venv/bin/python
+$DIGITAL_HUMAN_HOME/opentalking/.venv/bin/python
 ```
 
 安装基础包：
@@ -335,7 +334,7 @@ Linux / WSL2 下安装 CUDA 版 PyTorch 会拉取 `nvidia-cudnn-cu12`、`nvidia-
 QuickTalk 权重需要放在：
 
 ```text
-/root/test/opentalking/models/quicktalk/checkpoints/
+$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints/
 ```
 
 完整结构应类似：
@@ -358,7 +357,7 @@ checkpoints/
 检查关键文件：
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME
 
 ls -lh models/quicktalk/checkpoints/quicktalk.pth
 ls -lh models/quicktalk/checkpoints/repair.npy
@@ -373,14 +372,7 @@ ls -lh models/quicktalk/checkpoints/auxiliary/models/buffalo_l/2d106det.onnx
 OmniRT 启动 QuickTalk 时，推荐直接指向 `checkpoints` 目录：
 
 ```bash
-export OMNIRT_QUICKTALK_MODEL_ROOT=/root/test/opentalking/models/quicktalk/checkpoints
-```
-
-benchmark 脚本如果需要 `/root/test/models/quicktalk`，可以建立符号链接：
-
-```bash
-mkdir -p /root/test/models
-ln -sfn /root/test/opentalking/models/quicktalk /root/test/models/quicktalk
+export OMNIRT_QUICKTALK_MODEL_ROOT=$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints
 ```
 
 ---
@@ -390,7 +382,7 @@ ln -sfn /root/test/opentalking/models/quicktalk /root/test/models/quicktalk
 进入 OmniRT：
 
 ```bash
-cd /root/test/omnirt
+cd $DIGITAL_HUMAN_HOME/omnirt
 ```
 
 创建独立虚拟环境：
@@ -409,7 +401,7 @@ which python
 期望：
 
 ```text
-/root/test/omnirt/.venv/bin/python
+$DIGITAL_HUMAN_HOME/omnirt/.venv/bin/python
 ```
 
 安装依赖：
@@ -445,16 +437,16 @@ omnirt --help
 期望：
 
 ```text
-/root/test/omnirt/.venv/bin/omnirt
+$DIGITAL_HUMAN_HOME/omnirt/.venv/bin/omnirt
 ```
 
 同步模型到 OmniRT：
 
 ```bash
-mkdir -p /root/test/omnirt/models/quicktalk
+mkdir -p $DIGITAL_HUMAN_HOME/omnirt/models/quicktalk
 rsync -a --info=progress2 \
-  /root/test/opentalking/models/quicktalk/ \
-  /root/test/omnirt/models/quicktalk/
+  $DIGITAL_HUMAN_HOME/models/quicktalk/ \
+  $DIGITAL_HUMAN_HOME/omnirt/models/quicktalk/
 ```
 
 ---
@@ -464,7 +456,7 @@ rsync -a --info=progress2 \
 进入 OpenTalking：
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 cp -n .env.example .env
 ```
 
@@ -496,7 +488,7 @@ LLM、TTS、STT 是独立 provider。Edge TTS 不需要 key，最适合先跑通
 新开一个 WSL2 终端，进入 OmniRT：
 
 ```bash
-cd /root/test/omnirt
+cd $DIGITAL_HUMAN_HOME/omnirt
 source .venv/bin/activate
 ```
 
@@ -507,7 +499,7 @@ export CUDA_VISIBLE_DEVICES=0
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,max_split_size_mb:128
 
 export OMNIRT_QUICKTALK_RUNTIME=1
-export OMNIRT_QUICKTALK_MODEL_ROOT=/root/test/opentalking/models/quicktalk/checkpoints
+export OMNIRT_QUICKTALK_MODEL_ROOT=$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints
 export OMNIRT_QUICKTALK_DEVICE=cuda:0
 export OMNIRT_QUICKTALK_HUBERT_DEVICE=cuda:0
 ```
@@ -539,7 +531,7 @@ export OMNIRT_QUICKTALK_HUBERT_DEVICE=cuda:0
 再开一个 WSL2 终端，进入 OpenTalking：
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 ```
 
@@ -585,12 +577,12 @@ nvidia-smi --query-gpu=memory.used --format=csv,noheader
 
 | 位置                  | 正确做法                                                     |
 | --------------------- | ------------------------------------------------------------ |
-| 代码目录              | 放在 `/root/test/opentalking` 和 `/root/test/omnirt`         |
-| OpenTalking venv      | `/root/test/opentalking/.venv`                               |
-| OmniRT venv           | `/root/test/omnirt/.venv`                                    |
-| QuickTalk 权重        | `/root/test/opentalking/models/quicktalk/checkpoints`        |
+| 代码目录              | 放在 `$DIGITAL_HUMAN_HOME/opentalking` 和 `$DIGITAL_HUMAN_HOME/omnirt`         |
+| OpenTalking venv      | `$DIGITAL_HUMAN_HOME/opentalking/.venv`                               |
+| OmniRT venv           | `$DIGITAL_HUMAN_HOME/omnirt/.venv`                                    |
+| QuickTalk 权重        | `$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints`                    |
 | OmniRT QuickTalk root | 指向 `.../checkpoints`                                       |
-| benchmark 兼容路径    | `ln -sfn /root/test/opentalking/models/quicktalk /root/test/models/quicktalk` |
+| benchmark 兼容路径    | 直接使用 `$DIGITAL_HUMAN_HOME/models/quicktalk`              |
 | 低显存配置            | `resolution=160/128`、`batch=1`、`HuBERT=cpu`                |
 
 ---
@@ -604,7 +596,7 @@ nvidia-smi --query-gpu=memory.used --format=csv,noheader
 nvidia-smi
 
 # OpenTalking 环境
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
 
@@ -614,7 +606,7 @@ ls -lh models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
 ls -lh models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
 
 # OmniRT 环境
-cd /root/test/omnirt
+cd $DIGITAL_HUMAN_HOME/omnirt
 source .venv/bin/activate
 which omnirt
 omnirt --help
@@ -628,7 +620,7 @@ npm --version
 如果这些都通过，再运行：
 
 ```bash
-cd /root/test/opentalking
+cd $DIGITAL_HUMAN_HOME/opentalking
 source .venv/bin/activate
 bash scripts/run_opentalking_e2e_benchmark.sh \
   --tester lyf \
@@ -640,7 +632,24 @@ bash scripts/run_opentalking_e2e_benchmark.sh \
 
 ---
 
-## 13. 总结
+## 13. 停止服务
+
+停止由 quickstart 脚本或 `scripts/start_unified.sh` 启动的 OpenTalking API、WebUI 和 OmniRT 进程：
+
+```bash
+cd $DIGITAL_HUMAN_HOME/opentalking
+bash scripts/quickstart/stop_all.sh
+```
+
+如果有手动前台启动的 `omnirt serve-avatar-ws ...`，请在对应 WSL2 终端按 `Ctrl+C` 结束该进程。需要彻底重启 WSL2 时，可在 Windows PowerShell 中执行：
+
+```powershell
+wsl --shutdown
+```
+
+---
+
+## 14. 总结
 
 Windows 上部署 OpenTalking + OmniRT + QuickTalk，推荐把运行环境放在 WSL2 中：
 

@@ -13,8 +13,10 @@ F5-TTS is integrated through OpenTalking's `local_f5_tts` provider. Use it for l
 Use a single local audio model root, for example `$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT`:
 
 ```bash title="Terminal"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-/path/to/digital_human}"
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
 cd "$OPENTALKING_HOME"
-export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$OPENTALKING_HOME/models/local-audio}"
+export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models/local-audio}"
 
 python scripts/download_local_audio_models.py \
   --root "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT" \
@@ -30,17 +32,23 @@ $OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/SWivid__F5-TTS__F5TTS_v1_Base/model_1250000.
 Prepare the runtime and sidecar venv:
 
 ```bash title="Terminal"
-mkdir -p "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime"
-cd "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-/path/to/digital_human}"
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+cd "$DIGITAL_HUMAN_HOME"
+mkdir -p model-repos runtimes/f5-tts
 
-if [ ! -d F5-TTS/.git ]; then
-  git clone https://github.com/SWivid/F5-TTS.git F5-TTS
+# Optional: use a GitHub proxy prefix when GitHub access is slow.
+# export GITHUB_PROXY_PREFIX=https://gh-proxy.com/
+# Optional: use the Tsinghua PyPI mirror when PyPI access is slow.
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}"
+if [ ! -d model-repos/F5-TTS/.git ]; then
+  git clone "${GITHUB_PROXY_PREFIX:-}https://github.com/SWivid/F5-TTS.git" model-repos/F5-TTS
 fi
 
-python3 -m venv --system-site-packages "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime/.venv-f5-tts-system"
-. "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime/.venv-f5-tts-system/bin/activate"
+python3 -m venv --system-site-packages "$DIGITAL_HUMAN_HOME/runtimes/f5-tts/venv"
+. "$DIGITAL_HUMAN_HOME/runtimes/f5-tts/venv/bin/activate"
 pip install -U pip wheel setuptools
-pip install --no-deps -e "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime/F5-TTS"
+pip install --no-deps -e "$DIGITAL_HUMAN_HOME/model-repos/F5-TTS"
 pip install fastapi "uvicorn[standard]" soundfile cached_path hydra-core ema_pytorch vocos x_transformers transformers_stream_generator rjieba pypinyin tomli bitsandbytes pydub torchcodec torchdiffeq unidecode wandb
 ```
 
@@ -49,8 +57,8 @@ pip install fastapi "uvicorn[standard]" soundfile cached_path hydra-core ema_pyt
 ```env title=".env"
 OPENTALKING_TTS_DEFAULT_PROVIDER=local_f5_tts
 OPENTALKING_TTS_LOCAL_F5_TTS_SERVICE_URL=http://127.0.0.1:19095/synthesize
-OPENTALKING_LOCAL_AUDIO_MODEL_ROOT=./models/local-audio
-OPENTALKING_TTS_LOCAL_F5_TTS_RUNTIME_DIR=./models/local-audio/runtime/F5-TTS
+OPENTALKING_LOCAL_AUDIO_MODEL_ROOT=$DIGITAL_HUMAN_HOME/models/local-audio
+OPENTALKING_TTS_LOCAL_F5_TTS_RUNTIME_DIR=$DIGITAL_HUMAN_HOME/model-repos/F5-TTS
 OPENTALKING_TTS_LOCAL_F5_TTS_DEVICE=cuda
 ```
 
@@ -78,21 +86,30 @@ After upload, `/api/voices?provider=local_f5_tts` returns the voice id. TTS prev
 Start the F5-TTS sidecar first, then OpenTalking:
 
 ```bash title="Terminal"
+export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-/path/to/digital_human}"
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
 cd "$OPENTALKING_HOME"
-export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$OPENTALKING_HOME/models/local-audio}"
-export OPENTALKING_F5_TTS_VENV_DIR="$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime/.venv-f5-tts-system"
+export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models/local-audio}"
+export OPENTALKING_TTS_LOCAL_F5_TTS_RUNTIME_DIR="$DIGITAL_HUMAN_HOME/model-repos/F5-TTS"
+export OPENTALKING_F5_TTS_VENV_DIR="$DIGITAL_HUMAN_HOME/runtimes/f5-tts/venv"
 bash scripts/quickstart/start_local_f5_tts.sh --port 19095
 
 export OPENTALKING_TTS_DEFAULT_PROVIDER=local_f5_tts
 export OPENTALKING_TTS_LOCAL_F5_TTS_SERVICE_URL=http://127.0.0.1:19095/synthesize
-python -m apps.api.main
+
+export OPENTALKING_TORCH_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_DEVICE=cuda:0
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$DIGITAL_HUMAN_HOME/models/quicktalk"
+export OPENTALKING_QUICKTALK_WORKER_CACHE=1
+
+bash scripts/start_unified.sh --backend local --model quicktalk --api-port 8210 --web-port 5283
 ```
 
 ## Verification
 
 ```bash title="Terminal"
 curl -fsS http://127.0.0.1:19095/health
-curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8210/health
 ```
 
 TTS preview should use provider `local_f5_tts` and a clone voice with `prompt.wav`. Save the result as WAV and verify the spoken text and voice by ASR or listening.
@@ -111,6 +128,6 @@ TTS preview should use provider `local_f5_tts` and a clone voice with `prompt.wa
 |---------|--------|
 | `Missing F5-TTS checkpoint` | Confirm `model_1250000.safetensors` is under `SWivid__F5-TTS__F5TTS_v1_Base`. |
 | `requires prompt_audio` | Select a clone voice or set `OPENTALKING_TTS_LOCAL_F5_TTS_PROMPT_AUDIO`. |
-| Dependency conflicts | Do not run the sidecar from OpenTalking's main `.venv`; use a separate venv such as `$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/runtime/.venv-f5-tts-system` and reuse the host PyTorch/CUDA environment when appropriate. |
+| Dependency conflicts | Do not run the sidecar from OpenTalking's main `.venv`; use a separate venv such as `$DIGITAL_HUMAN_HOME/runtimes/f5-tts/venv` and reuse the host PyTorch/CUDA environment when appropriate. |
 | Slow first request | Set `OPENTALKING_TTS_LOCAL_F5_TTS_PRELOAD=1` and run a short warm-up request after startup. |
 | QuickTalk v3 reshape error | Keep `OPENTALKING_QUICKTALK_RESOLUTION=256` for the current TorchScript export when generating video; 160/128 resolution makes internal feature shapes mismatch. |

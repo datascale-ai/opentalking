@@ -32,7 +32,9 @@ hf download TencentGameMate/chinese-wav2vec2-base --local-dir "$OMNIRT_MODEL_ROO
 ```text
 $OMNIRT_MODEL_ROOT/
 ├── SoulX-FlashTalk-14B/
-├── chinese-wav2vec2-base/
+└── chinese-wav2vec2-base/
+
+$DIGITAL_HUMAN_HOME/model-repos/
 └── SoulX-FlashTalk/        # 可选，自定义 CUDA 手动路径
 ```
 

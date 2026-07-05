@@ -15,6 +15,7 @@ from typing import Any
 import numpy as np
 import httpx
 
+from opentalking.core.model_paths import local_audio_model_root as resolve_local_audio_model_root
 from opentalking.core.types.frames import AudioChunk
 from opentalking.providers.tts.indextts_config import indextts_infer_kwargs, normalize_indextts_config
 from opentalking.providers.tts.voice_assets import INDEXTTS_PROVIDER, resolve_voice_asset
@@ -48,14 +49,14 @@ def _source_sample_rate_from_headers(headers: Any, fallback: int) -> int:
 
 
 def _local_audio_model_root() -> Path:
-    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
+    configured = ""
     try:
         from opentalking.core.config import get_settings
 
-        raw = raw or (get_settings().local_audio_model_root or "").strip()
+        configured = (get_settings().local_audio_model_root or "").strip()
     except Exception:
         pass
-    return Path(raw or "./models/local-audio").expanduser().resolve()
+    return resolve_local_audio_model_root(configured).resolve()
 
 
 def _bundled_system_voice_root() -> Path:
@@ -160,7 +161,9 @@ class LocalIndexTTSAdapter:
         self.sample_rate = sample_rate
         self.chunk_ms = chunk_ms
         self.model = (model or "IndexTeam/IndexTTS-2").strip()
-        self.model_dir = str(Path(model_dir or f"./models/local-audio/{self.model.replace('/', '__')}").expanduser())
+        self.model_dir = str(
+            Path(model_dir or _local_audio_model_root() / self.model.replace("/", "__")).expanduser()
+        )
         self.cfg_path = str(Path(cfg_path or Path(self.model_dir) / "config.yaml").expanduser())
         self.service_url = (service_url or "").strip().rstrip("/")
         self.prompt_audio = str(Path(prompt_audio).expanduser()) if prompt_audio else ""

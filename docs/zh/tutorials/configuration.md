@@ -145,15 +145,9 @@ FlashHead 使用专属 WebSocket 协议，不经过 OmniRT。
 | `OPENTALKING_WORKER_URL` | `http://127.0.0.1:9001` | API 访问 Worker 时使用的 URL。 |
 | `OPENTALKING_TORCH_DEVICE` | `cpu` | 编排侧音频与帧后处理使用的设备。 |
 | `OPENTALKING_AVATARS_DIR` | `./examples/avatars` | Avatar bundle 根目录。 |
-| `OPENTALKING_AVATAR_MATTING_PROVIDER` | `rembg` | 自定义形象上传时的可选抠图 provider；仅在上传弹窗勾选后调用。 |
-| `OPENTALKING_AVATAR_MATTING_DEVICE` | `cpu` | 预留给抠图 provider 的设备配置。 |
-| `OPENTALKING_AVATAR_MATTING_MODEL_PATH` | 空 | `rembg` provider 的本地 `u2net.onnx` 模型文件路径。 |
-| `OPENTALKING_AVATAR_MATTING_TIMEOUT_SEC` | `60` | 预留给抠图 provider 的超时配置。 |
 | `OPENTALKING_VOICES_DIR` | `./var/voices` | 声音复刻存储目录。 |
 | `OPENTALKING_SQLITE_PATH` | `./data/opentalking.sqlite3` | 本地元数据数据库文件。 |
 | `OPENTALKING_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 允许的前端 origin，逗号分隔。 |
-
-自定义形象上传默认不会抠除背景；PNG 自带透明通道时会自动识别为可透明合成。若要启用本地 `rembg` provider，先安装可选依赖：`uv pip install --python .venv/bin/python '.[avatar-matting]'`。`rembg` 不会在运行时自动下载模型，请预先下载 `u2net.onnx`，并将 `OPENTALKING_AVATAR_MATTING_MODEL_PATH` 指向该文件。
 
 ## 4. 进阶调优 {#4}
 

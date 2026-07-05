@@ -22,13 +22,21 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+try:
+    from _standalone_model_paths import load_model_paths
+except ModuleNotFoundError:
+    from scripts._standalone_model_paths import load_model_paths
+
 
 def _load_voice_assets_module():
     module_name = "_opentalking_voice_assets_local_cosyvoice"
     module = sys.modules.get(module_name)
     if module is not None:
         return module
-    module_path = Path(__file__).resolve().parents[1] / "opentalking" / "providers" / "tts" / "voice_assets.py"
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    module_path = repo_root / "opentalking" / "providers" / "tts" / "voice_assets.py"
     spec = importlib.util.spec_from_file_location(module_name, module_path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load voice assets module from {module_path}")
@@ -44,7 +52,7 @@ VoiceAsset = _voice_assets.VoiceAsset
 iter_voice_assets = _voice_assets.iter_voice_assets
 local_audio_model_root = _voice_assets.local_audio_model_root
 resolve_voice_asset = _voice_assets.resolve_voice_asset
-
+model_repo_root = load_model_paths().model_repo_root
 
 
 def _soundfile_load_wav(wav: str, target_sr: int):
@@ -1033,7 +1041,7 @@ def create_app(service: CosyVoiceService) -> FastAPI:
 
 
 def _local_audio_root() -> Path:
-    return Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio")).expanduser()
+    return local_audio_model_root().expanduser()
 
 
 def _default_system_voice_prompt(root: Path) -> tuple[str, str] | None:
@@ -1157,7 +1165,7 @@ def build_service_from_env() -> CosyVoiceService:
         ),
         runtime_dir=os.environ.get(
             "OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR",
-            str(root / "runtime" / "CosyVoice"),
+            str((model_repo_root() / "CosyVoice").expanduser()),
         ),
         audio_root=str(root),
         device=device,

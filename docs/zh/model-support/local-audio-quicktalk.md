@@ -39,13 +39,13 @@ OPENTALKING_STT_SENSEVOICE_DEVICE=cpu
 OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
 OPENTALKING_TTS_ENABLED_PROVIDERS=local_cosyvoice,dashscope,edge
 OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL=FunAudioLLM/Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=./avatar_models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=./avatar_models/local-audio/runtime/CosyVoice
+OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=$DIGITAL_HUMAN_HOME/models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=$DIGITAL_HUMAN_HOME/model-repos/CosyVoice
 OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
 OPENTALKING_TTS_LOCAL_COSYVOICE_DEVICE=cuda:0
 
 OPENTALKING_QUICKTALK_BACKEND=local
-OPENTALKING_QUICKTALK_ASSET_ROOT=./avatar_models/quicktalk
+OPENTALKING_QUICKTALK_ASSET_ROOT=$DIGITAL_HUMAN_HOME/models/quicktalk
 OPENTALKING_QUICKTALK_WORKER_CACHE=1
 OPENTALKING_TORCH_DEVICE=cuda:0
 ```
@@ -70,14 +70,18 @@ python scripts/download_local_audio_models.py \
 主 `.venv` 只负责 OpenTalking、SenseVoice 和 QuickTalk。CosyVoice runtime
 准备好后，创建独立 sidecar venv：
 
-QuickTalk 权重按 [QuickTalk Local 部署](../avatar_models/deployment/quicktalk-local.md) 页面准备。CosyVoice runtime 放在模型目录下即可：
+QuickTalk 权重按 [QuickTalk Local 部署](../avatar_models/deployment/quicktalk-local.md) 页面准备。CosyVoice runtime 放在部署根目录的 `model-repos/` 下：
 
 ```bash title="终端"
-mkdir -p ./avatar_models/local-audio/runtime
-git clone https://github.com/FunAudioLLM/CosyVoice.git ./avatar_models/local-audio/runtime/CosyVoice
-cd ./avatar_models/local-audio/runtime/CosyVoice
+cd "$DIGITAL_HUMAN_HOME"
+mkdir -p model-repos
+if [ ! -d model-repos/CosyVoice/.git ]; then
+  git clone https://github.com/FunAudioLLM/CosyVoice.git model-repos/CosyVoice
+fi
+cd model-repos/CosyVoice
 git submodule update --init --recursive
 cd "$DIGITAL_HUMAN_HOME/opentalking"
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR="$DIGITAL_HUMAN_HOME/model-repos/CosyVoice" \
 OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
   bash scripts/prepare_cosyvoice_venv.sh
 ```

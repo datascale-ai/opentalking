@@ -33,19 +33,21 @@ OPENTALKING_LLM_MODEL=qwen-flash
 OPENTALKING_STT_DEFAULT_PROVIDER=sensevoice
 OPENTALKING_STT_ENABLED_PROVIDERS=sensevoice,dashscope
 OPENTALKING_STT_SENSEVOICE_MODEL=iic/SenseVoiceSmall
-OPENTALKING_STT_SENSEVOICE_MODEL_DIR=./models/local-audio/iic__SenseVoiceSmall
+OPENTALKING_STT_SENSEVOICE_MODEL_DIR=$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/iic__SenseVoiceSmall
 OPENTALKING_STT_SENSEVOICE_DEVICE=cpu
 
 OPENTALKING_TTS_DEFAULT_PROVIDER=local_cosyvoice
 OPENTALKING_TTS_ENABLED_PROVIDERS=local_cosyvoice,dashscope,edge
 OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL=FunAudioLLM/Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=./models/local-audio/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
-OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=./models/local-audio/runtime/CosyVoice
+OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR=$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT/FunAudioLLM__Fun-CosyVoice3-0.5B-2512
+OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR=$OPENTALKING_MODEL_REPO_ROOT/CosyVoice
 OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL=http://127.0.0.1:19090/synthesize
+# Change 1 to the physical GPU you want to use; keep the in-process device as cuda:0.
+CUDA_VISIBLE_DEVICES=1
 OPENTALKING_TTS_LOCAL_COSYVOICE_DEVICE=cuda:0
 
 OPENTALKING_QUICKTALK_BACKEND=local
-OPENTALKING_QUICKTALK_ASSET_ROOT=./models/quicktalk
+OPENTALKING_QUICKTALK_ASSET_ROOT=$OPENTALKING_MODEL_ROOT/quicktalk
 OPENTALKING_QUICKTALK_WORKER_CACHE=1
 OPENTALKING_TORCH_DEVICE=cuda:0
 ```
@@ -60,9 +62,22 @@ OPENTALKING_TTS_DASHSCOPE_API_KEY=<dashscope-tts-key>
 ## Install and Models
 
 ```bash title="terminal"
+# Change this to your deployment root
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
+export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OPENTALKING_RUNTIME_ROOT="${OPENTALKING_RUNTIME_ROOT:-$DIGITAL_HUMAN_HOME/runtimes}"
+export OPENTALKING_LOCAL_AUDIO_MODEL_ROOT="${OPENTALKING_LOCAL_AUDIO_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT/local-audio}"
+cd "$OPENTALKING_HOME"
+
 uv sync --extra dev --extra models --extra local-audio --extra quicktalk-cuda --python 3.11
 python scripts/download_local_audio_models.py \
-  --root ./models/local-audio \
+  --root "$OPENTALKING_LOCAL_AUDIO_MODEL_ROOT" \
   --model sensevoice-small \
   --model fun-cosyvoice3-0.5b-2512
 ```
@@ -72,16 +87,15 @@ separate CosyVoice sidecar venv after the runtime checkout.
 
 For CosyVoice3 model sources and the optional fp16 TensorRT ONNX files, see [TTS deployment](../../speech_models/tts/cosyvoice.md).
 
-Prepare QuickTalk weights as described in [QuickTalk Local](../quicktalk/local.md). Put the CosyVoice runtime under the model directory:
+Prepare QuickTalk weights as described in [QuickTalk Local](../quicktalk/local.md). Put the CosyVoice checkout under `$OPENTALKING_MODEL_REPO_ROOT` and the sidecar venv under `$OPENTALKING_RUNTIME_ROOT`:
 
 ```bash title="terminal"
-mkdir -p ./models/local-audio/runtime
-git clone https://github.com/FunAudioLLM/CosyVoice.git ./models/local-audio/runtime/CosyVoice
-cd ./models/local-audio/runtime/CosyVoice
+mkdir -p "$OPENTALKING_MODEL_REPO_ROOT"
+git clone https://github.com/FunAudioLLM/CosyVoice.git "$OPENTALKING_MODEL_REPO_ROOT/CosyVoice"
+cd "$OPENTALKING_MODEL_REPO_ROOT/CosyVoice"
 git submodule update --init --recursive
-cd "$DIGITAL_HUMAN_HOME/opentalking"
-OPENTALKING_COSYVOICE_VENV_DIR=.venv-cosyvoice \
-  bash scripts/prepare_cosyvoice_venv.sh
+cd "$OPENTALKING_HOME"
+bash scripts/prepare_cosyvoice_venv.sh
 ```
 
 ## Start

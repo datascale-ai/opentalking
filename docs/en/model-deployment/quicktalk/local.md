@@ -3,8 +3,14 @@
 Use this path when OpenTalking should load the QuickTalk adapter in-process instead of introducing OmniRT first.
 
 ```bash title="Terminal"
+# Change this to your deployment root
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
 
 # Set mirrors first when package downloads are slow.
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -25,7 +31,7 @@ Then start:
 
 ```bash title="Terminal"
 export OPENTALKING_QUICKTALK_BACKEND=local
-export OPENTALKING_QUICKTALK_ASSET_ROOT=/absolute/path/to/opentalking/models/quicktalk
+export OPENTALKING_QUICKTALK_ASSET_ROOT="$OPENTALKING_MODEL_ROOT/quicktalk"
 export OPENTALKING_QUICKTALK_WORKER_CACHE=1
 export OPENTALKING_TORCH_DEVICE=cuda:0
 cd "$OPENTALKING_HOME"

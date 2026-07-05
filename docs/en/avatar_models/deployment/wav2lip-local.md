@@ -64,3 +64,13 @@ Expect `backend=local` and `connected=true`. The first load initializes the chec
 | Out of GPU memory | Lower `OPENTALKING_WAV2LIP_BATCH_SIZE` or `OPENTALKING_WAV2LIP_MAX_LONG_EDGE`. |
 | Slow first frame | Set `OPENTALKING_PREWARM_AVATARS=singer` for common avatars. |
 | Enhancement mode fails | `easy_enhanced` requires GFPGAN and `OPENTALKING_WAV2LIP_GFPGAN_CHECKPOINT`. |
+
+## Stop Services
+
+Stop the OpenTalking API, WebUI, and local model processes started by
+`scripts/start_unified.sh` or the quickstart helpers:
+
+```bash title="Terminal"
+cd "$DIGITAL_HUMAN_HOME/opentalking"
+bash scripts/quickstart/stop_all.sh
+```

@@ -8,10 +8,12 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_ROOT = Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio"))
+DEFAULT_MODEL_ROOT = Path(os.environ.get("OPENTALKING_MODEL_ROOT", "./models"))
+DEFAULT_ROOT = Path(
+    os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(DEFAULT_MODEL_ROOT / "local-audio"))
+)
 DEFAULT_REUSE_ROOTS = (
-    Path("./models"),
-    Path("/root/models"),
+    DEFAULT_MODEL_ROOT,
     Path.home() / ".cache" / "opentalking" / "models",
 )
 
@@ -34,7 +36,6 @@ HF_ALLOW_PATTERNS: dict[str, list[str]] = {
         "F5TTS_v1_Base/vocab.txt",
     ],
     "f5-tts-vocos": ["config.yaml", "pytorch_model.bin"],
-    # IndexTTS2 only needs the feature extractor, model weights, and conformer shim.
     "indextts2-w2v-bert": [
         "README.md",
         "config.json",
@@ -43,7 +44,6 @@ HF_ALLOW_PATTERNS: dict[str, list[str]] = {
         "model.safetensors",
         "preprocessor_config.json",
     ],
-    # The sidecar maps hf_hub_download("amphion/MaskGCT", "semantic_codec/model.safetensors") here.
     "indextts2-maskgct": [
         "README.md",
         "config.json",
@@ -60,7 +60,6 @@ HF_ALLOW_PATTERNS: dict[str, list[str]] = {
         "campplus_cn_common.bin",
         "quickstart.md",
     ],
-    # Avoid training and optimizer checkpoints; IndexTTS2 inference loads only the generator and code files.
     "indextts2-bigvgan": [
         "*.py",
         "LICENSE",
@@ -84,7 +83,10 @@ MODEL_HINTS: dict[str, tuple[str, ...]] = {
     "indextts2-w2v-bert": ("facebook__w2v-bert-2.0", "w2v-bert-2.0"),
     "indextts2-maskgct": ("amphion__MaskGCT", "amphion__MaskGCT-ms"),
     "indextts2-campplus": ("funasr__campplus", "campplus"),
-    "indextts2-bigvgan": ("nvidia__bigvgan_v2_22khz_80band_256x", "bigvgan_v2_22khz_80band_256x"),
+    "indextts2-bigvgan": (
+        "nvidia__bigvgan_v2_22khz_80band_256x",
+        "bigvgan_v2_22khz_80band_256x",
+    ),
 }
 
 MODEL_REQUIRED_FILES: dict[str, tuple[str, ...]] = {
@@ -92,7 +94,7 @@ MODEL_REQUIRED_FILES: dict[str, tuple[str, ...]] = {
     "f5-tts-v1-base": ("model_1250000.safetensors",),
     "f5-tts-vocos": ("config.yaml", "pytorch_model.bin"),
     "fun-cosyvoice3-0.5b-2512": ("cosyvoice3.yaml", "flow.pt", "hift.pt", "llm.pt"),
-    "indextts2": ("config.yaml", "model.pt"),
+    "indextts2": ("config.yaml", "gpt.pth", "s2mel.pth", "qwen0.6bemo4-merge/model.safetensors"),
     "indextts2-w2v-bert": ("model.safetensors", "conformer_shaw.pt"),
     "indextts2-maskgct": ("semantic_codec/model.safetensors", "acoustic_codec/model.safetensors"),
     "indextts2-campplus": ("campplus_cn_common.bin", "config.yaml"),
@@ -116,7 +118,7 @@ def _target(root: Path, model_id: str, *, model_key: str | None = None) -> Path:
 
 def _reuse_root_values(raw: str | None) -> list[Path]:
     if not raw:
-        return [root for root in DEFAULT_REUSE_ROOTS if root is not None]
+        return list(DEFAULT_REUSE_ROOTS)
     roots: list[Path] = []
     for chunk in raw.replace(";", os.pathsep).replace(",", os.pathsep).split(os.pathsep):
         value = chunk.strip()
@@ -185,7 +187,8 @@ def _download_hf(model_id: str, target: Path, *, model_key: str) -> None:
     kwargs = {"repo_id": model_id, "local_dir": str(download_dir)}
     if endpoint:
         kwargs["endpoint"] = endpoint
-    if patterns := HF_ALLOW_PATTERNS.get(model_key):
+    patterns = HF_ALLOW_PATTERNS.get(model_key)
+    if patterns:
         kwargs["allow_patterns"] = patterns
     snapshot_download(**kwargs)
     if model_key == "f5-tts-v1-base":

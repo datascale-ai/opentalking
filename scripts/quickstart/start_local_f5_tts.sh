@@ -66,6 +66,8 @@ done
 quickstart_source_env "$env_file"
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
+export OPENTALKING_RUNTIME_ROOT="${OPENTALKING_RUNTIME_ROOT:-$DIGITAL_HUMAN_HOME/runtimes}"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
 run_dir="$DIGITAL_HUMAN_HOME/run"
 log_dir="$DIGITAL_HUMAN_HOME/logs"
 mkdir -p "$run_dir" "$log_dir"
@@ -107,9 +109,9 @@ resolve_f5_python() {
   local candidate_dir=""
   for candidate_dir in \
     "${OPENTALKING_F5_TTS_VENV_DIR:-}" \
+    "$OPENTALKING_RUNTIME_ROOT/f5-tts/venv" \
     "$repo_root/.venv-f5-tts" \
-    "$DIGITAL_HUMAN_HOME/.venv-f5-tts" \
-    "/home/zhongyi/models/local-audio/runtime/.venv-f5-tts"
+    "$DIGITAL_HUMAN_HOME/.venv-f5-tts"
   do
     [[ -n "$candidate_dir" ]] || continue
     if [[ -x "$candidate_dir/bin/python" ]]; then
@@ -119,7 +121,7 @@ resolve_f5_python() {
   done
 
   echo "Missing F5-TTS sidecar venv." >&2
-  echo "Create it first: python3 -m venv $repo_root/.venv-f5-tts && $repo_root/.venv-f5-tts/bin/pip install -e /home/zhongyi/models/local-audio/runtime/F5-TTS fastapi 'uvicorn[standard]' soundfile" >&2
+  echo "Create it first: python3 -m venv \"$OPENTALKING_RUNTIME_ROOT/f5-tts/venv\" && \"$OPENTALKING_RUNTIME_ROOT/f5-tts/venv/bin/pip\" install -e \"$OPENTALKING_MODEL_REPO_ROOT/F5-TTS\" fastapi 'uvicorn[standard]' soundfile" >&2
   return 1
 }
 
