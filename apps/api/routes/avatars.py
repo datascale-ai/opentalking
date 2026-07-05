@@ -138,6 +138,30 @@ def _summary_from_dir(path: Path) -> AvatarSummary:
     )
 
 
+def _sort_avatar_summaries(summaries: list[AvatarSummary]) -> list[AvatarSummary]:
+    duo_rows: list[tuple[int, int, AvatarSummary]] = []
+    for index, summary in enumerate(summaries):
+        name = (summary.name or "").strip()
+        match = re.fullmatch(r"双人对话(\d+)", name)
+        if summary.duo_dialog is not None and match:
+            duo_rows.append((index, int(match.group(1)), summary))
+
+    if len(duo_rows) < 2:
+        return summaries
+
+    duo_indices = {index for index, _, _ in duo_rows}
+    anchor = min(duo_indices)
+    ordered_duo = [
+        summary
+        for _, _, summary in sorted(
+            duo_rows,
+            key=lambda item: (item[1], item[2].name or "", item[2].id),
+        )
+    ]
+    remaining = [summary for index, summary in enumerate(summaries) if index not in duo_indices]
+    return remaining[:anchor] + ordered_duo + remaining[anchor:]
+
+
 def _slugify_name(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff_-]+", "-", value.strip()).strip("-_")
     return slug[:32] or "avatar"
@@ -933,7 +957,7 @@ async def list_avatars(request: Request) -> list[AvatarSummary]:
             out.append(_summary_from_dir(d))
         except Exception:  # noqa: BLE001
             continue
-    return out
+    return _sort_avatar_summaries(out)
 
 
 @router.post("/custom", response_model=AvatarSummary)

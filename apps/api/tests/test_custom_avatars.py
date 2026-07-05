@@ -172,6 +172,57 @@ def test_avatar_summary_exposes_duo_dialog_metadata_only_when_declared(tmp_path:
     assert by_id["plain-anchor"]["duo_dialog"] is None
 
 
+def test_avatar_summary_orders_numbered_duo_dialog_assets_together(tmp_path: Path) -> None:
+    def write_avatar(dirname: str, name: str, *, duo: bool) -> None:
+        avatar_dir = tmp_path / dirname
+        avatar_dir.mkdir()
+        (avatar_dir / "preview.png").write_bytes(_png_bytes())
+        (avatar_dir / "reference.png").write_bytes(_png_bytes())
+        metadata = {}
+        if duo:
+            metadata["duo_dialog"] = {
+                "speaker_faces": {"female": "left", "male": "right"},
+                "default_voices": {
+                    "female": "zh-CN-XiaoxiaoNeural",
+                    "male": "zh-CN-YunxiNeural",
+                },
+            }
+        (avatar_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "id": dirname,
+                    "name": name,
+                    "model_type": "quicktalk" if duo else "flashtalk",
+                    "fps": 25,
+                    "sample_rate": 16000,
+                    "width": 64,
+                    "height": 48,
+                    "version": "1.0",
+                    "metadata": metadata,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    write_avatar("a-duo-1", "双人对话1", duo=True)
+    write_avatar("b-plain", "普通素材", duo=False)
+    write_avatar("c-duo-3", "双人对话3", duo=True)
+    write_avatar("d-duo-2", "双人对话2", duo=True)
+
+    app = FastAPI()
+    app.state.settings = SimpleNamespace(avatars_dir=str(tmp_path))
+    app.include_router(avatars.router)
+    response = TestClient(app).get("/avatars")
+
+    assert response.status_code == 200
+    assert [item["name"] for item in response.json()] == [
+        "双人对话1",
+        "双人对话2",
+        "双人对话3",
+        "普通素材",
+    ]
+
+
 def test_builtin_female_host_transparent_avatar_asset_is_ready() -> None:
     avatar_dir = REPO_ROOT / "examples" / "avatars" / "female-host-transparent"
     manifest = json.loads((avatar_dir / "manifest.json").read_text(encoding="utf-8"))

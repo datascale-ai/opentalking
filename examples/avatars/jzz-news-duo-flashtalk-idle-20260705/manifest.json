@@ -1,0 +1,35 @@
+{
+  "id": "jzz-news-duo-flashtalk-idle-20260705",
+  "model_type": "quicktalk",
+  "fps": 25,
+  "sample_rate": 16000,
+  "width": 1280,
+  "height": 720,
+  "version": "1.0",
+  "name": "双人对话3",
+  "metadata": {
+    "source_image_hash": "ff9617ecf2ef19f191849d4f682ee0b7ef1eca02e85fe4d7278723594664e48e",
+    "source_image_path": "reference.png",
+    "custom_avatar": true,
+    "base_avatar_id": "anchor",
+    "idle_mode": "loop",
+    "reference_mode": "video",
+    "source_image": "source/source.png",
+    "source_video": "source/source_video.mp4",
+    "template_video": "source/source_video.mp4",
+    "matting_status": "opaque",
+    "quicktalk": {
+      "template_video": "source/source_video.mp4"
+    },
+    "duo_dialog": {
+      "speaker_faces": {
+        "female": "left",
+        "male": "right"
+      },
+      "default_voices": {
+        "female": "zh-CN-XiaoxiaoNeural",
+        "male": "zh-CN-YunxiNeural"
+      }
+    }
+  }
+}
