@@ -112,6 +112,7 @@ const DEFAULT_DUO_DIALOG_VOICES: Record<DuoDialogRole, string> = {
   female: "zh-CN-XiaoxiaoNeural",
 };
 const DUO_DIALOG_ROLE_LABELS: Record<DuoDialogRole, string> = { male: "男声", female: "女声" };
+const DUO_DIALOG_1080P_AVATAR_IDS = new Set(["jzz-news-duo-flashtalk-idle-20260705"]);
 const TTS_PROVIDER_OPTIONS: TtsProviderExtended[] = ["edge", "dashscope", "cosyvoice", "sambert", "local_cosyvoice", "indextts", "local_f5_tts", "xiaomi_mimo", "openai_compatible"];
 
 function modelOptionsForProvider(provider: TtsProviderExtended): { id: string; label: string }[] {
@@ -470,7 +471,13 @@ export function VideoCreationWorkspace({
   const videoAvatarFit = selectedScene?.avatar_fit ?? "contain";
   const videoAvatarBaseScale = selectedScene?.avatar_scale ?? 1;
   const videoAvatarDisplayScale = videoAvatarBaseScale * videoAvatarAdjust.scale;
-  const selectedVideoOutputSize = VIDEO_CREATION_OUTPUT_SIZES[videoOutputAspect];
+  const selectedVideoOutputSize = useMemo(() => {
+    const base = VIDEO_CREATION_OUTPUT_SIZES[videoOutputAspect];
+    if (videoOutputAspect === "16:9" && selectedAvatar?.id && DUO_DIALOG_1080P_AVATAR_IDS.has(selectedAvatar.id)) {
+      return { ...base, width: 1920, height: 1080 };
+    }
+    return base;
+  }, [selectedAvatar?.id, videoOutputAspect]);
   const videoAvatarPreviewLayer = useMemo(() => {
     const canvasW = selectedVideoOutputSize.width;
     const canvasH = selectedVideoOutputSize.height;
