@@ -325,7 +325,9 @@ export type IndexTTSConfig = {
   quick_streaming_tokens?: number;
 };
 
-export type DuoDialogRole = "male" | "female";
+export type PersonMode = "single" | "double";
+
+export type DuoDialogRole = "left" | "right";
 
 export type DuoDialogLine = {
   id: string;
@@ -552,6 +554,7 @@ export type AvatarSummary = {
   model_type: string;
   width: number;
   height: number;
+  person_mode: PersonMode;
   is_custom: boolean;
   has_preview_video: boolean;
   matting_status: "unknown" | "opaque" | "transparent_ready";

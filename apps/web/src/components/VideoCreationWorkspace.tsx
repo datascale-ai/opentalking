@@ -13,6 +13,7 @@ import {
   type DuoDialogSpeakerTTS,
   type ExportVideoItem,
   type IndexTTSConfig,
+  type PersonMode,
   type SceneBackgroundAsset,
   type SceneComposition,
   type VideoCreationCompositionConfig,
@@ -82,6 +83,10 @@ const AUDIO_SOURCE_OPTIONS: { id: VideoCreationAudioSource; label: string }[] = 
   TTS_TEXT_AUDIO_SOURCE_OPTION,
 ];
 const DUO_DIALOG_AUDIO_SOURCE_OPTION: { id: VideoCreationAudioSource; label: string } = { id: "duo_dialog", label: "双人对话" };
+const PERSON_MODE_OPTIONS: { id: PersonMode; label: string }[] = [
+  { id: "single", label: "单人" },
+  { id: "double", label: "双人" },
+];
 
 const REFERENCE_DURATION_OPTIONS = [
   { value: 10, label: "10s" },
@@ -99,20 +104,64 @@ const VIDEO_CREATION_MODEL_LABELS: Record<string, string> = {
   wav2lip: "Wav2Lip",
 };
 const VIDEO_CREATION_OUTPUT_SIZES = {
-  "16:9": { label: "16:9", width: 1280, height: 720, previewClassName: "aspect-video w-full" },
-  "9:16": { label: "9:16", width: 720, height: 1280, previewClassName: "aspect-[9/16] w-[min(100%,22rem)]" },
-  "1:1": { label: "1:1", width: 1080, height: 1080, previewClassName: "aspect-square w-[min(100%,34rem)]" },
-} as const satisfies Record<VideoCreationOutputAspect, { label: string; width: number; height: number; previewClassName: string }>;
+  "16:9": { label: "16:9", previewClassName: "aspect-video w-full" },
+  "9:16": { label: "9:16", previewClassName: "aspect-[9/16] w-[min(100%,22rem)]" },
+  "1:1": { label: "1:1", previewClassName: "aspect-square w-[min(100%,34rem)]" },
+} as const satisfies Record<VideoCreationOutputAspect, { label: string; previewClassName: string }>;
+const VIDEO_CREATION_OUTPUT_RESOLUTION_OPTIONS = [480, 720, 1080, 1440, 2160] as const;
+type VideoCreationOutputResolution = number;
+const MAX_VIDEO_CREATION_OUTPUT_RESOLUTION = 2160;
 const VIDEO_CREATION_OUTPUT_ASPECTS = Object.keys(VIDEO_CREATION_OUTPUT_SIZES) as VideoCreationOutputAspect[];
+
+function evenVideoDim(value: number): number {
+  const rounded = Math.max(2, Math.round(value));
+  return rounded % 2 === 0 ? rounded : rounded + 1;
+}
+
+function computeVideoCreationMaxResolution(avatar: AvatarSummary | null): number {
+  const sourceWidth = Number(avatar?.width ?? 0);
+  const sourceHeight = Number(avatar?.height ?? 0);
+  const sourceShortEdge = Math.min(
+    sourceWidth > 0 ? sourceWidth : Number.POSITIVE_INFINITY,
+    sourceHeight > 0 ? sourceHeight : Number.POSITIVE_INFINITY,
+  );
+  if (!Number.isFinite(sourceShortEdge)) return MAX_VIDEO_CREATION_OUTPUT_RESOLUTION;
+  return Math.min(MAX_VIDEO_CREATION_OUTPUT_RESOLUTION, Math.max(2, Math.floor(sourceShortEdge)));
+}
+
+function computeVideoCreationOutputSize(aspectRatio: VideoCreationOutputAspect, resolution: VideoCreationOutputResolution): { width: number; height: number } {
+  if (aspectRatio === "16:9") {
+    return { width: evenVideoDim((resolution * 16) / 9), height: evenVideoDim(resolution) };
+  }
+  if (aspectRatio === "9:16") {
+    return { width: evenVideoDim(resolution), height: evenVideoDim((resolution * 16) / 9) };
+  }
+  return { width: evenVideoDim(resolution), height: evenVideoDim(resolution) };
+}
+
+function resolutionLabel(value: number): string {
+  if (value === 480) return "480p";
+  if (value === 720) return "720p";
+  if (value === 1080) return "1080p";
+  if (value === 1440) return "2K";
+  if (value === 2160) return "4K";
+  return `${value}px`;
+}
+
+function outputResolutionOptionLabel(value: number, maxResolution: number): string {
+  if (value === maxResolution && !VIDEO_CREATION_OUTPUT_RESOLUTION_OPTIONS.includes(value as (typeof VIDEO_CREATION_OUTPUT_RESOLUTION_OPTIONS)[number])) {
+    return `原分辨率 ${resolutionLabel(value)}`;
+  }
+  return resolutionLabel(value);
+}
 const VIDEO_CREATION_SCRIPT_MAX_CHARS = 1000;
 const DUO_DIALOG_LINE_MAX_CHARS = 500;
 const DEFAULT_DUO_DIALOG_GAP_MS = 120;
 const DEFAULT_DUO_DIALOG_VOICES: Record<DuoDialogRole, string> = {
-  male: "zh-CN-YunxiNeural",
-  female: "zh-CN-XiaoxiaoNeural",
+  left: "zh-CN-XiaoxiaoNeural",
+  right: "zh-CN-YunxiNeural",
 };
-const DUO_DIALOG_ROLE_LABELS: Record<DuoDialogRole, string> = { male: "男声", female: "女声" };
-const DUO_DIALOG_1080P_AVATAR_IDS = new Set(["jzz-news-duo-flashtalk-idle-20260705"]);
+const DUO_DIALOG_ROLE_LABELS: Record<DuoDialogRole, string> = { left: "左侧", right: "右侧" };
 const TTS_PROVIDER_OPTIONS: TtsProviderExtended[] = ["edge", "dashscope", "cosyvoice", "sambert", "local_cosyvoice", "indextts", "local_f5_tts", "xiaomi_mimo", "openai_compatible"];
 
 function modelOptionsForProvider(provider: TtsProviderExtended): { id: string; label: string }[] {
@@ -333,23 +382,23 @@ function indexTTSRequestConfig(config: IndexTTSConfig): IndexTTSConfig {
 
 function freshDuoDialogLines(): DuoDialogLine[] {
   return [
-    { id: "line-1", role: "male", text: "大家好，欢迎来到今天的双人对话。" },
-    { id: "line-2", role: "female", text: "我们会用一问一答的方式介绍重点内容。" },
+    { id: "line-1", role: "left", text: "大家好，欢迎来到今天的双人对话。" },
+    { id: "line-2", role: "right", text: "我们会用一问一答的方式介绍重点内容。" },
   ];
 }
 
 function duoDialogDefaultSpeakers(avatar: AvatarSummary | null, voiceCatalog: VoiceCatalogItem[] = []): DuoDialogSpeakers {
-  const defaults = avatar?.duo_dialog?.default_voices ?? {};
+  const defaults: Record<string, string> = avatar?.duo_dialog?.default_voices ?? {};
   return {
-    male: normalizedSpeakerForProvider("edge", voiceCatalog, defaults.male || DEFAULT_DUO_DIALOG_VOICES.male),
-    female: normalizedSpeakerForProvider("edge", voiceCatalog, defaults.female || DEFAULT_DUO_DIALOG_VOICES.female),
+    left: normalizedSpeakerForProvider("edge", voiceCatalog, defaults.left || defaults.female || DEFAULT_DUO_DIALOG_VOICES.left),
+    right: normalizedSpeakerForProvider("edge", voiceCatalog, defaults.right || defaults.male || DEFAULT_DUO_DIALOG_VOICES.right),
   };
 }
 
 function duoDialogVoicesFromSpeakers(speakers: DuoDialogSpeakers): Record<DuoDialogRole, string> {
   return {
-    male: speakers.male.voice || DEFAULT_DUO_DIALOG_VOICES.male,
-    female: speakers.female.voice || DEFAULT_DUO_DIALOG_VOICES.female,
+    left: speakers.left.voice || DEFAULT_DUO_DIALOG_VOICES.left,
+    right: speakers.right.voice || DEFAULT_DUO_DIALOG_VOICES.right,
   };
 }
 
@@ -434,6 +483,8 @@ export function VideoCreationWorkspace({
   const [videoBackgroundId, setVideoBackgroundId] = useState<string | null>(null);
   const [videoAvatarAdjust, setVideoAvatarAdjust] = useState({ x: 0, y: 0, scale: 1 });
   const [videoOutputAspect, setVideoOutputAspect] = useState<VideoCreationOutputAspect>("16:9");
+  const [videoOutputResolution, setVideoOutputResolution] = useState<VideoCreationOutputResolution>(1080);
+  const [pendingSourceAssetFile, setPendingSourceAssetFile] = useState<File | null>(null);
   const sourceUploadRef = useRef<HTMLInputElement>(null);
   const ttsPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsPreviewUrlRef = useRef<string | null>(null);
@@ -447,7 +498,7 @@ export function VideoCreationWorkspace({
       : qwenVoiceOptions.find((voice) => voice.id === qwenVoice)?.label ?? qwenVoice;
   const cloneVoiceCount = voiceCatalog.filter((item) => item.source === "clone").length;
   const isReferenceVideoMode = creationMode === "reference_video";
-  const duoDialogAvailable = !isReferenceVideoMode && effectiveModel === "quicktalk" && Boolean(selectedAvatar?.duo_dialog);
+  const duoDialogAvailable = !isReferenceVideoMode && effectiveModel === "quicktalk" && selectedAvatar?.person_mode === "double" && Boolean(selectedAvatar?.duo_dialog);
   const duoDialogSelected = duoDialogAvailable && audioSource === "duo_dialog";
   const canPreviewTts = !isReferenceVideoMode && audioSource !== "upload" && !duoDialogSelected;
   const showIndexTTSControls = !isReferenceVideoMode && audioSource !== "upload" && audioSource !== "duo_dialog" && INDEXTTS_PROVIDER_SET.has(ttsProvider);
@@ -471,13 +522,22 @@ export function VideoCreationWorkspace({
   const videoAvatarFit = selectedScene?.avatar_fit ?? "contain";
   const videoAvatarBaseScale = selectedScene?.avatar_scale ?? 1;
   const videoAvatarDisplayScale = videoAvatarBaseScale * videoAvatarAdjust.scale;
+  const maxSelectableOutputResolution = computeVideoCreationMaxResolution(selectedAvatar);
+  const availableOutputResolutionOptions = useMemo(() => {
+    const options: number[] = VIDEO_CREATION_OUTPUT_RESOLUTION_OPTIONS.filter((value) => value <= maxSelectableOutputResolution);
+    if (!options.includes(maxSelectableOutputResolution)) {
+      options.push(maxSelectableOutputResolution);
+    }
+    return [...new Set(options)].sort((left, right) => left - right);
+  }, [maxSelectableOutputResolution]);
+  const selectedOutputResolution = availableOutputResolutionOptions.includes(videoOutputResolution)
+    ? videoOutputResolution
+    : (availableOutputResolutionOptions[availableOutputResolutionOptions.length - 1] ?? availableOutputResolutionOptions[0] ?? MAX_VIDEO_CREATION_OUTPUT_RESOLUTION);
   const selectedVideoOutputSize = useMemo(() => {
     const base = VIDEO_CREATION_OUTPUT_SIZES[videoOutputAspect];
-    if (videoOutputAspect === "16:9" && selectedAvatar?.id && DUO_DIALOG_1080P_AVATAR_IDS.has(selectedAvatar.id)) {
-      return { ...base, width: 1920, height: 1080 };
-    }
-    return base;
-  }, [selectedAvatar?.id, videoOutputAspect]);
+    const dimensions = computeVideoCreationOutputSize(videoOutputAspect, selectedOutputResolution);
+    return { ...base, ...dimensions };
+  }, [selectedOutputResolution, videoOutputAspect]);
   const videoAvatarPreviewLayer = useMemo(() => {
     const canvasW = selectedVideoOutputSize.width;
     const canvasH = selectedVideoOutputSize.height;
@@ -501,21 +561,18 @@ export function VideoCreationWorkspace({
       heightPct: (layerH / canvasH) * 100,
     };
   }, [selectedAvatar?.height, selectedAvatar?.width, selectedVideoOutputSize.height, selectedVideoOutputSize.width, videoAvatarAdjust.x, videoAvatarAdjust.y, videoAvatarAnchor, videoAvatarDisplayScale, videoAvatarFit]);
-  const compositionConfig = useMemo<VideoCreationCompositionConfig | null>(() => {
-    if (!videoBackgroundId) return null;
-    return {
-      scene_composition_id: selectedScene?.id ?? null,
-      background_id: videoBackgroundId,
-      background_color: selectedScene?.background_color ?? "#ffffff",
-      avatar_fit: videoAvatarFit,
-      avatar_anchor: videoAvatarAnchor,
-      avatar_scale: videoAvatarDisplayScale,
-      avatar_offset_x: videoAvatarAdjust.x,
-      avatar_offset_y: videoAvatarAdjust.y,
-      output_width: selectedVideoOutputSize.width,
-      output_height: selectedVideoOutputSize.height,
-    };
-  }, [selectedScene?.background_color, selectedScene?.id, selectedVideoOutputSize.height, selectedVideoOutputSize.width, videoAvatarAdjust.scale, videoAvatarAdjust.x, videoAvatarAdjust.y, videoAvatarAnchor, videoAvatarDisplayScale, videoAvatarFit, videoBackgroundId]);
+  const compositionConfig = useMemo<VideoCreationCompositionConfig>(() => ({
+    scene_composition_id: selectedScene?.id ?? null,
+    background_id: videoBackgroundId,
+    background_color: selectedScene?.background_color ?? "#ffffff",
+    avatar_fit: videoAvatarFit,
+    avatar_anchor: videoAvatarAnchor,
+    avatar_scale: videoAvatarDisplayScale,
+    avatar_offset_x: videoAvatarAdjust.x,
+    avatar_offset_y: videoAvatarAdjust.y,
+    output_width: selectedVideoOutputSize.width,
+    output_height: selectedVideoOutputSize.height,
+  }), [selectedScene?.background_color, selectedScene?.id, selectedVideoOutputSize.height, selectedVideoOutputSize.width, videoAvatarAdjust.scale, videoAvatarAdjust.x, videoAvatarAdjust.y, videoAvatarAnchor, videoAvatarDisplayScale, videoAvatarFit, videoBackgroundId]);
 
   const updateFasterLivePortraitNumber = useCallback((
     key: Exclude<keyof FasterLivePortraitConfig, "animation_region" | "flag_stitching" | "flag_pasteback" | "flag_relative_motion" | "flag_normalize_lip" | "flag_lip_retargeting">,
@@ -571,7 +628,7 @@ export function VideoCreationWorkspace({
   }, [selectedAvatar?.id, selectedScene?.id, selectedScene?.background_id]);
 
   useEffect(() => {
-    if (selectedAvatar?.duo_dialog && models.includes("quicktalk")) {
+    if (selectedAvatar?.person_mode === "double" && models.includes("quicktalk")) {
       setModel("quicktalk");
     }
     setDuoDialogSpeakers(duoDialogDefaultSpeakers(selectedAvatar, voiceCatalog));
@@ -587,7 +644,7 @@ export function VideoCreationWorkspace({
     }
   }, [audioSource, duoDialogAvailable]);
 
-  const handleSourceAsset = useCallback(async (file: File | null) => {
+  const handleSourceAsset = useCallback((file: File | null) => {
     if (!file || !selectedAvatar) return;
     const isVideo = file.type.startsWith("video/");
     const isImage = file.type.startsWith("image/");
@@ -595,12 +652,20 @@ export function VideoCreationWorkspace({
       onNotify?.("请上传图片或视频作为数字人形象。", "error");
       return;
     }
+    setPendingSourceAssetFile(file);
+  }, [onNotify, selectedAvatar]);
+
+  const handleUploadPersonModeSelect = useCallback(async (nextMode: PersonMode) => {
+    const file = pendingSourceAssetFile;
+    if (!file || !selectedAvatar) return;
+    const isVideo = file.type.startsWith("video/");
     setSourceAssetBusy(true);
     try {
       const form = new FormData();
       form.set("base_avatar_id", selectedAvatar.id);
       form.set("name", avatarNameFromFile(file));
       form.set("model", effectiveModel);
+      form.set("person_mode", nextMode);
       if (isVideo) {
         form.set("video", file);
       } else {
@@ -608,6 +673,7 @@ export function VideoCreationWorkspace({
       }
       const created = await apiPostForm<AvatarSummary>("/avatars/custom", form);
       onAvatarUploaded(created);
+      setPendingSourceAssetFile(null);
       onNotify?.(`已加入数字人资产：${created.name ?? created.id}`, "success");
     } catch (error) {
       console.warn("video creation source asset upload failed", error);
@@ -616,7 +682,7 @@ export function VideoCreationWorkspace({
     } finally {
       setSourceAssetBusy(false);
     }
-  }, [effectiveModel, onAvatarUploaded, onNotify, selectedAvatar]);
+  }, [effectiveModel, onAvatarUploaded, onNotify, pendingSourceAssetFile, selectedAvatar]);
 
   const handleVoiceCloned = useCallback(async (application: VoiceCloneApplication) => {
     await onVoiceCloned(application);
@@ -642,7 +708,7 @@ export function VideoCreationWorkspace({
   const addDuoDialogLine = useCallback(() => {
     setDuoDialogLines((current) => {
       const lastLine = current[current.length - 1];
-      const nextRole: DuoDialogRole = lastLine?.role === "male" ? "female" : "male";
+      const nextRole: DuoDialogRole = lastLine?.role === "left" ? "right" : "left";
       return [
         ...current,
         { id: `line-${Date.now()}`, role: nextRole, text: "" },
@@ -885,12 +951,37 @@ export function VideoCreationWorkspace({
               className="hidden"
               onChange={(event: ChangeEvent<HTMLInputElement>) => {
                 const input = event.currentTarget;
-                void handleSourceAsset(input.files?.[0] ?? null).finally(() => {
-                  input.value = "";
-                });
+                handleSourceAsset(input.files?.[0] ?? null);
+                input.value = "";
               }}
             />
           </div>
+          {pendingSourceAssetFile ? (
+            <div className="mt-3 rounded-md border border-cyan-200 bg-cyan-50 p-3">
+              <p className="truncate text-xs font-semibold text-slate-700">{pendingSourceAssetFile.name}</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {PERSON_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => void handleUploadPersonModeSelect(option.id)}
+                    disabled={!selectedAvatar || sourceAssetBusy}
+                    className="rounded-md border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    上传{option.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingSourceAssetFile(null)}
+                disabled={sourceAssetBusy}
+                className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                取消
+              </button>
+            </div>
+          ) : null}
           <div className="mt-4 space-y-2">
             {avatars.map((avatar) => {
               const selected = selectedAvatar?.id === avatar.id;
@@ -1093,7 +1184,7 @@ export function VideoCreationWorkspace({
                   <button type="button" onClick={addDuoDialogLine} className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 hover:bg-cyan-100">＋</button>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
-                  {(["male", "female"] as DuoDialogRole[]).map((role) => {
+                  {(["left", "right"] as DuoDialogRole[]).map((role) => {
                     const speaker = duoDialogSpeakers[role];
                     const provider = (speaker.tts_provider || "edge") as TtsProviderExtended;
                     const modelOptions = modelOptionsForProvider(provider);
@@ -1175,8 +1266,8 @@ export function VideoCreationWorkspace({
                     >
                       <button type="button" className="h-9 w-9 cursor-grab rounded-lg border border-slate-200 bg-slate-50 text-lg leading-none text-slate-400 active:cursor-grabbing" aria-label="拖拽排序">⋮⋮</button>
                       <select value={line.role} onChange={(event) => updateDuoDialogLine(line.id, { role: event.target.value as DuoDialogRole })} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm font-semibold text-slate-700">
-                        <option value="male">男声</option>
-                        <option value="female">女声</option>
+                        <option value="left">左侧</option>
+                        <option value="right">右侧</option>
                       </select>
                       <textarea value={line.text} onChange={(event) => updateDuoDialogLine(line.id, { text: event.target.value })} rows={2} maxLength={DUO_DIALOG_LINE_MAX_CHARS} className="min-h-16 w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800" />
                       <div className="flex justify-end gap-1">
@@ -1535,6 +1626,21 @@ export function VideoCreationWorkspace({
                   );
                 })}
               </div>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-xs font-semibold text-slate-700">分辨率</p>
+                <p className="text-[11px] font-medium text-slate-500">上限 {resolutionLabel(maxSelectableOutputResolution)}</p>
+              </div>
+              <select
+                value={selectedOutputResolution}
+                onChange={(event) => setVideoOutputResolution(Number(event.target.value))}
+                className="w-full max-w-xs rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-700"
+              >
+                {availableOutputResolutionOptions.map((value) => (
+                  <option key={value} value={value}>{outputResolutionOptionLabel(value, maxSelectableOutputResolution)}</option>
+                ))}
+              </select>
             </div>
             <label className="block text-xs font-semibold text-slate-700">
               本次生成背景

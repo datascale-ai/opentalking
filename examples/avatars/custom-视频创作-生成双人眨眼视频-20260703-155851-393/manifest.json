@@ -1,14 +1,14 @@
 {
   "id": "custom-视频创作-生成双人眨眼视频-20260703-155851-393",
   "model_type": "quicktalk",
-  "fps": 25,
+  "fps": 24,
   "sample_rate": 16000,
-  "width": 720,
-  "height": 540,
+  "width": 960,
+  "height": 720,
   "version": "1.0",
-  "name": "双人对话2",
+  "name": "新闻双人主播",
   "metadata": {
-    "source_image_hash": "4ddcc3f20f4b18782dda0eee07675ddaaefbe446f0f9d82db3d7ca47a59ee39f",
+    "source_image_hash": "69237a3de63415e4b3edb1649fcb9b80dcf629f494e6770e9802cda3467e2ea2",
     "source_image_path": "reference.png",
     "preferred_wav2lip_postprocess_mode": "easy_improved",
     "mouth_polygon_source": "mediapipe",
@@ -210,6 +210,7 @@
         "male": "zh-CN-YunxiNeural",
         "female": "zh-CN-XiaoxiaoNeural"
       }
-    }
+    },
+    "person_mode": "double"
   }
 }

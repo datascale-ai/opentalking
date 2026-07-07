@@ -226,6 +226,38 @@ def test_video_creation_route_passes_composition_config(tmp_path: Path, monkeypa
     assert creators[0].calls[0][1]["composition_config"] == composition
 
 
+def test_video_creation_route_passes_reference_video_composition_config(tmp_path: Path, monkeypatch) -> None:
+    client, creators = _client(tmp_path, monkeypatch)
+    composition = {
+        "scene_composition_id": "scene-anchor-news",
+        "background_id": "bg-newsroom",
+        "background_color": "#ffffff",
+        "avatar_fit": "contain",
+        "avatar_anchor": "center",
+        "avatar_scale": 1.25,
+        "avatar_offset_x": 96,
+        "avatar_offset_y": -32,
+        "output_width": 1920,
+        "output_height": 1080,
+    }
+    with client:
+        response = client.post(
+            "/video-creation/jobs",
+            data={
+                "model": "flashtalk",
+                "avatar_id": "duo-anchor",
+                "audio_source": "reference_video",
+                "title": "Reference take",
+                "duration_sec": 30,
+                "composition_config": json.dumps(composition),
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert creators[0].calls[0][1]["composition_config"] == composition
+    assert creators[0].calls[0][1]["duration_sec"] == 30
+
+
 def test_video_creation_route_rejects_invalid_composition_config(tmp_path: Path, monkeypatch) -> None:
     client, _creators = _client(tmp_path, monkeypatch)
     with client:
@@ -1186,6 +1218,109 @@ async def test_video_creation_service_renders_quicktalk_duo_dialog_with_role_voi
 
 
 @pytest.mark.asyncio
+async def test_video_creation_service_accepts_left_right_roles_for_legacy_duo_avatar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    quicktalk_root = tmp_path / "quicktalk-model"
+    quicktalk_root.mkdir()
+    _write_duo_avatar(avatars)
+    tts_calls: list[tuple[str, str | None]] = []
+    worker_scripts: list[dict[str, object]] = []
+
+    class FakeTTS:
+        async def synthesize_stream(self, text: str, *, voice: str | None = None):
+            tts_calls.append((text, voice))
+            yield AudioChunk(
+                data=np.full(160, 100, dtype=np.int16),
+                sample_rate=16000,
+                duration_ms=10.0,
+            )
+
+        async def aclose(self) -> None:
+            pass
+
+    class FakeMultiFaceWorker:
+        def __init__(self, **_kwargs: object) -> None:
+            self.fps = 25
+
+        def generate_frames_from_script(self, script: dict[str, object]):
+            worker_scripts.append(script)
+            return iter([np.zeros((48, 64, 3), dtype=np.uint8)])
+
+    async def fake_mux(_ffmpeg_bin: str, _video_in: Path, _audio_in: Path, out_mp4: Path) -> None:
+        out_mp4.write_bytes(b"mp4")
+
+    def fake_create_video_export(root: Path, **kwargs: object) -> dict[str, object]:
+        return {
+            "id": "export-duo-left-right",
+            "kind": "video_creation",
+            "title": kwargs["title"],
+            "duration_sec": kwargs["duration_sec"],
+            "size_bytes": len(kwargs["content"]),
+            "mime_type": "video/mp4",
+            "created_at": "2026-06-04T00:00:00Z",
+            "path": str(root / "export-duo-left-right.mp4"),
+            "session_id": kwargs["session_id"],
+            "avatar_id": kwargs["avatar_id"],
+            "model": kwargs["model"],
+        }
+
+    monkeypatch.setattr(video_creation_module, "build_tts_adapter", lambda **_kwargs: FakeTTS())
+    monkeypatch.setattr(video_creation_module, "MultiFaceRealtimeV3Worker", FakeMultiFaceWorker, raising=False)
+    monkeypatch.setattr(video_creation_module, "resolve_quicktalk_asset_root", lambda _settings: quicktalk_root, raising=False)
+    monkeypatch.setattr(video_creation_module, "_write_video_only", lambda path, _frames, _fps: path.write_bytes(b"video"))
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", fake_mux)
+    monkeypatch.setattr(video_creation_module, "create_video_export", fake_create_video_export)
+    monkeypatch.setattr(
+        video_creation_module,
+        "resolve_model_backend",
+        lambda model, _settings: SimpleNamespace(model=model, backend="local", ws_url=""),
+    )
+
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            export_max_bytes=1024 * 1024,
+            ffmpeg_bin="ffmpeg",
+            tts_sample_rate=16000,
+            torch_device="cpu",
+            quicktalk_device="cpu",
+            quicktalk_hubert_device="cpu",
+            quicktalk_model_backend="pth",
+        )
+    )
+
+    await service.create_from_duo_dialog(
+        model="quicktalk",
+        avatar_id="duo-anchor",
+        title="Left right duo take",
+        duo_dialog={
+            "lines": [
+                {"id": "line-1", "role": "left", "text": "左侧开场"},
+                {"id": "line-2", "role": "right", "text": "右侧回应"},
+            ],
+            "speakers": {
+                "left": {"tts_provider": "edge", "voice": "zh-CN-XiaoxiaoNeural"},
+                "right": {"tts_provider": "edge", "voice": "zh-CN-YunxiNeural"},
+            },
+        },
+        tts_provider="edge",
+        tts_model=None,
+        composition_config=None,
+    )
+
+    assert tts_calls == [("左侧开场", "zh-CN-XiaoxiaoNeural"), ("右侧回应", "zh-CN-YunxiNeural")]
+    assert worker_scripts[0]["speaker_faces"] == {"left": "left", "right": "right"}
+    assert [segment["speaker_id"] for segment in worker_scripts[0]["segments"]] == ["left", "right"]
+
+
+@pytest.mark.asyncio
 async def test_video_creation_service_renders_duo_dialog_with_per_role_tts_settings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1369,6 +1504,54 @@ async def test_video_creation_service_rejects_invalid_duo_dialog_payload(
             tts_model=None,
             composition_config=None,
         )
+
+
+def test_video_creation_composition_keeps_output_size_without_background(tmp_path: Path) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    avatar = _write_avatar(avatars)
+
+    config = video_creation_module._normalize_video_composition_config(
+        SimpleNamespace(scene_assets_dir=str(tmp_path / "scene-assets")),
+        avatar,
+        {
+            "background_id": None,
+            "background_color": "#ffffff",
+            "avatar_fit": "contain",
+            "avatar_anchor": "center",
+            "output_width": 1280,
+            "output_height": 720,
+        },
+    )
+
+    assert config is not None
+    assert config["output_width"] == 1280
+    assert config["output_height"] == 720
+    assert config["background_path"] is None
+
+
+def test_video_creation_composition_resizes_frames_without_background() -> None:
+    from opentalking import video_creation as video_creation_module
+
+    frame = np.full((1080, 1920, 3), 128, dtype=np.uint8)
+
+    frames = video_creation_module._apply_video_composition(
+        [frame],
+        config={
+            "background_path": None,
+            "background_color": "#ffffff",
+            "avatar_fit": "contain",
+            "avatar_anchor": "center",
+            "avatar_scale": 1.0,
+            "avatar_offset_x": 0.0,
+            "avatar_offset_y": 0.0,
+            "output_width": 1280,
+            "output_height": 720,
+        },
+    )
+
+    assert frames[0].shape[:2] == (720, 1280)
 
 
 @pytest.mark.asyncio

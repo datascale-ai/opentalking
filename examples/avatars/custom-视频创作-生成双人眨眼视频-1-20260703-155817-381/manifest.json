@@ -6,7 +6,7 @@
   "width": 720,
   "height": 540,
   "version": "1.0",
-  "name": "双人对话1",
+  "name": "视频通话",
   "metadata": {
     "source_image_hash": "dd7a76d7e811f55e72003b64925c4cb27b4e40534aed6397eb4ef3ffd76bbd01",
     "source_image_path": "reference.png",
@@ -210,6 +210,7 @@
         "male": "zh-CN-YunxiNeural",
         "female": "zh-CN-XiaoxiaoNeural"
       }
-    }
+    },
+    "person_mode": "double"
   }
 }

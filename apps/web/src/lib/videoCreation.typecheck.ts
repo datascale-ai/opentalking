@@ -89,12 +89,12 @@ const duoDialogPerRoleTtsJob: CreateVideoCreationJobInput = {
   audioSource: "duo_dialog",
   duoDialog: {
     lines: [
-      { id: "line-1", role: "male", text: "男方开场" },
-      { id: "line-2", role: "female", text: "女方回应" },
+      { id: "line-1", role: "left", text: "左侧开场" },
+      { id: "line-2", role: "right", text: "右侧回应" },
     ],
     speakers: {
-      male: { tts_provider: "edge", voice: "zh-CN-YunxiNeural" },
-      female: { tts_provider: "xiaomi_mimo", tts_model: "mimo-v2.5-tts", voice: "冰糖" },
+      left: { tts_provider: "edge", voice: "zh-CN-XiaoxiaoNeural" },
+      right: { tts_provider: "xiaomi_mimo", tts_model: "mimo-v2.5-tts", voice: "冰糖" },
     },
     gap_ms: 120,
   },

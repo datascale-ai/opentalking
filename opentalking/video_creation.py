@@ -145,17 +145,17 @@ def _normalize_video_composition_config(
     if not config:
         return None
     background_id = str(config.get("background_id") or "").strip()
-    if not background_id:
-        return None
-    store = SceneAssetStore(_settings_path(settings, "scene_assets_dir", "./data/scene-assets"))
-    background = next((item for item in store.list_backgrounds() if item.get("id") == background_id), None)
-    if background is None:
-        raise ValueError("background_id not found")
-    if str(background.get("kind") or "") == "video":
-        raise ValueError("video backgrounds are not supported for video creation")
-    background_path = store.background_file_path(background_id)
-    if background_path is None:
-        raise FileNotFoundError("background file not found")
+    background_path: Path | None = None
+    if background_id:
+        store = SceneAssetStore(_settings_path(settings, "scene_assets_dir", "./data/scene-assets"))
+        background = next((item for item in store.list_backgrounds() if item.get("id") == background_id), None)
+        if background is None:
+            raise ValueError("background_id not found")
+        if str(background.get("kind") or "") == "video":
+            raise ValueError("video backgrounds are not supported for video creation")
+        background_path = store.background_file_path(background_id)
+        if background_path is None:
+            raise FileNotFoundError("background file not found")
     avatar_fit = str(config.get("avatar_fit") or "contain").strip()
     avatar_anchor = str(config.get("avatar_anchor") or "center").strip()
     if avatar_fit not in {"contain", "cover"}:
@@ -164,6 +164,7 @@ def _normalize_video_composition_config(
         raise ValueError("invalid avatar_anchor")
     return {
         "background_path": background_path,
+        "background_color": str(config.get("background_color") or "#ffffff"),
         "avatar_mask_path": _reference_image_path(avatar_path),
         "avatar_fit": avatar_fit,
         "avatar_anchor": avatar_anchor,
@@ -184,6 +185,24 @@ def _resize_cover(image: np.ndarray, width: int, height: int) -> np.ndarray:
     left = max(0, (new_w - width) // 2)
     top = max(0, (new_h - height) // 2)
     return np.ascontiguousarray(resized[top:top + height, left:left + width])
+
+
+def _composition_background_color(value: object) -> tuple[int, int, int]:
+    raw = str(value or "#ffffff").strip()
+    if raw.startswith("#") and len(raw) == 7:
+        try:
+            r = int(raw[1:3], 16)
+            g = int(raw[3:5], 16)
+            b = int(raw[5:7], 16)
+            return (b, g, r)
+        except ValueError:
+            pass
+    return (255, 255, 255)
+
+
+def _solid_background(width: int, height: int, color: object) -> np.ndarray:
+    bgr = _composition_background_color(color)
+    return np.full((int(height), int(width), 3), bgr, dtype=np.uint8)
 
 
 def _avatar_anchor_origin(anchor: str, canvas_w: int, canvas_h: int, layer_w: int, layer_h: int) -> tuple[int, int]:
@@ -267,10 +286,14 @@ def _apply_video_composition(
     frame_height, frame_width = first.shape[:2]
     width = _coerce_composition_int(config, "output_width", int(frame_width), min_value=320, max_value=3840)
     height = _coerce_composition_int(config, "output_height", int(frame_height), min_value=180, max_value=2160)
-    background_raw = cv2.imread(str(config["background_path"]), cv2.IMREAD_COLOR)
-    if background_raw is None:
-        raise FileNotFoundError("background file not found")
-    background = _resize_cover(background_raw, int(width), int(height))
+    background_path = config.get("background_path")
+    if background_path:
+        background_raw = cv2.imread(str(background_path), cv2.IMREAD_COLOR)
+        if background_raw is None:
+            raise FileNotFoundError("background file not found")
+        background = _resize_cover(background_raw, int(width), int(height))
+    else:
+        background = _solid_background(int(width), int(height), config.get("background_color"))
     fallback_alpha = _load_avatar_alpha_mask(config.get("avatar_mask_path"))
     avatar_scale = _coerce_composition_float(config, "avatar_scale", 1.0, min_value=0.1, max_value=4.0)
     avatar_offset_x = _coerce_composition_float(config, "avatar_offset_x", 0.0, min_value=-2000.0, max_value=2000.0)
@@ -1072,7 +1095,13 @@ class VideoCreationService:
         audio_wav = work_dir / "audio.wav"
         _write_wav(audio_wav, total_pcm, sample_rate)
 
-        script = {"speaker_faces": dict(speaker_faces), "segments": script_segments}
+        normalized_speaker_faces = normalized.get("speaker_faces")
+        script_speaker_faces = (
+            {str(key): str(value) for key, value in normalized_speaker_faces.items()}
+            if isinstance(normalized_speaker_faces, Mapping)
+            else dict(speaker_faces)
+        )
+        script = {"speaker_faces": script_speaker_faces, "segments": script_segments}
         asset_root = resolve_quicktalk_asset_root(self.settings)
         if asset_root is None:
             raise FileNotFoundError("quicktalk asset root not found")

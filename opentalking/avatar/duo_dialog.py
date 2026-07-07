@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 DUO_DIALOG_ROLES = {"male", "female"}
+DUO_DIALOG_POSITION_ROLES = {"left", "right"}
 DEFAULT_DUO_DIALOG_GAP_MS = 120
 MAX_DUO_DIALOG_GAP_MS = 5000
 
@@ -53,6 +54,57 @@ def _speaker_tts_mapping(raw: object) -> dict[str, dict[str, object]]:
     return out
 
 
+def _position_role_aliases(speaker_faces: Mapping[str, str]) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for role, face in speaker_faces.items():
+        clean_role = str(role or "").strip()
+        clean_face = str(face or "").strip()
+        if clean_role and clean_face in DUO_DIALOG_POSITION_ROLES:
+            aliases[clean_face] = clean_role
+    return aliases
+
+
+def _normalize_role_mappings_to_payload(
+    payload: Mapping[str, Any],
+    *,
+    speaker_faces: dict[str, str],
+    default_voices: dict[str, str],
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    raw_lines = payload.get("lines")
+    requested_roles: set[str] = set()
+    if isinstance(raw_lines, Sequence) and not isinstance(raw_lines, (str, bytes)):
+        for raw_line in raw_lines:
+            if isinstance(raw_line, Mapping):
+                role = str(raw_line.get("role") or "").strip()
+                if role:
+                    requested_roles.add(role)
+    for raw_mapping in (payload.get("voices"), payload.get("speakers")):
+        if isinstance(raw_mapping, Mapping):
+            requested_roles.update(str(role or "").strip() for role in raw_mapping.keys() if str(role or "").strip())
+
+    if not requested_roles or requested_roles.issubset(set(speaker_faces)):
+        return speaker_faces, default_voices, {}
+
+    aliases = _position_role_aliases(speaker_faces)
+    if not aliases or not requested_roles.issubset(set(speaker_faces) | set(aliases)):
+        return speaker_faces, default_voices, {}
+
+    normalized_faces = {role: speaker_faces[role] for role in requested_roles if role in speaker_faces}
+    normalized_voices = dict(default_voices)
+    role_aliases: dict[str, str] = {}
+    for requested_role in requested_roles:
+        if requested_role in normalized_faces:
+            continue
+        legacy_role = aliases.get(requested_role)
+        if not legacy_role:
+            continue
+        normalized_faces[requested_role] = requested_role
+        if legacy_role in normalized_voices and requested_role not in normalized_voices:
+            normalized_voices[requested_role] = normalized_voices[legacy_role]
+        role_aliases[requested_role] = legacy_role
+    return normalized_faces, normalized_voices, role_aliases
+
+
 def duo_dialog_summary_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, object] | None:
     if not isinstance(metadata, Mapping):
         return None
@@ -91,6 +143,12 @@ def normalize_duo_dialog_payload(
     faces = _string_mapping(speaker_faces)
     if not faces:
         raise ValueError("avatar duo_dialog speaker_faces is required")
+    default_voice_map = _string_mapping(default_voices or {})
+    faces, default_voice_map, role_aliases = _normalize_role_mappings_to_payload(
+        payload,
+        speaker_faces=faces,
+        default_voices=default_voice_map,
+    )
 
     raw_lines = payload.get("lines")
     if not isinstance(raw_lines, Sequence) or isinstance(raw_lines, (str, bytes)):
@@ -111,12 +169,14 @@ def normalize_duo_dialog_payload(
         line_id = str(raw_line.get("id") or f"line-{index}").strip() or f"line-{index}"
         lines.append({"id": line_id, "role": role, "text": text})
 
-    voices = _string_mapping(default_voices or {})
+    voices = dict(default_voice_map)
     voices.update(_string_mapping(payload.get("voices")))
     speakers = _speaker_tts_mapping(payload.get("speakers"))
     normalized_speakers: dict[str, dict[str, object]] = {}
     for role in {line["role"] for line in lines}:
         config = dict(speakers.get(role) or {})
+        if not config:
+            config = dict(speakers.get(role_aliases.get(role, "")) or {})
         if not config.get("voice") and voices.get(role):
             config["voice"] = voices[role]
         if config.get("voice"):
@@ -129,5 +189,6 @@ def normalize_duo_dialog_payload(
         "lines": lines,
         "voices": voices,
         "speakers": normalized_speakers,
+        "speaker_faces": faces,
         "gap_ms": _coerce_gap_ms(payload.get("gap_ms")),
     }

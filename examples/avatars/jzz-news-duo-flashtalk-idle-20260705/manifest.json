@@ -6,7 +6,7 @@
   "width": 1920,
   "height": 1080,
   "version": "1.0",
-  "name": "双人对话3",
+  "name": "高清新闻双人主播",
   "metadata": {
     "source_image_hash": "20528ac58a3fa3b566f3d3cf456f13ec0e4b299e3edf7e2896ed70cad2880782",
     "source_image_path": "reference.png",
@@ -30,6 +30,7 @@
         "female": "zh-CN-XiaoxiaoNeural",
         "male": "zh-CN-YunxiNeural"
       }
-    }
+    },
+    "person_mode": "double"
   }
 }
