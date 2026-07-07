@@ -21,6 +21,7 @@ GITHUB_REPO_NAME = "opentalking"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}"
 GITHUB_STARGAZERS_API_URL = f"{GITHUB_API_URL}/stargazers"
 GITHUB_FORKS_API_URL = f"{GITHUB_API_URL}/forks"
+GITHUB_TOKEN_ENV = "HOMEPAGE_GITHUB_TOKEN"
 ANALYTICS_DB_PATH = Path(os.getenv("HOMEPAGE_ANALYTICS_DB", ROOT / ".analytics" / "homepage_analytics.sqlite3"))
 ANALYTICS_HASH_SALT = os.getenv("HOMEPAGE_ANALYTICS_SALT", "opentalking-homepage")
 MAX_FIELD_LENGTH = 500
@@ -227,6 +228,7 @@ TRAFFIC_COPY = {
             "unique_title": "过去 14 天独立访客",
             "stars_title": "最近 14 天 Star 趋势",
             "forks_title": "最近 14 天 Fork 趋势",
+            "github_token_expired": "TOKEN 未配置、过期或权限不足，无法读取 Star 历史趋势。",
             "views_total": "Views",
             "unique_total": "Unique Visitors",
             "stars_total": "Stars",
@@ -319,6 +321,7 @@ TRAFFIC_COPY = {
             "unique_title": "Unique visitors in last 14 days",
             "stars_title": "Stars in last 14 days",
             "forks_title": "Forks in last 14 days",
+            "github_token_expired": "TOKEN is missing, expired, or does not have permission to read Star history.",
             "views_total": "Views",
             "unique_total": "Unique Visitors",
             "stars_total": "Stars",
@@ -437,15 +440,22 @@ def build_daily_views(beijing_now):
     ]
 
 
+def get_github_token():
+    return os.getenv(GITHUB_TOKEN_ENV, "").strip()
+
+
 def fetch_github_json(url, accept="application/vnd.github+json"):
-    request = Request(
-        url,
-        headers={
-            "Accept": accept,
-            "User-Agent": "opentalking-homepage",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-    )
+    headers = {
+        "Accept": accept,
+        "User-Agent": "opentalking-homepage",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    github_token = get_github_token()
+
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+
+    request = Request(url, headers=headers)
 
     with urlopen(request, timeout=10) as response:
         return json.loads(response.read().decode("utf-8")), response.headers
@@ -475,14 +485,24 @@ def get_last_github_page(link_header):
     return 1
 
 
-def collect_recent_github_datetimes(url, time_key, since_datetime, accept="application/vnd.github+json", newest_first=False):
+def collect_recent_github_datetimes(
+    url,
+    time_key,
+    since_datetime,
+    accept="application/vnd.github+json",
+    newest_first=False,
+    require_token=False,
+):
     recent_datetimes = []
     first_url = f"{url}{'&' if '?' in url else '?'}per_page=100"
+
+    if require_token and not get_github_token():
+        return recent_datetimes, False
 
     try:
         first_page, headers = fetch_github_json(first_url, accept)
     except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, OSError):
-        return recent_datetimes
+        return recent_datetimes, False
 
     pages_to_scan = []
 
@@ -527,7 +547,7 @@ def collect_recent_github_datetimes(url, time_key, since_datetime, accept="appli
         if should_stop:
             break
 
-    return recent_datetimes
+    return recent_datetimes, True
 
 
 def build_cumulative_github_trend(beijing_now, current_total, event_datetimes):
@@ -562,13 +582,14 @@ def build_github_trends(beijing_now):
 
     star_total = int(repo_data.get("stargazers_count") or 0)
     fork_total = int(repo_data.get("forks_count") or 0)
-    star_datetimes = collect_recent_github_datetimes(
+    star_datetimes, stars_available = collect_recent_github_datetimes(
         GITHUB_STARGAZERS_API_URL,
         "starred_at",
         since_datetime,
         accept="application/vnd.github.star+json",
+        require_token=True,
     )
-    fork_datetimes = collect_recent_github_datetimes(
+    fork_datetimes, forks_available = collect_recent_github_datetimes(
         f"{GITHUB_FORKS_API_URL}?sort=newest",
         "created_at",
         since_datetime,
@@ -580,6 +601,10 @@ def build_github_trends(beijing_now):
         "forks": build_cumulative_github_trend(beijing_now, fork_total, fork_datetimes),
         "star_total": star_total,
         "fork_total": fork_total,
+        "stars_available": stars_available,
+        "forks_available": forks_available,
+        "stars_message": "" if stars_available else "TOKEN unavailable",
+        "forks_message": "" if forks_available else "GitHub data unavailable",
     }
 
 
@@ -864,9 +889,36 @@ def render_traffic_dashboard(language):
             f'<tbody>{"".join(table_rows)}</tbody></table></div>'
         )
 
-    def render_line_chart(title, total_label, points, metric_key, chart_id, total_value=None):
+    def render_line_chart(title, total_label, points, metric_key, chart_id, total_value=None, unavailable_message=""):
         values = [point[metric_key] for point in points]
         total = sum(values) if total_value is None else total_value
+        chart_data = json.dumps(
+            {
+                "title": title,
+                "metric": total_label,
+                "dateLabel": copy["charts"]["date"],
+                "valueLabel": copy["charts"]["value"],
+                "rows": [{"date": point["label"], "value": point[metric_key]} for point in points],
+            },
+            ensure_ascii=False,
+        )
+
+        if unavailable_message:
+            return f"""
+              <section class="chart-card chart-card-unavailable" data-chart-id="{escape(chart_id)}" data-chart="{escape(chart_data)}">
+                <div class="chart-head">
+                  <div>
+                    <h2>{escape(title)}</h2>
+                    <p class="chart-summary">{escape(format_number(total))} {escape(total_label)}</p>
+                  </div>
+                </div>
+                <div class="chart-unavailable">
+                  <strong>{escape(unavailable_message)}</strong>
+                  <span>{escape(GITHUB_TOKEN_ENV)}</span>
+                </div>
+              </section>
+            """
+
         width = 520
         height = 260
         left = 52
@@ -918,17 +970,6 @@ def render_traffic_dashboard(language):
             f'<text class="chart-value-label" x="{x:.1f}" y="{y - 11:.1f}" text-anchor="middle">{point[metric_key]}</text>'
             for x, y, point in coords
         ]
-        chart_data = json.dumps(
-            {
-                "title": title,
-                "metric": total_label,
-                "dateLabel": copy["charts"]["date"],
-                "valueLabel": copy["charts"]["value"],
-                "rows": [{"date": point["label"], "value": point[metric_key]} for point in points],
-            },
-            ensure_ascii=False,
-        )
-
         return f"""
           <section class="chart-card" data-chart-id="{escape(chart_id)}" data-chart="{escape(chart_data)}">
             <div class="chart-head">
@@ -1018,6 +1059,7 @@ def render_traffic_dashboard(language):
           .source-help-card ul {{ margin: 0; padding-left: 17px; }}
           .source-help-card li + li {{ margin-top: 4px; }}
           .chart-card {{ min-height: 336px; }}
+          .chart-card-unavailable {{ display: flex; min-height: 336px; flex-direction: column; }}
           .chart-head {{ display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 8px; }}
           .chart-head h2 {{ margin-bottom: 8px; font-size: 20px; line-height: 1.25; }}
           .chart-summary {{ margin: 0; color: #64748b; font-size: 14px; font-weight: 650; }}
@@ -1047,6 +1089,9 @@ def render_traffic_dashboard(language):
           .chart-tooltip-value {{ display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 7px; font-size: 13px; }}
           .chart-tooltip-dot {{ display: inline-flex; height: 10px; width: 10px; border-radius: 999px; background: #2da44e; }}
           .chart-tooltip-number {{ font-size: 16px; font-weight: 800; }}
+          .chart-unavailable {{ display: grid; flex: 1; place-content: center; gap: 10px; min-height: 230px; border: 1px dashed #cbd5e1; border-radius: 14px; background: linear-gradient(135deg, rgba(248,250,252,.96), rgba(240,249,255,.86)); color: #475569; text-align: center; padding: 24px; }}
+          .chart-unavailable strong {{ max-width: 360px; color: #0f172a; font-size: 15px; line-height: 1.6; }}
+          .chart-unavailable span {{ justify-self: center; border-radius: 999px; background: #fff; border: 1px solid #dbe3ec; color: #64748b; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; font-weight: 800; padding: 5px 10px; }}
           @media (max-width: 900px) {{
             .cards, .grid, .chart-grid {{ grid-template-columns: 1fr; }}
             .topbar {{ align-items: flex-start; flex-direction: column; }}
@@ -1094,7 +1139,7 @@ def render_traffic_dashboard(language):
           <div class="chart-grid">
             {render_line_chart(copy["charts"]["views_title"], copy["charts"]["views_total"], seven_day_traffic, "views", "fourteen-day-views")}
             {render_line_chart(copy["charts"]["unique_title"], copy["charts"]["unique_total"], seven_day_traffic, "uniques", "fourteen-day-uniques", seven_day_unique_visitors)}
-            {render_line_chart(copy["charts"]["stars_title"], copy["charts"]["stars_total"], github_trends["stars"], "count", "fourteen-day-stars", github_trends["star_total"])}
+            {render_line_chart(copy["charts"]["stars_title"], copy["charts"]["stars_total"], github_trends["stars"], "count", "fourteen-day-stars", github_trends["star_total"], "" if github_trends["stars_available"] else copy["charts"]["github_token_expired"])}
             {render_line_chart(copy["charts"]["forks_title"], copy["charts"]["forks_total"], github_trends["forks"], "count", "fourteen-day-forks", github_trends["fork_total"])}
           </div>
         </main>

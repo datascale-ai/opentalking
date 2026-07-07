@@ -257,6 +257,37 @@ export const caseStudies: CaseStudy[] = [
     outcomes: ["高频导诊问题自动化", "减少服务台重复咨询", "支持中英文患者服务"],
   },
   {
+    slug: "dual-news-anchor",
+    title: "双人新闻播报",
+    eyebrow: "演播室播报",
+    category: "media",
+    categoryLabel: "媒体播报",
+    description:
+      "面向新闻栏目、企业资讯和专题访谈，用双人主播形态提升播报节奏和画面层次。",
+    detailIntro:
+      "双人新闻播报适合把资讯口播、主题切换和演播室画面组织成更完整的栏目体验，让数字人内容更接近真实节目形态。",
+    route: "FlashTalk / OmniRT",
+    features: ["双主播画面", "栏目化脚本", "稳定播报"],
+    image: "/images/cases/dual-news-anchor-preview.png",
+    accent: "violet",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d3cd4cf35001834810577009103/pSgQNxLh7R8A.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "新闻类内容不仅需要稳定口型和清晰声音，还需要更自然的画面节奏。双主播形态能承载片头导语、观点切换和专题播报等更丰富的节目结构。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入新闻稿库、栏目模板、多角色音色和审核流程，把单条播报扩展成可持续生产的企业资讯或行业快讯栏目。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 FlashTalk / OmniRT：更适合双人画面、长文本播报和栏目化展示，对画质稳定性和人物表现的一致性要求更高的场景。",
+      },
+    ],
+    outcomes: ["提升播报画面层次", "适合栏目化内容生产", "支持多角色与多音色扩展"],
+  },
+  {
     slug: "news-anchor",
     title: "新闻主播",
     eyebrow: "稳定播报",

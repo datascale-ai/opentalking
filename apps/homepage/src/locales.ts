@@ -316,6 +316,37 @@ const enCaseStudies: CaseStudy[] = [
     outcomes: ["Automate frequent guidance questions", "Reduce repetitive front-desk workload", "Support bilingual patient service"],
   },
   {
+    slug: "dual-news-anchor",
+    title: "Two-Anchor News Broadcast",
+    eyebrow: "Studio broadcast",
+    category: "media",
+    categoryLabel: "Media broadcast",
+    description:
+      "Create a two-anchor studio format for news programs, company updates, and topical briefings with richer visual rhythm.",
+    detailIntro:
+      "This two-anchor news broadcast shows how OpenTalking can turn scripts, presenter personas, and studio-style visuals into a more complete program format.",
+    route: "FlashTalk / OmniRT",
+    features: ["Two-anchor scene", "Program scripts", "Stable delivery"],
+    image: "/images/cases/dual-news-anchor-preview.png",
+    accent: "violet",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d3cd4cf35001834810577009103/pSgQNxLh7R8A.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "News content needs more than clear speech and lip sync. A two-anchor setup supports openings, topic handoffs, and program-style delivery with a more natural studio rhythm.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect news scripts, program templates, multiple voice personas, and review workflows to turn a single demo into a repeatable broadcast production pipeline.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: FlashTalk / OmniRT. They are better suited for two-presenter visuals, long-form narration, and program-style output where visual consistency matters.",
+      },
+    ],
+    outcomes: ["Richer broadcast visuals", "Program-ready content workflow", "Expandable roles and voices"],
+  },
+  {
     slug: "news-anchor",
     title: "News Anchor",
     eyebrow: "Stable narration",
