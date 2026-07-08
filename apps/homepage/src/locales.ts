@@ -152,6 +152,7 @@ const enCaseCategories = [
   { key: "media", label: "Media" },
   { key: "tourism", label: "Tourism" },
   { key: "healthcare", label: "Healthcare" },
+  { key: "government", label: "Government services" },
   { key: "character", label: "Character content" },
   { key: "companion", label: "Companion" },
   { key: "experiment", label: "Creative demos" },
@@ -345,6 +346,68 @@ const enCaseStudies: CaseStudy[] = [
       },
     ],
     outcomes: ["Richer broadcast visuals", "Program-ready content workflow", "Expandable roles and voices"],
+  },
+  {
+    slug: "news-anchor",
+    title: "Museum Artifact Guide",
+    eyebrow: "Cultural guide",
+    category: "tourism",
+    categoryLabel: "Tourism",
+    description:
+      "Use an avatar guide for museums, exhibitions, and cultural spaces to explain artifact context, historical background, and curated highlights.",
+    detailIntro:
+      "This museum artifact guide combines exhibit knowledge, narration scripts, and avatar presentation so visitors can understand cultural stories with less friction.",
+    route: "Knowledge base + FlashTalk",
+    features: ["Artifact knowledge", "Exhibition narration", "Multilingual-ready"],
+    image: "/images/cases/museum-artifact-guide-preview.png",
+    accent: "mint",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/6e5ec39a5001834810745706622/JafPI96NJ3MA.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Museum guidance needs accurate knowledge, a clear narrative rhythm, and an approachable tone. Traditional videos are slow to update and hard to adapt across themes or languages.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect artifact knowledge, curator scripts, retrieval-based Q&A, and multilingual voices so one digital guide can be reused across galleries and extended into interactive tours.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: FlashTalk / OmniRT. They are better suited for exhibition screens, cultural media, and high-quality guide videos where visual stability and voice quality matter.",
+      },
+    ],
+    outcomes: ["Lower guide-video production cost", "Knowledge-base driven updates", "Useful for museums and online cultural media"],
+  },
+  {
+    slug: "government-service-guide",
+    title: "Government Service Guide",
+    eyebrow: "Public service",
+    category: "government",
+    categoryLabel: "Government services",
+    description:
+      "Use an avatar assistant for service halls, online portals, and self-service kiosks to explain procedures, required materials, and service paths.",
+    detailIntro:
+      "This government service guide turns policy instructions, document checklists, service counters, and frequent questions into a clearer avatar-led experience.",
+    route: "Knowledge base + private deployment",
+    features: ["Procedure guidance", "Material checklist", "Policy Q&A"],
+    image: "/images/cases/government-service-guide-preview.jpg",
+    accent: "cyan",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/c6e8617c5001834810743173763/AyYa9BzYNj4A.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Public-service questions are frequent and detail-heavy. Citizens often need repeated clarification on materials, counters, deadlines, and eligibility rules.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect policy knowledge, service procedures, form examples, and hall navigation so the avatar can handle frequent questions across online and offline touchpoints.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: QuickTalk / FlashTalk with private deployment. Validate the process and knowledge flow first, then choose a deployment route based on intranet, privacy, and terminal requirements.",
+      },
+    ],
+    outcomes: ["Reduce repetitive service questions", "Make procedures easier to understand", "Ready for portals and service kiosks"],
   },
   {
     slug: "news-anchor",

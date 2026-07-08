@@ -16,7 +16,7 @@ export type CaseStudy = {
   slug: string;
   title: string;
   eyebrow: string;
-  category: "livestream" | "media" | "tourism" | "healthcare" | "character" | "companion" | "experiment";
+  category: "livestream" | "media" | "tourism" | "healthcare" | "government" | "character" | "companion" | "experiment";
   categoryLabel: string;
   description: string;
   detailIntro: string;
@@ -93,6 +93,7 @@ export const caseCategories = [
   { key: "media", label: "媒体播报" },
   { key: "tourism", label: "文旅导览" },
   { key: "healthcare", label: "医疗服务" },
+  { key: "government", label: "政务服务" },
   { key: "character", label: "角色内容" },
   { key: "companion", label: "陪伴互动" },
   { key: "experiment", label: "创意实验" },
@@ -286,6 +287,68 @@ export const caseStudies: CaseStudy[] = [
       },
     ],
     outcomes: ["提升播报画面层次", "适合栏目化内容生产", "支持多角色与多音色扩展"],
+  },
+  {
+    slug: "news-anchor",
+    title: "博物馆文物讲解",
+    eyebrow: "文化导览",
+    category: "tourism",
+    categoryLabel: "文旅导览",
+    description:
+      "面向博物馆、展厅和文化空间，用数字讲解员呈现文物背景、历史脉络和展陈亮点。",
+    detailIntro:
+      "博物馆文物讲解适合把展品知识、导览脚本和数字人讲述结合起来，帮助观众更轻松地理解文物故事与文化价值。",
+    route: "知识库 + FlashTalk",
+    features: ["文物知识库", "展陈讲解", "多语言扩展"],
+    image: "/images/cases/museum-artifact-guide-preview.png",
+    accent: "mint",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/6e5ec39a5001834810745706622/JafPI96NJ3MA.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "展馆讲解需要兼顾知识准确性、叙事节奏和观众理解门槛，传统讲解视频更新慢，也难以覆盖不同主题和语言版本。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入展品知识库、策展脚本、问答检索和多语言音色，让数字讲解员在不同展区复用，并逐步扩展为互动导览入口。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 FlashTalk / OmniRT：适合展厅大屏、文化宣传片和高质感讲解内容，对画面稳定性、口型自然度和声音质感要求更高。",
+      },
+    ],
+    outcomes: ["降低展品讲解制作成本", "支持知识库驱动内容更新", "适合展厅与线上文博传播"],
+  },
+  {
+    slug: "government-service-guide",
+    title: "政务办事引导",
+    eyebrow: "公共服务",
+    category: "government",
+    categoryLabel: "政务服务",
+    description:
+      "面向政务大厅、线上办事入口和公共服务终端，用数字人说明流程、材料和办理路径。",
+    detailIntro:
+      "政务办事引导可以把办事指南、材料清单、办理窗口和常见问题转化为更友好的数字人讲解，适合大厅屏、政务小程序和自助终端。",
+    route: "知识库 + 私有化部署",
+    features: ["流程说明", "材料清单", "政策问答"],
+    image: "/images/cases/government-service-guide-preview.jpg",
+    accent: "cyan",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/c6e8617c5001834810743173763/AyYa9BzYNj4A.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "政务服务咨询高频且细节多，用户常常需要反复确认材料、窗口、时限和办理条件，服务人员也承担大量重复说明工作。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入政策知识库、办事流程库、表单示例和大厅导览信息，把数字人部署到线上入口或线下终端，承接高频咨询。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 QuickTalk / FlashTalk + 私有化部署：先验证办事流程和知识问答，再根据政务内网、隐私合规和终端形态选择部署路线。",
+      },
+    ],
+    outcomes: ["减少重复咨询压力", "办事指南表达更清晰", "适合政务终端和线上入口"],
   },
   {
     slug: "news-anchor",
