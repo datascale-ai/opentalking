@@ -348,7 +348,7 @@ const enCaseStudies: CaseStudy[] = [
     outcomes: ["Richer broadcast visuals", "Program-ready content workflow", "Expandable roles and voices"],
   },
   {
-    slug: "news-anchor",
+    slug: "museum-artifact-guide",
     title: "Museum Artifact Guide",
     eyebrow: "Cultural guide",
     category: "tourism",

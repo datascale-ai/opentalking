@@ -289,7 +289,7 @@ export const caseStudies: CaseStudy[] = [
     outcomes: ["提升播报画面层次", "适合栏目化内容生产", "支持多角色与多音色扩展"],
   },
   {
-    slug: "news-anchor",
+    slug: "museum-artifact-guide",
     title: "博物馆文物讲解",
     eyebrow: "文化导览",
     category: "tourism",
