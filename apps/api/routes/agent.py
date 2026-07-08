@@ -5,6 +5,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from opentalking.agent.context_builder import default_knowledge_store, default_memory_store
@@ -436,6 +437,26 @@ async def delete_knowledge_file(file_id: str) -> DeleteKnowledgeDocumentResponse
     return DeleteKnowledgeDocumentResponse(deleted=True)
 
 
+async def _knowledge_file_response(file_id: str) -> FileResponse:
+    try:
+        stored = await default_knowledge_store().get_file_content(file_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge file not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(
+        stored.path,
+        media_type=stored.mime_type,
+        filename=stored.filename,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/knowledge-documents/{file_id}/file")
+async def view_knowledge_file(file_id: str) -> FileResponse:
+    return await _knowledge_file_response(file_id)
+
+
 @router.get(
     "/knowledge-bases/{kb_id}/documents",
     response_model=KnowledgeDocumentsResponse,
@@ -502,6 +523,26 @@ async def delete_knowledge_document(kb_id: str, doc_id: str) -> DeleteKnowledgeD
     if not deleted:
         raise HTTPException(status_code=404, detail="knowledge document not found")
     return DeleteKnowledgeDocumentResponse(deleted=True)
+
+
+async def _knowledge_document_response(kb_id: str, doc_id: str) -> FileResponse:
+    try:
+        stored = await default_knowledge_store().get_document_content(kb_id=kb_id, doc_id=doc_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge document not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(
+        stored.path,
+        media_type=stored.mime_type,
+        filename=stored.filename,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/file")
+async def view_knowledge_document(kb_id: str, doc_id: str) -> FileResponse:
+    return await _knowledge_document_response(kb_id, doc_id)
 
 
 @router.post(

@@ -224,6 +224,16 @@ function mergeKnowledgeDocuments(current: KnowledgeDocument[], incoming: Knowled
   ];
 }
 
+function filePoolDocumentViewUrl(document: KnowledgeDocument): string {
+  return buildApiDownloadUrl(`/agent/knowledge-documents/${encodeURIComponent(document.id)}/file`);
+}
+
+function knowledgeDocumentViewUrl(document: KnowledgeDocument): string {
+  return buildApiDownloadUrl(
+    `/agent/knowledge-bases/${encodeURIComponent(document.kb_id)}/documents/${encodeURIComponent(document.id)}/file`,
+  );
+}
+
 export function AssetLibraryWorkspace({
   refreshToken = 0,
   onNotify,
@@ -455,6 +465,11 @@ export function AssetLibraryWorkspace({
       onNotify?.("复制失败，请手动选择路径。", "error");
     }
   }, [onNotify]);
+
+  const openKnowledgeDocument = useCallback((document: KnowledgeDocument, scope: "file_pool" | "knowledge") => {
+    const url = scope === "file_pool" ? filePoolDocumentViewUrl(document) : knowledgeDocumentViewUrl(document);
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
 
   const openCreateKnowledgeDialog = useCallback(() => {
     setCreateOpen(true);
@@ -851,7 +866,18 @@ export function AssetLibraryWorkspace({
                 className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500 disabled:cursor-not-allowed"
               />
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold text-slate-800">{document.filename}</span>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openKnowledgeDocument(document, "file_pool");
+                  }}
+                  className="block max-w-full truncate text-left font-semibold text-cyan-700 hover:text-cyan-600 hover:underline"
+                  title="查看文件"
+                >
+                  {document.filename}
+                </button>
                 <span className="mt-0.5 block truncate text-xs text-slate-500">
                   {formatSize(document.bytes)} · {knowledgeStatusLabel(document)} · 来自 {document.kb_id}
                 </span>
@@ -988,7 +1014,14 @@ export function AssetLibraryWorkspace({
               {knowledgeDocuments.map((document) => (
                 <article key={document.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
                   <div className="min-w-0">
-                    <h3 className="truncate text-sm font-semibold text-slate-950">{document.filename}</h3>
+                    <button
+                      type="button"
+                      onClick={() => openKnowledgeDocument(document, "knowledge")}
+                      className="block max-w-full truncate text-left text-sm font-semibold text-cyan-700 hover:text-cyan-600 hover:underline"
+                      title="查看文件"
+                    >
+                      {document.filename}
+                    </button>
                     <p className="mt-1 text-xs text-slate-500">
                       {formatSize(document.bytes)} · {knowledgeStatusLabel(document)} · {document.chunk_count} chunks
                     </p>
@@ -1521,7 +1554,14 @@ export function AssetLibraryWorkspace({
                     allKnowledgeDocuments.map((document) => (
                       <div key={document.id} className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 text-sm">
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate font-semibold text-slate-800">{document.filename}</span>
+                          <button
+                            type="button"
+                            onClick={() => openKnowledgeDocument(document, "file_pool")}
+                            className="block max-w-full truncate text-left font-semibold text-cyan-700 hover:text-cyan-600 hover:underline"
+                            title="查看文件"
+                          >
+                            {document.filename}
+                          </button>
                           <span className="mt-0.5 block truncate text-xs text-slate-500">
                             {formatSize(document.bytes)} · {knowledgeStatusLabel(document)} · {document.chunk_count} chunks
                           </span>

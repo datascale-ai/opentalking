@@ -21,6 +21,7 @@ from opentalking.agent.knowledge_store import KnowledgeStore
 
 api_app = FastAPI()
 api_app.include_router(agent_routes.router)
+api_app.include_router(agent_routes.router, prefix="/api")
 
 
 class FakeKnowledgeIndex:
@@ -1050,6 +1051,7 @@ async def test_agent_knowledge_document_routes_upload_list_delete(
 
     app = FastAPI()
     app.include_router(agent_routes.router)
+    app.include_router(agent_routes.router, prefix="/api")
     transport = httpx.ASGITransport(app=app)
 
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -1069,6 +1071,17 @@ async def test_agent_knowledge_document_routes_upload_list_delete(
         assert created["status"] == "ready"
         assert created["chunk_count"] >= 1
 
+        viewed = await client.get(f"/agent/knowledge-bases/{kb_id}/documents/{created['id']}/file")
+        assert viewed.status_code == 200, viewed.text
+        assert viewed.text == "OpenTalking 的自建知识库会在对话时被检索。"
+        assert viewed.headers["content-type"].startswith("text/markdown")
+        assert "inline" in viewed.headers["content-disposition"]
+        assert "filename*" in viewed.headers["content-disposition"]
+
+        viewed_api_prefixed = await client.get(f"/api/agent/knowledge-bases/{kb_id}/documents/{created['id']}/file")
+        assert viewed_api_prefixed.status_code == 200, viewed_api_prefixed.text
+        assert viewed_api_prefixed.text == "OpenTalking 的自建知识库会在对话时被检索。"
+
         listed = await client.get(f"/agent/knowledge-bases/{kb_id}/documents")
         assert listed.status_code == 200, listed.text
         documents = listed.json()["documents"]
@@ -1081,6 +1094,9 @@ async def test_agent_knowledge_document_routes_upload_list_delete(
         listed_after_delete = await client.get(f"/agent/knowledge-bases/{kb_id}/documents")
         assert listed_after_delete.status_code == 200, listed_after_delete.text
         assert listed_after_delete.json() == {"documents": []}
+
+        viewed_after_delete = await client.get(f"/agent/knowledge-bases/{kb_id}/documents/{created['id']}/file")
+        assert viewed_after_delete.status_code == 404, viewed_after_delete.text
 
 
 @pytest.mark.asyncio
@@ -1136,6 +1152,16 @@ async def test_agent_knowledge_routes_reuse_uploaded_documents(
         assert source_response.status_code == 200, source_response.text
         source = source_response.json()
         assert source["kb_id"] == "file_pool"
+
+        viewed_source_response = await client.get(f"/agent/knowledge-documents/{source['id']}/file")
+        assert viewed_source_response.status_code == 200, viewed_source_response.text
+        assert viewed_source_response.text == "shared policy text"
+        assert viewed_source_response.headers["content-type"].startswith("text/markdown")
+        assert "inline" in viewed_source_response.headers["content-disposition"]
+
+        viewed_api_prefixed_source_response = await client.get(f"/api/agent/knowledge-documents/{source['id']}/file")
+        assert viewed_api_prefixed_source_response.status_code == 200, viewed_api_prefixed_source_response.text
+        assert viewed_api_prefixed_source_response.text == "shared policy text"
 
         duplicate_response = await client.post(
             "/agent/knowledge-documents",
@@ -1206,6 +1232,9 @@ async def test_agent_knowledge_routes_reuse_uploaded_documents(
         deleted_pool_file = await client.delete(f"/agent/knowledge-documents/{source['id']}")
         assert deleted_pool_file.status_code == 200, deleted_pool_file.text
         assert deleted_pool_file.json() == {"deleted": True}
+
+        viewed_deleted_source_response = await client.get(f"/agent/knowledge-documents/{source['id']}/file")
+        assert viewed_deleted_source_response.status_code == 404, viewed_deleted_source_response.text
 
         pool_after_delete = await client.get("/agent/knowledge-documents")
         assert pool_after_delete.status_code == 200, pool_after_delete.text

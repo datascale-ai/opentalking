@@ -22,6 +22,16 @@ def test_asset_library_supports_knowledge_document_actions() -> None:
     assert "apiPostForm<KnowledgeDocument>" in source
 
 
+def test_asset_library_knowledge_documents_are_clickable_for_viewing() -> None:
+    source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "openKnowledgeDocument" in source
+    assert "/agent/knowledge-documents/${encodeURIComponent(document.id)}/file" in source
+    assert "/agent/knowledge-bases/${encodeURIComponent(document.kb_id)}/documents/${encodeURIComponent(document.id)}/file" in source
+    assert 'window.open(url, "_blank", "noopener,noreferrer")' in source
+    assert source.count('title="查看文件"') >= 3
+
+
 def test_asset_library_reuses_history_documents_in_create_and_upload_modals() -> None:
     source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
 

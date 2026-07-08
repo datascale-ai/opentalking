@@ -66,6 +66,13 @@ class KnowledgeChunk:
     score: float
 
 
+@dataclass(frozen=True)
+class KnowledgeStoredFile:
+    path: Path
+    filename: str
+    mime_type: str
+
+
 class DuplicateKnowledgeDocumentError(ValueError):
     """Raised when the same filename/content is uploaded twice."""
 
@@ -442,11 +449,17 @@ class KnowledgeStore:
     async def list_all_documents(self) -> list[KnowledgeDocument]:
         return self._list_files_sync()
 
+    async def get_file_content(self, file_id: str) -> KnowledgeStoredFile:
+        return self._get_file_content_sync(file_id)
+
     async def add_existing_document(self, *, kb_id: str, source_doc_id: str) -> KnowledgeDocument:
         return self._add_existing_document_sync(kb_id=kb_id, source_doc_id=source_doc_id)
 
     async def delete_document(self, *, kb_id: str, doc_id: str) -> bool:
         return self._delete_document_sync(kb_id, doc_id)
+
+    async def get_document_content(self, *, kb_id: str, doc_id: str) -> KnowledgeStoredFile:
+        return self._get_document_content_sync(kb_id=kb_id, doc_id=doc_id)
 
     async def query(self, *, kb_id: str, query: str, limit: int = 3) -> list[KnowledgeChunk]:
         return self._query_sync(kb_id, query, limit)
@@ -1051,6 +1064,35 @@ class KnowledgeStore:
             raise RuntimeError("failed to load knowledge file")
         return _document_from_row(row)
 
+    def _get_file_content_sync(self, file_id: str) -> KnowledgeStoredFile:
+        self._initialize_sync()
+        clean_file_id = file_id.strip()
+        if not clean_file_id:
+            raise ValueError("knowledge file id is required")
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT filename, mime_type, stored_path
+                FROM knowledge_files
+                WHERE id = ?
+                """,
+                (clean_file_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError("knowledge file not found")
+        path = Path(str(row["stored_path"])).resolve()
+        try:
+            path.relative_to(self.knowledge_root.resolve())
+        except ValueError as exc:
+            raise ValueError("stored knowledge file path is invalid") from exc
+        if not path.is_file():
+            raise ValueError("stored knowledge file is missing")
+        return KnowledgeStoredFile(
+            path=path,
+            filename=str(row["filename"]),
+            mime_type=str(row["mime_type"] or "application/octet-stream"),
+        )
+
     def _delete_file_sync(self, file_id: str) -> bool:
         self._initialize_sync()
         clean_file_id = file_id.strip()
@@ -1101,6 +1143,36 @@ class KnowledgeStore:
         if row is None:
             raise RuntimeError("failed to load knowledge document")
         return _document_from_row(row)
+
+    def _get_document_content_sync(self, *, kb_id: str, doc_id: str) -> KnowledgeStoredFile:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        clean_doc_id = doc_id.strip()
+        if not clean_doc_id:
+            raise ValueError("knowledge document id is required")
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT filename, mime_type, stored_path
+                FROM knowledge_documents
+                WHERE kb_id = ? AND id = ?
+                """,
+                (kb_id, clean_doc_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError("knowledge document not found")
+        path = Path(str(row["stored_path"])).resolve()
+        try:
+            path.relative_to(self.knowledge_root.resolve())
+        except ValueError as exc:
+            raise ValueError("stored knowledge document path is invalid") from exc
+        if not path.is_file():
+            raise ValueError("stored knowledge document file is missing")
+        return KnowledgeStoredFile(
+            path=path,
+            filename=str(row["filename"]),
+            mime_type=str(row["mime_type"] or "application/octet-stream"),
+        )
 
     def _document_path_sync(self, kb_id: str, doc_id: str) -> Path | None:
         kb_id = _safe_kb_id(kb_id)
