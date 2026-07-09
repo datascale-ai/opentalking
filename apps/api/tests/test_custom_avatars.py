@@ -372,7 +372,7 @@ def test_avatar_summary_groups_renamed_duo_dialog_assets_together(tmp_path: Path
     write_avatar("b-video-call", "视频通话", duo=True)
     write_avatar("c-news-duo", "新闻双人主播", duo=True)
     write_avatar("d-single", "女主持", duo=False)
-    write_avatar("e-hd-news-duo", "高清新闻双人主播", duo=True)
+    write_avatar("e-hd-news-duo", "访谈双人主播", duo=True)
 
     app = FastAPI()
     app.state.settings = SimpleNamespace(avatars_dir=str(tmp_path))
@@ -384,7 +384,7 @@ def test_avatar_summary_groups_renamed_duo_dialog_assets_together(tmp_path: Path
         "主播",
         "视频通话",
         "新闻双人主播",
-        "高清新闻双人主播",
+        "访谈双人主播",
         "女主持",
     ]
 
