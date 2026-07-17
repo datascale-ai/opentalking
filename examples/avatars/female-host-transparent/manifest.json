@@ -15,6 +15,7 @@
     "source_image": "source/source.png",
     "source_image_path": "reference.png",
     "source_image_hash": "712c1cd47f32a18042a2908893f81128ba5176be6f896c8e31fb6ae4e5321f9b",
-    "matting_status": "transparent_ready"
+    "matting_status": "transparent_ready",
+    "person_mode": "single"
   }
 }

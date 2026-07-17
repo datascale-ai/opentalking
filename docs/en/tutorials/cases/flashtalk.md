@@ -10,7 +10,7 @@ to OmniRT or the external model service.
 
 - [Mock E2E](mock-e2e.md) has passed.
 - SoulX-FlashTalk-14B and wav2vec2 weights are prepared as described in
-  [Talking-head Models → FlashTalk](../../model-deployment/flashtalk.md).
+  [Talking-head Models → FlashTalk](../../../avatar_models/flashtalk.md).
 - CUDA evaluation needs a 4090/A100-class GPU; Ascend evaluation needs the CANN environment.
 
 ## Steps

@@ -1,4 +1,5 @@
 import { ArrowLeft, CheckCircle2, ExternalLink, PlayCircle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { trackAnalyticsEvent } from "../analytics";
 import { CaseCard } from "../components/CaseCard";
 import type { CaseStudy } from "../content";
@@ -19,6 +20,32 @@ export function CaseDetailPage({
   onBack,
   onOpenCase,
 }: CaseDetailPageProps) {
+  const videoItems = useMemo(() => {
+    if (item.videoVariants?.length) {
+      return item.videoVariants;
+    }
+
+    if (!item.videoUrl) {
+      return [];
+    }
+
+    return [
+      {
+        title: copy.videoTitle,
+        description: item.route,
+        url: item.videoUrl,
+        poster: item.image,
+        videoId: `case-${item.slug}`,
+      },
+    ];
+  }, [copy.videoTitle, item]);
+  const [activeVideoIndex, setActiveVideoIndex] = useState(0);
+  const activeVideo = videoItems[Math.min(activeVideoIndex, Math.max(videoItems.length - 1, 0))];
+
+  useEffect(() => {
+    setActiveVideoIndex(0);
+  }, [item.slug]);
+
   return (
     <>
       <section className="case-detail-hero">
@@ -51,28 +78,73 @@ export function CaseDetailPage({
       <section className="section-container">
         <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
           <article className="grid gap-6">
-            {item.videoUrl ? (
+            {activeVideo ? (
               <div className="video-panel">
                 <div className="flex items-center gap-2 border-b border-white/14 px-5 py-4 text-white">
                   <PlayCircle className="h-5 w-5 text-indigo-200" />
                   <span className="font-semibold">{copy.videoTitle}</span>
                 </div>
-                <video
-                  className="aspect-video w-full bg-black"
-                  src={item.videoUrl}
-                  controls
-                  poster={item.image}
-                  onPlay={() =>
-                    trackAnalyticsEvent({
-                      eventName: "video_play",
-                      path: window.location.pathname,
-                      language: window.location.pathname === "/en" || window.location.pathname.startsWith("/en/") ? "en" : "zh",
-                      page: "caseDetail",
-                      caseSlug: item.slug,
-                      videoId: `case-${item.slug}`,
-                    })
-                  }
-                />
+                {activeVideo.embedUrl ? (
+                  <iframe
+                    key={activeVideo.embedUrl}
+                    className="aspect-video w-full bg-black"
+                    src={activeVideo.embedUrl}
+                    title={activeVideo.title}
+                    allow="fullscreen; autoplay; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    loading="lazy"
+                  />
+                ) : (
+                  <video
+                    key={activeVideo.url}
+                    className="aspect-video w-full bg-black"
+                    src={activeVideo.url}
+                    controls
+                    poster={activeVideo.poster ?? item.image}
+                    onPlay={() =>
+                      trackAnalyticsEvent({
+                        eventName: "video_play",
+                        path: window.location.pathname,
+                        language: window.location.pathname === "/en" || window.location.pathname.startsWith("/en/") ? "en" : "zh",
+                        page: "caseDetail",
+                        caseSlug: item.slug,
+                        videoId: activeVideo.videoId ?? `case-${item.slug}`,
+                      })
+                    }
+                  />
+                )}
+                {videoItems.length > 1 ? (
+                  <div className="grid gap-3 border-t border-white/14 bg-indigo-950/95 p-4 md:grid-cols-2">
+                    {videoItems.map((video, index) => {
+                      const isActive = index === activeVideoIndex;
+
+                      return (
+                        <button
+                          key={video.url}
+                          type="button"
+                          className={`group flex cursor-pointer gap-3 rounded-lg border p-2 text-left transition duration-300 ${
+                            isActive
+                              ? "border-cyanline bg-white text-ink"
+                              : "border-white/14 bg-white/10 text-white hover:border-white/30 hover:bg-white/20"
+                          }`}
+                          onClick={() => setActiveVideoIndex(index)}
+                        >
+                          <img
+                            src={video.poster ?? item.image}
+                            alt={`${video.title} preview`}
+                            className="h-16 w-24 shrink-0 rounded-md object-cover"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-semibold">{video.title}</span>
+                            <span className={`mt-1 block max-h-10 overflow-hidden text-xs leading-5 ${isActive ? "text-slate-600" : "text-white/70"}`}>
+                              {video.description}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             ) : null}
 

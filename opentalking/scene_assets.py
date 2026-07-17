@@ -5,6 +5,7 @@ import re
 import shutil
 import uuid
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,15 @@ EXT_BY_MIME = {
 VALID_AVATAR_FITS = {"contain", "cover"}
 VALID_AVATAR_ANCHORS = {"center", "bottom", "left", "right"}
 VALID_SUBTITLE_STYLES = {"none", "compact", "lower-third"}
+DEFAULT_BACKGROUNDS = (
+    {
+        "id": "bg-default-data-wall",
+        "name": "数据玻璃幕墙",
+        "filename": "default-data-wall.jpg",
+        "mime_type": "image/jpeg",
+        "resource": "assets/scene_backgrounds/default-data-wall.jpg",
+    },
+)
 
 
 def sniff_background_mime(content: bytes) -> str | None:
@@ -68,16 +78,59 @@ def _write_json(path: Path, payload: Any) -> None:
 
 
 class SceneAssetStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, seed_defaults: bool = False) -> None:
         self.root = root.expanduser().resolve()
         self.backgrounds_dir = self.root / "backgrounds"
         self.compositions_dir = self.root / "compositions"
         self.background_index_path = self.backgrounds_dir / "index.json"
         self.composition_index_path = self.compositions_dir / "index.json"
+        self.seed_defaults = seed_defaults
+        self.background_seed_marker_path = self.backgrounds_dir / ".defaults_seeded"
 
     def list_backgrounds(self) -> list[dict[str, object]]:
+        self._seed_default_backgrounds()
+        return self._load_backgrounds()
+
+    def _load_backgrounds(self) -> list[dict[str, object]]:
         items = _read_json(self.background_index_path, [])
         return [item for item in items if isinstance(item, dict)]
+
+    def _seed_default_backgrounds(self) -> None:
+        if not self.seed_defaults or self.background_seed_marker_path.exists():
+            return
+        items = self._load_backgrounds()
+        existing_ids = {str(item.get("id") or "") for item in items}
+        seeded: list[dict[str, object]] = []
+        now = _now()
+        for default in DEFAULT_BACKGROUNDS:
+            background_id = str(default["id"])
+            if background_id in existing_ids:
+                continue
+            resource_path = resources.files("opentalking").joinpath(str(default["resource"]))
+            try:
+                content = resource_path.read_bytes()
+            except FileNotFoundError:
+                continue
+            ext = EXT_BY_MIME[str(default["mime_type"])]
+            media_path = self.backgrounds_dir / background_id / f"source{ext}"
+            media_path.parent.mkdir(parents=True, exist_ok=True)
+            media_path.write_bytes(content)
+            seeded.append(
+                {
+                    "id": background_id,
+                    "name": str(default["name"]),
+                    "kind": "image",
+                    "mime_type": str(default["mime_type"]),
+                    "filename": str(default["filename"]),
+                    "size_bytes": len(content),
+                    "url": f"/scene-assets/backgrounds/{background_id}/file",
+                    "created_at": now,
+                }
+            )
+        if seeded:
+            _write_json(self.background_index_path, [*items, *seeded])
+        self.background_seed_marker_path.parent.mkdir(parents=True, exist_ok=True)
+        self.background_seed_marker_path.write_text(now + "\n", encoding="utf-8")
 
     def create_background(self, *, content: bytes, filename: str, mime_type: str, name: str) -> dict[str, object]:
         normalized_mime = (mime_type or "").split(";")[0].strip().lower()
@@ -102,7 +155,7 @@ class SceneAssetStore:
             "url": f"/scene-assets/backgrounds/{background_id}/file",
             "created_at": _now(),
         }
-        items = [entry for entry in self.list_backgrounds() if entry.get("id") != background_id]
+        items = [entry for entry in self._load_backgrounds() if entry.get("id") != background_id]
         items.insert(0, item)
         _write_json(self.background_index_path, items)
         return item
@@ -126,7 +179,7 @@ class SceneAssetStore:
     def delete_background(self, background_id: str) -> bool:
         if not re.fullmatch(r"bg-[\w\u4e00-\u9fff-]+", background_id or ""):
             return False
-        items = self.list_backgrounds()
+        items = self._load_backgrounds()
         next_items = [item for item in items if item.get("id") != background_id]
         if len(next_items) == len(items):
             return False

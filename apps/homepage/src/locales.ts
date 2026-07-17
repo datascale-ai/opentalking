@@ -150,6 +150,9 @@ const enCaseCategories = [
   { key: "all", label: "All" },
   { key: "livestream", label: "Live commerce" },
   { key: "media", label: "Media" },
+  { key: "tourism", label: "Tourism" },
+  { key: "healthcare", label: "Healthcare" },
+  { key: "government", label: "Government services" },
   { key: "character", label: "Character content" },
   { key: "companion", label: "Companion" },
   { key: "experiment", label: "Creative demos" },
@@ -197,11 +200,28 @@ const enCaseStudies: CaseStudy[] = [
       "Combine product narration, audience Q&A, captions, speech, and real-time avatar video in one live commerce workflow.",
     detailIntro:
       "Build an interactive AI host that can follow product scripts, answer audience questions, and present offers with synchronized voice and video.",
-    route: "Local GPU or OmniRT quality route",
+    route: "Two-view live commerce demo",
     features: ["Real-time Q&A", "Voice persona", "Caption sync"],
-    image: "/images/cases/live-sales.jpeg",
+    image: "/images/cases/ecommerce-live-front-preview.png",
     accent: "amber",
-    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d9d848c95001834806724661995/SaicQA0Ah7QA.mp4",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcb745001834809665869890/vkxsFysr5REA.mp4",
+    videoVariants: [
+      {
+        title: "Front-facing livestream",
+        description: "A direct host view for product explanation, offer highlights, and live commerce UI elements.",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcb745001834809665869890/vkxsFysr5REA.mp4",
+        embedUrl: "https://player.bilibili.com/player.html?bvid=BV1jhT76hENu&page=1&autoplay=0&high_quality=1&danmaku=0",
+        poster: "/images/cases/ecommerce-live-front-preview.png",
+        videoId: "case-ecommerce-livestream-front",
+      },
+      {
+        title: "Angled selling setup",
+        description: "A more realistic camera angle with visible products, presenter movement, and livestream staging.",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/cca683435001834809670031995/aswhi0HNmYkA.mp4",
+        poster: "/images/cases/ecommerce-live-angle-preview.png",
+        videoId: "case-ecommerce-livestream-angle",
+      },
+    ],
     sections: [
       {
         title: "Scenario Challenge",
@@ -217,6 +237,208 @@ const enCaseStudies: CaseStudy[] = [
       },
     ],
     outcomes: ["Automated product narration", "Real-time audience response", "Synchronized captions and video"],
+  },
+  {
+    slug: "huangshan-tour-guide",
+    title: "Huangshan Tourism Guide",
+    eyebrow: "Immersive narration",
+    category: "tourism",
+    categoryLabel: "Tourism",
+    description:
+      "Use an avatar guide to introduce scenic areas, travel routes, cultural highlights, and destination stories.",
+    detailIntro:
+      "This Huangshan example combines scenic footage, guide narration, and a digital presenter for visitor centers, city exhibitions, and online tourism campaigns.",
+    route: "QuickTalk / FlashTalk",
+    features: ["Scenic narration", "Immersive visuals", "Multilingual-ready"],
+    image: "/images/cases/huangshan-guide-preview.png",
+    accent: "mint",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcf735001834809665869970/T9jkqMRNCacA.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Tourism videos need clear destination storytelling, strong visuals, and a consistent narration rhythm, while updates can be costly with traditional shoots.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect destination knowledge, route recommendations, multilingual narration, and visitor Q&A to turn a video into an interactive digital guide.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: QuickTalk / FlashTalk. Start by validating narration and scene composition, then upgrade quality for exhibition screens or destination campaigns.",
+      },
+    ],
+    outcomes: ["Turn scenic content into guided video", "Reuse destination scripts", "Extend to multilingual Q&A later"],
+  },
+  {
+    slug: "medical-guide-assistant",
+    title: "Medical Guidance Assistant",
+    eyebrow: "Patient guidance",
+    category: "healthcare",
+    categoryLabel: "Healthcare",
+    description:
+      "Use an avatar assistant for hospital lobbies, online care entry points, department navigation, and patient service guidance.",
+    detailIntro:
+      "This medical guidance assistant combines avatar narration, patient flow guidance, department navigation, and multilingual support for hospital service desks, digital care portals, and health platforms.",
+    route: "Chinese and English guidance demo",
+    features: ["Patient guidance", "Department navigation", "Bilingual service"],
+    image: "/images/cases/medical-guide-en-preview.png",
+    accent: "cyan",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/82952c555001834809852510401/uTMRhy1wCnoA.mp4",
+    videoVariants: [
+      {
+        title: "English medical guide",
+        description: "Guide international patients through consultation entry points, department navigation, and examination support.",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/82952c555001834809852510401/uTMRhy1wCnoA.mp4",
+        poster: "/images/cases/medical-guide-en-preview.png",
+        videoId: "case-medical-guide-assistant-en",
+      },
+      {
+        title: "Chinese guidance assistant",
+        description: "Help Chinese-speaking patients understand registration, payment, clinic rooms, examination departments, and pharmacy routes.",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/9b52494c5001834809859448065/S7eTJ67rBLUA.mp4",
+        poster: "/images/cases/medical-guide-zh-preview.png",
+        videoId: "case-medical-guide-assistant-zh",
+      },
+    ],
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Patient guidance needs to explain procedures, locations, timing, and preparation notes clearly while keeping the service tone consistent.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect hospital knowledge bases, department maps, examination instructions, registration rules, and multilingual Q&A to handle frequent service questions.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: QuickTalk / FlashTalk. Validate scripts and service flows first, then upgrade quality for lobby screens, kiosks, or online care portals.",
+      },
+    ],
+    outcomes: ["Automate frequent guidance questions", "Reduce repetitive front-desk workload", "Support bilingual patient service"],
+  },
+  {
+    slug: "dual-news-anchor",
+    title: "Two-Anchor News Broadcast",
+    eyebrow: "Studio broadcast",
+    category: "media",
+    categoryLabel: "Media broadcast",
+    description:
+      "Create a two-anchor studio format for news programs, company updates, and topical briefings with richer visual rhythm.",
+    detailIntro:
+      "This two-anchor news broadcast shows how OpenTalking can turn scripts, presenter personas, and studio-style visuals into a more complete program format.",
+    route: "FlashTalk / OmniRT",
+    features: ["Two-anchor scene", "Program scripts", "Stable delivery"],
+    image: "/images/cases/dual-news-anchor-preview.png",
+    accent: "violet",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d3cd4cf35001834810577009103/pSgQNxLh7R8A.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "News content needs more than clear speech and lip sync. A two-anchor setup supports openings, topic handoffs, and program-style delivery with a more natural studio rhythm.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect news scripts, program templates, multiple voice personas, and review workflows to turn a single demo into a repeatable broadcast production pipeline.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: FlashTalk / OmniRT. They are better suited for two-presenter visuals, long-form narration, and program-style output where visual consistency matters.",
+      },
+    ],
+    outcomes: ["Richer broadcast visuals", "Program-ready content workflow", "Expandable roles and voices"],
+  },
+  {
+    slug: "museum-artifact-guide",
+    title: "Museum Artifact Guide",
+    eyebrow: "Cultural guide",
+    category: "tourism",
+    categoryLabel: "Tourism",
+    description:
+      "Use an avatar guide for museums, exhibitions, and cultural spaces to explain artifact context, historical background, and curated highlights.",
+    detailIntro:
+      "This museum artifact guide combines exhibit knowledge, narration scripts, and avatar presentation so visitors can understand cultural stories with less friction.",
+    route: "Knowledge base + FlashTalk",
+    features: ["Artifact knowledge", "Exhibition narration", "Multilingual-ready"],
+    image: "/images/cases/museum-artifact-guide-preview.png",
+    accent: "mint",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/6e5ec39a5001834810745706622/JafPI96NJ3MA.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Museum guidance needs accurate knowledge, a clear narrative rhythm, and an approachable tone. Traditional videos are slow to update and hard to adapt across themes or languages.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect artifact knowledge, curator scripts, retrieval-based Q&A, and multilingual voices so one digital guide can be reused across galleries and extended into interactive tours.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: FlashTalk / OmniRT. They are better suited for exhibition screens, cultural media, and high-quality guide videos where visual stability and voice quality matter.",
+      },
+    ],
+    outcomes: ["Lower guide-video production cost", "Knowledge-base driven updates", "Useful for museums and online cultural media"],
+  },
+  {
+    slug: "government-service-guide",
+    title: "Government Service Guide",
+    eyebrow: "Public service",
+    category: "government",
+    categoryLabel: "Government services",
+    description:
+      "Use an avatar assistant for service halls, online portals, and self-service kiosks to explain procedures, required materials, and service paths.",
+    detailIntro:
+      "This government service guide turns policy instructions, document checklists, service counters, and frequent questions into a clearer avatar-led experience.",
+    route: "Knowledge base + private deployment",
+    features: ["Procedure guidance", "Material checklist", "Policy Q&A"],
+    image: "/images/cases/government-service-guide-preview.jpg",
+    accent: "cyan",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/c6e8617c5001834810743173763/AyYa9BzYNj4A.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Public-service questions are frequent and detail-heavy. Citizens often need repeated clarification on materials, counters, deadlines, and eligibility rules.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect policy knowledge, service procedures, form examples, and hall navigation so the avatar can handle frequent questions across online and offline touchpoints.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: QuickTalk / FlashTalk with private deployment. Validate the process and knowledge flow first, then choose a deployment route based on intranet, privacy, and terminal requirements.",
+      },
+    ],
+    outcomes: ["Reduce repetitive service questions", "Make procedures easier to understand", "Ready for portals and service kiosks"],
+  },
+  {
+    slug: "multilingual-product-demo",
+    title: "Multilingual Product Presenter",
+    eyebrow: "Cross-border commerce",
+    category: "livestream",
+    categoryLabel: "Live commerce",
+    description:
+      "Use an avatar presenter for cross-border commerce, global brand launches, and multilingual product storytelling.",
+    detailIntro:
+      "This multilingual product presenter connects product knowledge, reusable scripts, voice profiles, and multilingual TTS so one product story can be delivered across markets.",
+    route: "Multilingual TTS + FlashTalk",
+    features: ["Multilingual narration", "Product knowledge", "Global commerce"],
+    image: "/images/cases/multilingual-product-demo-preview.png",
+    accent: "amber",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/8d86631a5001834811005535947/eWzWhyEB5u4A.mp4",
+    sections: [
+      {
+        title: "Scenario Challenge",
+        body: "Cross-border product videos need different languages, clear selling points, consistent brand tone, and stable visuals. Traditional shooting and dubbing are hard to scale across markets.",
+      },
+      {
+        title: "Extension Path",
+        body: "Connect product knowledge, multilingual scripts, voice profiles, and batch generation workflows to turn one product asset into reusable videos for different regions and platforms.",
+      },
+      {
+        title: "Recommended Model",
+        body: "Recommended: FlashTalk / OmniRT with multilingual TTS. This setup fits global commerce, brand localization, and multi-platform distribution where lip sync and voice consistency matter.",
+      },
+    ],
+    outcomes: ["Generate multilingual product videos faster", "Lower cross-border content cost", "Support batch product narration"],
   },
   {
     slug: "news-anchor",
@@ -479,7 +701,7 @@ export const siteContent: Record<Language, SiteContent> = {
       capabilityDescription: "OpenTalking 把会话、语音、字幕、播放和模型服务串成完整的数字人产品链路。",
       showcaseEyebrow: "Showcase",
       showcaseTitle: "真实产品场景，为数字人服务而生",
-      showcaseDescription: "用同一套编排层覆盖直播、播报、陪伴、角色内容和端到端演示。",
+      showcaseDescription: "用同一套编排层覆盖直播、文旅导览、医疗导诊、播报、陪伴、角色内容和端到端演示。",
       allCasesCta: "全部案例",
       deploymentEyebrow: "Deployment",
       deploymentTitle: "按你的需求匹配不同部署方式",
@@ -603,7 +825,7 @@ export const siteContent: Record<Language, SiteContent> = {
       capabilityDescription: "OpenTalking connects dialogue, voice, captions, playback, and model services into a complete AI avatar workflow.",
       showcaseEyebrow: "Showcase",
       showcaseTitle: "Built for real avatar use cases",
-      showcaseDescription: "Use the same orchestration layer for livestreaming, broadcast, companion experiences, character content, and end-to-end demos.",
+      showcaseDescription: "Use the same orchestration layer for livestreaming, tourism guides, healthcare guidance, broadcast, companion experiences, character content, and end-to-end demos.",
       allCasesCta: "All cases",
       deploymentEyebrow: "Deployment",
       deploymentTitle: "Pick the right path for your stage",

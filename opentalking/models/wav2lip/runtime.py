@@ -14,6 +14,8 @@ import tempfile
 import time
 from typing import Any
 
+from opentalking.core.model_paths import wav2lip_model_root
+
 
 def _configure_wav2lip_cpu_thread_env() -> int:
     """Keep CPU-side video work from oversubscribing host threads by default."""
@@ -99,9 +101,7 @@ class Wav2LipRealtimeRuntime:
         device: str | None = None,
         work_root: str | Path | None = None,
     ) -> None:
-        self.models_dir = Path(
-            models_dir or os.environ.get("OPENTALKING_WAV2LIP_MODEL_ROOT", "./models/wav2lip")
-        ).resolve()
+        self.models_dir = Path(models_dir).expanduser().resolve() if models_dir is not None else wav2lip_model_root().resolve()
         self.device = device or os.environ.get("OPENTALKING_WAV2LIP_DEVICE", "cuda")
         self.face_detection_device = self._resolve_face_detection_device(self.device)
         self.work_root = Path(work_root or os.environ.get("OPENTALKING_WAV2LIP_WORK_DIR", tempfile.gettempdir())).resolve()
@@ -236,7 +236,6 @@ class Wav2LipRealtimeRuntime:
         )
         max_frames = max(1, int(os.environ.get("OPENTALKING_WAV2LIP_MAX_REFERENCE_FRAMES", "125")))
         frame_paths = frame_paths[:max_frames]
-        cache_key = self._frame_sequence_cache_key(session, frame_paths)
         started = time.monotonic()
         prepared, cache_source = self._prepare_frame_sequence_with_cache_source(session)
         return {

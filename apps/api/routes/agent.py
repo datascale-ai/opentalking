@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import tempfile
 from dataclasses import asdict
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from opentalking.agent.context_builder import default_knowledge_store, default_memory_store
@@ -162,27 +164,32 @@ async def _add_uploaded_document(
     filename = file.filename or "document.txt"
     mime_type = file.content_type or "application/octet-stream"
     total = 0
-    with tempfile.NamedTemporaryFile(prefix="opentalking-kb-", delete=True) as tmp:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_DOCUMENT_BYTES:
-                raise HTTPException(status_code=413, detail="document is larger than 20MB")
-            tmp.write(chunk)
-        tmp.flush()
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="opentalking-kb-", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_DOCUMENT_BYTES:
+                    raise HTTPException(status_code=413, detail="document is larger than 20MB")
+                tmp.write(chunk)
         try:
             doc = await store.add_document(
                 kb_id=kb_id,
                 filename=filename,
                 mime_type=mime_type,
-                source_path=tmp.name,
+                source_path=tmp_path,
             )
         except DuplicateKnowledgeDocumentError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
     return KnowledgeDocumentResponse(**asdict(doc))
 
 
@@ -194,26 +201,31 @@ async def _add_uploaded_file(
     filename = file.filename or "document.txt"
     mime_type = file.content_type or "application/octet-stream"
     total = 0
-    with tempfile.NamedTemporaryFile(prefix="opentalking-kb-file-", delete=True) as tmp:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_DOCUMENT_BYTES:
-                raise HTTPException(status_code=413, detail="document is larger than 20MB")
-            tmp.write(chunk)
-        tmp.flush()
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="opentalking-kb-file-", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_DOCUMENT_BYTES:
+                    raise HTTPException(status_code=413, detail="document is larger than 20MB")
+                tmp.write(chunk)
         try:
             doc = await store.add_file(
                 filename=filename,
                 mime_type=mime_type,
-                source_path=tmp.name,
+                source_path=tmp_path,
             )
         except DuplicateKnowledgeDocumentError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
     return KnowledgeDocumentResponse(**asdict(doc))
 
 
@@ -425,6 +437,26 @@ async def delete_knowledge_file(file_id: str) -> DeleteKnowledgeDocumentResponse
     return DeleteKnowledgeDocumentResponse(deleted=True)
 
 
+async def _knowledge_file_response(file_id: str) -> FileResponse:
+    try:
+        stored = await default_knowledge_store().get_file_content(file_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge file not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(
+        stored.path,
+        media_type=stored.mime_type,
+        filename=stored.filename,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/knowledge-documents/{file_id}/file")
+async def view_knowledge_file(file_id: str) -> FileResponse:
+    return await _knowledge_file_response(file_id)
+
+
 @router.get(
     "/knowledge-bases/{kb_id}/documents",
     response_model=KnowledgeDocumentsResponse,
@@ -491,6 +523,26 @@ async def delete_knowledge_document(kb_id: str, doc_id: str) -> DeleteKnowledgeD
     if not deleted:
         raise HTTPException(status_code=404, detail="knowledge document not found")
     return DeleteKnowledgeDocumentResponse(deleted=True)
+
+
+async def _knowledge_document_response(kb_id: str, doc_id: str) -> FileResponse:
+    try:
+        stored = await default_knowledge_store().get_document_content(kb_id=kb_id, doc_id=doc_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge document not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return FileResponse(
+        stored.path,
+        media_type=stored.mime_type,
+        filename=stored.filename,
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/file")
+async def view_knowledge_document(kb_id: str, doc_id: str) -> FileResponse:
+    return await _knowledge_document_response(kb_id, doc_id)
 
 
 @router.post(

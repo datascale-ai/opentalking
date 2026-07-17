@@ -40,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(memory.router)
     app.include_router(sessions.router)
     app.include_router(agent.router)
+    app.include_router(agent.router, prefix="/api")
     app.include_router(personas.router)
     app.include_router(events.router)
     app.include_router(exports.router)

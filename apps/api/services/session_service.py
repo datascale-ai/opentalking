@@ -5,7 +5,7 @@ import inspect
 import json
 import time
 import uuid
-from collections.abc import Awaitable, Mapping
+from collections.abc import Awaitable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import redis.asyncio as redis
@@ -40,7 +40,7 @@ def _normalize_knowledge_base_ids(
 ) -> list[str]:
     selected: list[str] = []
     seen: set[str] = set()
-    candidates = knowledge_base_ids if knowledge_base_ids else [knowledge_base_id]
+    candidates: Sequence[str | None] = knowledge_base_ids or [knowledge_base_id]
     for candidate in candidates:
         kb_id = str(candidate or "").strip()
         if not kb_id or kb_id in seen:

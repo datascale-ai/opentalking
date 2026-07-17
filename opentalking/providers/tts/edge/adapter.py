@@ -27,6 +27,10 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
+def _ffmpeg_bin() -> str:
+    return os.environ.get("OPENTALKING_FFMPEG_BIN", "").strip() or "ffmpeg"
+
+
 def _decode_mp3_to_pcm16_mono(mp3_bytes: bytes, target_sr: int) -> tuple[np.ndarray, int]:
     if av is None:
         raise RuntimeError("Decoding TTS audio requires PyAV (av package).")
@@ -147,7 +151,7 @@ async def _stream_decode_audio_to_pcm_chunks(
     input_args = ["-f", input_format] if input_format else []
 
     proc = await asyncio.create_subprocess_exec(
-        os.environ.get("OPENTALKING_FFMPEG_BIN", "ffmpeg"),
+        _ffmpeg_bin(),
         "-hide_banner",
         "-loglevel",
         "error",

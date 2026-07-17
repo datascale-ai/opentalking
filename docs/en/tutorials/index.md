@@ -18,7 +18,7 @@ Verify orchestration with `mock` first, then connect a real talking-head backend
 |----------|----------|
 | First real lip-sync model | [Wav2Lip integration](cases/wav2lip.md) |
 | High-quality FlashTalk/OmniRT path | [FlashTalk integration](cases/flashtalk.md) |
-| Model, weight, and deployment selection | [Model deployment](../model-deployment/index.md) |
+| Model, weight, and deployment selection | [Model deployment](../deployment/index.md) |
 
 These pages focus on low-level integration steps. If you want to start from business
 scenarios, see [Use Cases](../cases/index.md).

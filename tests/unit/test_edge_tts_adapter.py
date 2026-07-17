@@ -7,6 +7,11 @@ from opentalking.core.types.frames import AudioChunk
 from opentalking.providers.tts.edge import adapter
 
 
+def test_ffmpeg_bin_empty_env_falls_back_to_command_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OPENTALKING_FFMPEG_BIN", "")
+    assert adapter._ffmpeg_bin() == "ffmpeg"
+
+
 @pytest.mark.asyncio
 async def test_synthesize_stream_prefers_streaming_decode(monkeypatch: pytest.MonkeyPatch) -> None:
     streamed = [

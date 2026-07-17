@@ -1,6 +1,6 @@
 # OmniRT
 
-OmniRT 是独立的多模型推理运行时。OpenTalking 可以通过 OmniRT 的 audio2video WebSocket 路由接入 FlashTalk、MuseTalk、Wav2Lip、QuickTalk 等模型。
+OmniRT 是独立的多模型推理运行时。OpenTalking 可以通过 OmniRT 的 audio2video WebSocket 路由接入 FlashTalk、MuseTalk、Wav2Lip、QuickTalk、FasterLivePortrait 等模型；FasterLivePortrait 的视频克隆还会使用独立的 video2video 路由。
 
 ## OpenTalking 与 OmniRT 的边界
 
@@ -23,6 +23,7 @@ OmniRT 负责：
 | 模型 | OmniRT 建议 |
 | --- | --- |
 | FlashTalk | 推荐 |
+| FasterLivePortrait | 推荐；支持音频驱动实时对话和视频克隆 |
 | MuseTalk | 推荐 |
 | QuickTalk | 推荐用于服务化部署 |
 | Wav2Lip | 可用于远端推理和预加载资产 |
@@ -41,6 +42,7 @@ export OPENTALKING_OMNIRT_ENDPOINT=http://127.0.0.1:9000
 ```bash
 export OPENTALKING_QUICKTALK_BACKEND=omnirt
 export OPENTALKING_FLASHTALK_BACKEND=omnirt
+export OPENTALKING_FASTLIVEPORTRAIT_BACKEND=omnirt
 ```
 
 也可以在配置文件中写：
@@ -52,6 +54,8 @@ models:
     backend: omnirt
   flashtalk:
     backend: omnirt
+  fasterliveportrait:
+    backend: omnirt
 ```
 
 OpenTalking 默认会按 `/v1/audio2video/{model}` 派生 WebSocket 地址。如果 OmniRT 路由不同，可以调整：
@@ -59,6 +63,8 @@ OpenTalking 默认会按 `/v1/audio2video/{model}` 派生 WebSocket 地址。如
 ```bash
 export OPENTALKING_OMNIRT_AUDIO2VIDEO_PATH_TEMPLATE=/v1/audio2video/{model}
 ```
+
+视频克隆使用 FasterLivePortrait 的视频驱动 route，通常由 WebUI 和 OpenTalking bridge 自动处理。部署时仍需确保 OmniRT 侧暴露 `/v1/video2video/fasterliveportrait`。
 
 ## 健康检查
 

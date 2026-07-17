@@ -69,7 +69,8 @@ def test_quickstart_source_env_keeps_new_env_file_assignments(tmp_path: Path) ->
         pytest.skip("bash is not available")
     env_file = tmp_path / "quickstart.env"
     env_file.write_text(
-        "OPENTALKING_QUICKTALK_ASSET_ROOT=/models/quicktalk\n"
+        "OPENTALKING_MODEL_ROOT=/deploy/models\n"
+        "OPENTALKING_QUICKTALK_ASSET_ROOT=/deploy/models/quicktalk\n"
         "OPENTALKING_WAV2LIP_DEVICE=cuda:6\n",
         encoding="utf-8",
     )
@@ -82,7 +83,8 @@ unset OPENTALKING_WAV2LIP_DEVICE
 source scripts/quickstart/_helpers.sh
 quickstart_source_env {env_file}
 bash -c 'test "$OPENTALKING_TORCH_DEVICE" = cuda:6'
-bash -c 'test "$OPENTALKING_QUICKTALK_ASSET_ROOT" = /models/quicktalk'
+bash -c 'test "$OPENTALKING_MODEL_ROOT" = /deploy/models'
+bash -c 'test "$OPENTALKING_QUICKTALK_ASSET_ROOT" = /deploy/models/quicktalk'
 bash -c 'test "$OPENTALKING_WAV2LIP_DEVICE" = cuda:6'
 """
 
@@ -119,6 +121,14 @@ def test_start_frontend_requires_requested_port() -> None:
 
     assert 'quickstart_port_in_use "$web_port"' in source
     assert "--strictPort" in source
+
+
+def test_start_opentalking_reports_existing_quicktalk_device_mismatch() -> None:
+    source = (REPO_ROOT / "scripts/quickstart/start_opentalking.sh").read_text(encoding="utf-8")
+
+    assert "quickstart_pid_env_value" in source
+    assert "OPENTALKING_QUICKTALK_DEVICE differs from the already-running API process" in source
+    assert "bash scripts/quickstart/stop_all.sh" in source
 
 
 def test_stop_all_finds_vite_residue_from_web_cwd() -> None:

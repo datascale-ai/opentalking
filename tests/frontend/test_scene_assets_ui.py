@@ -85,6 +85,16 @@ def test_asset_library_groups_scene_compositions_by_avatar() -> None:
     assert "sceneCompositions.filter((scene) => scene.avatar_id === avatar.id)" in source
 
 
+def test_asset_library_scene_cards_show_friendly_avatar_and_background_names() -> None:
+    source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
+
+    assert "backgroundById" in source
+    assert "数字人形象：{sceneAvatar?.name ?? scene.avatar_id}" in source
+    assert "背景：{sceneBackground?.name ?? scene.background_id ?? scene.background_color}" in source
+    assert "Avatar {sceneAvatar?.name" not in source
+    assert "Background {scene.background_id" not in source
+
+
 def test_scene_delete_actions_use_error_handled_handlers() -> None:
     source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
 

@@ -46,7 +46,7 @@ def test_app_clears_stale_subtitle_state_on_context_reset() -> None:
 
     avatar_idx = source.index("const handleAvatarChange = useCallback")
     avatar_clear_idx = source.index("clearSubtitleState();", avatar_idx)
-    avatar_set_idx = source.index("setAvatarId(newId)", avatar_idx)
+    avatar_set_idx = source.index("setAvatarId(normalized.avatarId)", avatar_idx)
     assert avatar_clear_idx < avatar_set_idx
 
     model_idx = source.index("const handleModelChange = useCallback")
@@ -55,23 +55,22 @@ def test_app_clears_stale_subtitle_state_on_context_reset() -> None:
     assert model_clear_idx < model_set_idx
 
 
-def test_avatar_selection_stage_supports_manage_knowledge_bases() -> None:
-    source = (ROOT / "apps/web/src/components/AvatarSelectionStage.tsx").read_text(encoding="utf-8")
+def test_settings_panel_supports_knowledge_base_selection() -> None:
+    source = (ROOT / "apps/web/src/components/SettingsPanel.tsx").read_text(encoding="utf-8")
 
     assert "knowledgeBaseIds" in source
     assert "selected knowledge bases" not in source.lower()
     assert "可用知识库" not in source
 
-    agent_idx = source.index("Agent 增强")
-    start_idx = source.index("{queued ?", agent_idx)
-    agent_block = source[agent_idx:start_idx]
-    assert "当前形象知识库" in agent_block
-    assert "{knowledgeBases.length} 个知识库" in agent_block
-    assert "{selectedKnowledgeBaseIds.length || 0} 个知识库" not in agent_block
-    assert "可用知识库" not in agent_block
-    assert "onManageKnowledgeBases" not in agent_block
-    assert "flex flex-wrap" in agent_block
-    assert "inline-flex max-w-full" in agent_block
+    knowledge_idx = source.index('title="知识库"')
+    model_idx = source.index('title="驱动模型"')
+    knowledge_block = source[knowledge_idx:model_idx]
+    assert "{knowledgeBases.length} 个知识库" in knowledge_block
+    assert "onManageKnowledgeBases" in knowledge_block
+    assert "selectedKnowledgeBaseSet.has(knowledgeBase.id)" in knowledge_block
+    assert "disabled={!knowledgeBaseReady}" in knowledge_block
+    assert "已选" in knowledge_block
+    assert "可用知识库" not in knowledge_block
 
 
 def test_settings_panel_places_knowledge_between_avatar_and_model() -> None:

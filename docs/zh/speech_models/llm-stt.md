@@ -1,0 +1,71 @@
+# LLM 与 STT
+
+LLM 决定数字人说什么。STT 只在用户通过麦克风说话时需要；纯文本 `speak`
+请求不依赖 STT。
+
+## LLM
+
+OpenTalking 使用 OpenAI-compatible chat completions 接口。默认推荐 DashScope，是因为它
+与中文 demo 配置最容易跑通。
+
+```env title=".env"
+OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+OPENTALKING_LLM_API_KEY=<dashscope-api-key>
+OPENTALKING_LLM_MODEL=qwen-flash
+```
+
+常见替代：
+
+| Provider | 配置说明 |
+|----------|----------|
+| OpenAI | 设置 `OPENTALKING_LLM_BASE_URL=https://api.openai.com/v1` 并使用 OpenAI 模型 id。 |
+| vLLM | 指向 vLLM OpenAI-compatible server。 |
+| Ollama | 使用 Ollama OpenAI-compatible endpoint，通常为 `http://localhost:11434/v1`。 |
+| DeepSeek | 使用 provider 提供的 OpenAI-compatible base URL 和模型 id。 |
+
+## STT
+
+STT provider 通过 `OPENTALKING_STT_DEFAULT_PROVIDER` 指定。前端也可以在创建会话前选择本地 STT 或 API STT；选择 API STT 时必须配置该 provider 对应的 key，不会从 LLM key 自动 fallback。
+
+### DashScope Paraformer realtime
+
+```env title=".env"
+OPENTALKING_STT_DEFAULT_PROVIDER=dashscope
+OPENTALKING_STT_DASHSCOPE_API_KEY=<dashscope-api-key>
+OPENTALKING_STT_DASHSCOPE_MODEL=paraformer-realtime-v2
+```
+
+DashScope 部署中，LLM 与 STT 可以使用同一把实际 key，但必须分别写入
+`OPENTALKING_LLM_API_KEY` 与 `OPENTALKING_STT_DASHSCOPE_API_KEY`。如果文本对话正常但麦克风输入失败，优先检查 STT 模块 key。
+
+### 本地 SenseVoiceSmall
+
+```env title=".env"
+OPENTALKING_STT_DEFAULT_PROVIDER=sensevoice
+OPENTALKING_STT_ENABLED_PROVIDERS=sensevoice,dashscope
+OPENTALKING_STT_SENSEVOICE_MODEL=iic/SenseVoiceSmall
+OPENTALKING_STT_SENSEVOICE_MODEL_DIR=./avatar_models/local-audio/iic__SenseVoiceSmall
+OPENTALKING_STT_SENSEVOICE_DEVICE=cpu
+```
+
+SenseVoiceSmall 走本地 FunASR adapter，支持上传音频和 WebSocket PCM 语音输入。短句场景下 CPU 通常可以满足实时交互，适合和 QuickTalk local 组合使用。
+
+下载权重：
+
+```bash title="终端"
+uv sync --extra dev --extra models --extra local-audio --python 3.11
+python scripts/download_local_audio_models.py \
+  --root ./avatar_models/local-audio \
+  --model sensevoice-small
+```
+
+## 验证
+
+```bash title="终端"
+curl -fsS http://127.0.0.1:8000/health
+curl -s -X POST http://127.0.0.1:8000/sessions \
+  -H 'content-type: application/json' \
+  -d '{"avatar_id":"demo-avatar","model":"mock"}'
+```
+
+随后在前端麦克风流程中确认 session event stream 出现 STT 事件和 LLM 回复。

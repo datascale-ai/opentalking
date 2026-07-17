@@ -58,6 +58,71 @@ def test_tts_preview_returns_wav_with_request_overrides(monkeypatch):
     assert calls[-1] == {"closed": True}
 
 
+def test_tts_preview_duo_dialog_uses_per_role_tts_settings(monkeypatch):
+    from apps.api.routes import tts_preview
+
+    calls: list[dict[str, object]] = []
+
+    class FakeTTS:
+        def __init__(self, provider: str | None) -> None:
+            self.provider = provider
+
+        async def synthesize_stream(self, text: str, voice: str | None = None):
+            calls.append({"text": text, "voice": voice, "provider": self.provider})
+            value = 1000 if self.provider == "edge" else 2000
+            yield AudioChunk(
+                data=np.full(4, value, dtype=np.int16),
+                sample_rate=16000,
+                duration_ms=0.25,
+            )
+
+        async def aclose(self) -> None:
+            calls.append({"closed": self.provider})
+
+    def fake_build_tts_adapter(**kwargs):
+        calls.append(kwargs)
+        return FakeTTS(kwargs.get("tts_provider"))
+
+    monkeypatch.setattr(tts_preview, "build_tts_adapter", fake_build_tts_adapter)
+
+    app = FastAPI()
+    app.include_router(tts_preview.router)
+    client = TestClient(app)
+
+    response = client.post(
+        "/tts/preview-duo-dialog",
+        json={
+            "lines": [
+                {"id": "line-1", "role": "male", "text": "男声开场"},
+                {"id": "line-2", "role": "female", "text": "女声回应"},
+            ],
+            "gap_ms": 120,
+            "speakers": {
+                "male": {
+                    "tts_provider": "edge",
+                    "voice": "zh-CN-YunxiNeural",
+                },
+                "female": {
+                    "tts_provider": "xiaomi_mimo",
+                    "tts_model": "mimo-v2.5-tts",
+                    "voice": "冰糖",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/wav")
+    assert response.content.startswith(b"RIFF")
+    assert calls[0]["tts_provider"] == "edge"
+    assert calls[0]["default_voice"] == "zh-CN-YunxiNeural"
+    assert calls[1] == {"text": "男声开场", "voice": "zh-CN-YunxiNeural", "provider": "edge"}
+    assert calls[3]["tts_provider"] == "xiaomi_mimo"
+    assert calls[3]["tts_model"] == "mimo-v2.5-tts"
+    assert calls[3]["default_voice"] == "冰糖"
+    assert calls[4] == {"text": "女声回应", "voice": "冰糖", "provider": "xiaomi_mimo"}
+
+
 def test_tts_preview_allows_video_creation_length_text(monkeypatch):
     from apps.api.routes import tts_preview
 

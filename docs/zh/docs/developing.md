@@ -84,7 +84,7 @@ bash scripts/quickstart/start_all.sh
 ```
 
 OmniRT 可达后，前端模型选择器列出 `wav2lip`。
-各模型权重下载与启动命令见 [模型](../model-deployment/index.md)。
+各模型权重下载与启动命令见 [模型](../deployment/index.md)。
 
 ### API 与 Worker 分离 + 本地 Redis
 

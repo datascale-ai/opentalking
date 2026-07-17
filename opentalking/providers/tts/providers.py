@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-CORE_TTS_PROVIDERS = frozenset({"auto", "edge", "elevenlabs"})
+CORE_TTS_PROVIDERS = frozenset({"auto", "edge", "elevenlabs", "mock"})
 OPENAI_COMPATIBLE_TTS_PROVIDERS = frozenset({"openai_compatible"})
 XIAOMI_MIMO_TTS_PROVIDERS = frozenset({"xiaomi_mimo", "xiaomi", "mimo"})
 QWEN_TTS_PROVIDERS = frozenset({"dashscope", "bailian", "qwen", "qwen_tts"})
 COSYVOICE_TTS_PROVIDERS = frozenset({"cosyvoice", "cosyvoice_http"})
 SAMBERT_TTS_PROVIDERS = frozenset({"sambert", "dashscope_sambert"})
-LOCAL_TTS_PROVIDERS = frozenset({"local_cosyvoice", "local_qwen3_tts", "local_indextts"})
+LOCAL_TTS_PROVIDERS = frozenset({"local_cosyvoice", "local_qwen3_tts", "local_indextts", "local_f5_tts"})
 OMNIRT_TTS_PROVIDERS = frozenset({"omnirt_indextts"})
 INDEXTTS_TTS_PROVIDERS = frozenset({"indextts"})
 BAILIAN_TTS_PROVIDERS = (

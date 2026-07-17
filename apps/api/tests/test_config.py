@@ -273,3 +273,19 @@ def test_memory_engine_settings_read_prefixed_env(monkeypatch: pytest.MonkeyPatc
     assert settings.memory_summary_enabled is True
     assert settings.memory_summary_turn_window == 4
     assert settings.memory_summary_max_items == 2
+
+
+def test_light2d_video_creation_limits_have_defaults_and_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENTALKING_VIDEO_CREATION_LIGHT2D_MAX_DURATION_SEC", raising=False)
+    monkeypatch.delenv("OPENTALKING_VIDEO_CREATION_LIGHT2D_MAX_TEXT_CHARS", raising=False)
+    defaults = Settings(_env_file=None)
+    assert defaults.video_creation_light2d_max_duration_sec == 300
+    assert defaults.video_creation_light2d_max_text_chars == 1000
+
+    monkeypatch.setenv("OPENTALKING_VIDEO_CREATION_LIGHT2D_MAX_DURATION_SEC", "12")
+    monkeypatch.setenv("OPENTALKING_VIDEO_CREATION_LIGHT2D_MAX_TEXT_CHARS", "42")
+    overridden = Settings(_env_file=None)
+    assert overridden.video_creation_light2d_max_duration_sec == 12
+    assert overridden.video_creation_light2d_max_text_chars == 42

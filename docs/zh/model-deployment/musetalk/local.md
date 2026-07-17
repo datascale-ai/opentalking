@@ -5,8 +5,16 @@
 ## 1. 准备 OpenTalking 环境
 
 ```bash title="终端"
+# 改成你自己的部署根目录
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_REPO_ROOT="$DIGITAL_HUMAN_HOME/model-repos"
+export OPENTALKING_RUNTIME_ROOT="$DIGITAL_HUMAN_HOME/runtimes"
 
 # 网络较慢时先设置镜像。
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -23,7 +31,7 @@ uv pip install --python .venv/bin/python pip "setuptools<81" openmim
 local 模式默认读取 `$OPENTALKING_MUSETALK_MODEL_ROOT`。推荐把 MuseTalk 相关权重整理到统一根目录，例如：
 
 ```bash title="终端"
-export OPENTALKING_MUSETALK_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/musetalk-v15"
+export OPENTALKING_MUSETALK_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 mkdir -p "$OPENTALKING_MUSETALK_MODEL_ROOT"
 ```
 
@@ -63,16 +71,16 @@ Whisper 这里要求 OpenAI `openai-whisper` 的 `tiny.pt` 文件，不要把 Hu
 
 ## 3. 准备 MuseTalk 官方源码和预处理依赖
 
-OpenTalking local runtime 使用 OpenTalking 自己的 `.venv` 做实时推理，但官方 MuseTalk 头像预处理需要带 `mmcv._ext` 的 full OpenMMLab 环境。不要把预处理 Python 指向只装了 `mmcv-lite` 的主 `.venv`；推荐使用独立的 `$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv`。
+OpenTalking local runtime 使用 OpenTalking 自己的 `.venv` 做实时推理，但官方 MuseTalk 头像预处理需要带 `mmcv._ext` 的 full OpenMMLab 环境。不要把预处理 Python 指向只装了 `mmcv-lite` 的主 `.venv`；推荐使用独立的 `$OPENTALKING_RUNTIME_ROOT/musetalk-preprocess/venv`。
 
 ```bash title="终端"
-mkdir -p "$DIGITAL_HUMAN_HOME/model-repos"
+mkdir -p "$OPENTALKING_MODEL_REPO_ROOT"
 
-git clone https://github.com/TMElyralab/MuseTalk.git "$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
+git clone https://github.com/TMElyralab/MuseTalk.git "$OPENTALKING_MODEL_REPO_ROOT/MuseTalk"
 # 如果服务器已经有官方 MuseTalk checkout，直接指向已有目录即可。
 
-export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_ROOT="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess"
+export OPENTALKING_MUSETALK_REPO="$OPENTALKING_MODEL_REPO_ROOT/MuseTalk"
+export OPENTALKING_MUSETALK_PREPROCESS_ROOT="$OPENTALKING_RUNTIME_ROOT/musetalk-preprocess"
 export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_MUSETALK_PREPROCESS_ROOT/venv/bin/python"
 
 bash scripts/quickstart/prepare_local_musetalk.sh
@@ -85,12 +93,14 @@ bash scripts/quickstart/prepare_local_musetalk.sh
 ## 4. 启动 OpenTalking
 
 ```bash title="终端"
-export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv/bin/python"
+export OPENTALKING_MODEL_REPO_ROOT="$DIGITAL_HUMAN_HOME/model-repos"
+export OPENTALKING_RUNTIME_ROOT="$DIGITAL_HUMAN_HOME/runtimes"
+export OPENTALKING_MUSETALK_REPO="$OPENTALKING_MODEL_REPO_ROOT/MuseTalk"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_RUNTIME_ROOT/musetalk-preprocess/venv/bin/python"
+# 将 1 改成要使用的物理 GPU；进程内仍使用 cuda:0。
+export CUDA_VISIBLE_DEVICES=1
 export OPENTALKING_MUSETALK_DEVICE=cuda:0
 export OPENTALKING_TORCH_DEVICE=cuda:0
-# 多卡机器可按需限制可见卡，避免误选不可用 GPU。
-export CUDA_VISIBLE_DEVICES=0
 
 cd "$OPENTALKING_HOME"
 bash scripts/start_unified.sh --backend local --model musetalk --api-port 8000 --web-port 5173

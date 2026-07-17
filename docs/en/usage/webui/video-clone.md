@@ -1,129 +1,98 @@
 # Video Clone
 
-Video Clone keeps one digital-human avatar as the source and uses a camera or uploaded video as the driving input. The driving input controls expression, head motion, and mouth motion on the source avatar.
+Video Clone is a WebUI workflow next to Realtime Conversation. It keeps an OpenTalking avatar-library asset as the source, then uses browser camera frames or an uploaded video as the driving video so the avatar follows the user's expression, mouth, and head motion.
 
-It does not enter the LLM / STT / TTS conversation path and does not reuse the Realtime Conversation `speak` queue. The main v1 flow is live camera driving; uploaded driving video is available for testing a recorded selfie video.
+![Video Clone workspace](../../../assets/images/usage/video-clone-workspace.png)
 
-![Video Clone page: source, clone output, and driving controls.](../../../assets/images/usage/webui/video-clone.png)
+## When to Use It
 
-*Video Clone page: source avatar on the left, clone output in the center, and camera or driving-video controls on the right.*
+- Validate FasterLivePortrait video-driven output.
+- Use a camera to test realtime expression and head-motion following.
+- Upload a selfie video to inspect driving-video mouth shape, crop, and pasteback behavior.
+
+Video Clone does not start an LLM conversation and does not call TTS or STT. It is separate from the audio-driven Realtime Conversation workflow.
 
 ## Prerequisites
 
-Video Clone depends on the FasterLivePortrait runtime. Start OmniRT according to the [FasterLivePortrait guide](../../model-support/models/fasterliveportrait.md), then confirm OpenTalking can see the video-clone status.
+1. OmniRT is running the FasterLivePortrait runtime.
+2. OpenTalking API can reach OmniRT.
+3. WebUI model status reports `fasterliveportrait` as connected.
+4. The browser can access the camera. Use `localhost`, `127.0.0.1`, or HTTPS.
 
-Common check:
-
-```bash
-curl -s http://127.0.0.1:8000/video-clone/status | python3 -m json.tool
-```
-
-If the status is disconnected, check the OmniRT endpoint, FasterLivePortrait source dependency, and model weight paths.
-
-## Source and Driving
-
-Two concepts matter:
-
-- `source`: the digital-human avatar shown in the final output. It comes from the OpenTalking avatar library or from an uploaded source image.
-- `driving`: the face input that provides expression, head motion, and mouth motion. It can come from a camera or uploaded driving video.
-
-The camera user does not become the digital-human identity. The camera only provides the motion signal; the output remains the selected source avatar.
+If services are not running yet, first follow the [FasterLivePortrait model page](../../../avatar_models/fasterliveportrait.md) and complete both Start OmniRT and Start OpenTalking WebUI.
 
 ## Page Layout
 
-### Left Source
+### Source Avatar
 
-Use the left column to fix the source avatar:
+The source panel lists digital-human assets from the avatar library. Click an asset to make it the output character. Camera or uploaded video frames do not become the source; they only provide motion.
 
-- Click an existing avatar to switch the source.
-- Click Upload Source Image to upload a local image as a new source.
-- After upload, OpenTalking adds the image to the avatar library and selects it.
+If the output appears as an over-zoomed head, make sure `Pasteback` is enabled. It pastes the animated face back into the original source image so the body, background, and aspect ratio are preserved.
 
-Use a clear frontal or half-body image. Avoid heavy occlusion, extreme side faces, or very dark images.
+### Clone Output
 
-### Center Output
+The center panel shows the selected source and the cloned output. The status strip shows sent frames, received frames, dropped frames, and latency.
 
-The center column shows clone output. The top controls include:
+After stopping, click the change-avatar control to return to source selection and choose another asset.
 
-- “Record output”: record the current output and save it to the exported video asset library.
-- “Change avatar”: return to source selection.
-- Status button: shows stopped, connecting, or running state.
+### Driving Input
 
-The bottom status shows sent frames, received frames, dropped frames, and latency.
+The right panel selects camera, FPS, resolution, and local preview. After Start, the browser samples camera frames through a canvas timer and sends them to the backend.
 
-### Right Driving
+Uploaded driving video is a secondary testing path for comparing the same selfie video under different parameters.
 
-The right column configures driving input:
+## Live Camera Driving
 
-- “Camera”: select the local camera.
-- “FPS”: frontend frame sampling rate.
-- “Resolution”: frame size sent to the runtime.
-- “Mirror preview”: mirrors camera preview and sent frames for selfie use.
-- “Upload driving video”: loop a local video as the driving input.
+1. Open WebUI and switch to Video Clone.
+2. Select a digital-human source on the left.
+3. Select camera, FPS, and resolution on the right.
+4. Click Start and allow browser camera permission.
+5. Watch the center output and status strip.
+6. Click Stop or leave the page only after the camera preview closes.
 
-If the browser cannot open the camera, upload a driving video first to validate the backend service.
-
-## Steps
-
-1. Start the FasterLivePortrait OmniRT runtime.
-2. Start OpenTalking and open WebUI.
-3. Switch the top navigation to “Video Clone”.
-4. Select a source avatar on the left, or upload a new source image.
-5. Select a camera on the right, or upload a driving video.
-6. Adjust FPS, resolution, animation region, and mouth controls as needed.
-7. Click Start.
-8. Inspect the center output; click Record Output when you need to save it.
-9. Click Stop or switch workflows to release camera tracks, WebSocket, and the current clone session.
-
-## Parameter Tips
-
-### Pasteback
-
-Keep it enabled by default. Pasteback preserves the original source composition and avoids showing only a zoomed face.
-
-### Crop Driving Face
-
-Keep it disabled by default. Over-cropping uploaded driving video can make mouth shape and head position feel unnatural. Enable it only when the driving face is too small or face detection is unstable.
-
-### Animation Region
-
-- “Full expression”: full head motion and expression demo.
-- “Expression”: expression-focused motion.
-- “Pose”: head-pose-focused motion.
-- “Mouth”: lip-only checks.
-- “Eyes”: blink and eye-motion checks.
-
-### Mouth Controls
-
-Mouth opening increases or reduces mouth amplitude. Lip retargeting can improve mouth closure, but aggressive settings may collapse motion into simple vertical opening. Change one parameter at a time.
+Start with `12fps` and `448px`. Increase FPS or resolution only after output is stable.
 
 ## Uploaded Driving Video
 
-Uploaded driving video does not change the source identity. It only provides motion input.
+Uploaded video is for validating driving-video expression, mouth, and crop behavior. Use a clear frontal or half-body selfie video. Avoid a tiny face, heavy occlusion, extreme head turns, or very narrow aspect ratios.
 
-Recommended driving video:
+If uploaded-video output looks worse than camera output:
 
-- Clear, unobstructed face.
-- Face not too far from the camera.
-- Face stays in frame.
-- Short clips for initial tuning.
+- Disable `Crop driving face` so the driving face is not cropped too tightly.
+- Enable `Pasteback` so output is not a cropped head-only view.
+- Enable `Lip retargeting` and disable `Relative motion`.
+- Change the driving region from `Mouth` to `Expression` or `All` and check whether mouth corners and cheeks recover.
 
-If uploaded video makes the mouth look puffy or unable to open, disable Crop Driving Face first, then check face position and scale in the driving video.
+## Parameter Suggestions
+
+| Parameter | Effect | Suggestion |
+| --- | --- | --- |
+| Motion amplitude | Overall driving strength | Start from `1.0` |
+| Expression amplitude | Expression and mouth strength | Start from `1.0` |
+| Head amplitude | Overall head motion | Start from `0.3` |
+| Mouth opening | Mouth open/close amplitude | `0.8-1.3` |
+| Yaw / pitch / roll | Pose components | Lower the component that looks too strong |
+| Pasteback | Preserve source composition | Keep enabled |
+| Stitching | Stabilize face boundary | Keep enabled |
+| Relative motion | Preserve source base pose | Usually disable when lip retargeting is enabled |
+| Lip normalize | Reduce initial mouth-shape offset | Keep enabled |
+| Lip retargeting | Improve mouth following | Try when the mouth is puffy or does not open enough |
+| Crop driving face | Crop input-video face | Disable when uploaded-video aspect ratio looks wrong |
 
 ## Common Issues
 
-### Camera Does Not Open
+### Cannot Start Camera or Video Clone Service
 
-Open the page from `localhost` or `127.0.0.1`, allow camera permission, and make sure the camera is not occupied by another application.
+Check browser permissions, page origin (`localhost` / `127.0.0.1` / HTTPS), and whether FasterLivePortrait is connected in `/models`.
 
-### Video Clone Service Fails to Connect
+### Uploaded Video Mouth Looks Puffy or Too Closed
 
-Check `/video-clone/status`, confirm the FasterLivePortrait runtime is running, and verify the OpenTalking OmniRT endpoint points to the right service.
+This is usually related to driving-video crop, face position, scaling, or lip parameters. Disable `Crop driving face` first, then try `Lip retargeting + Relative motion off`.
 
-### Mouth Only Opens Vertically
+### Lip Retargeting Turns into Mostly Vertical Mouth Opening
 
-Reduce lip retargeting strength, or switch back to a fuller animation region. Mouth-only is useful for lip checks, but full demos should usually use Full Expression.
+Lip retargeting strengthens mouth open/close. If relative motion stays enabled, mouth corners and cheek movement can become weak. Disable `Relative motion` and switch the driving region to `Expression` or `All`.
 
-### Head Is Zoomed In
+### Avatar Aspect Ratio Looks Wrong After Selection
 
-Enable Pasteback. If the source image itself is face-heavy, use a half-body or wider-composition source image.
+Enable `Pasteback` and choose a source with the desired original composition. Video Clone should use the source image for output composition; the driving video only provides motion.

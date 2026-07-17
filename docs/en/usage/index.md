@@ -10,6 +10,7 @@ This section is for developers and integrators who have completed the basic setu
 
 - Starting OpenTalking services, the frontend, and helper scripts.
 - Using WebUI for avatar, model, voice, and session configuration.
+- Using WebUI Video Clone to drive a source avatar with camera frames or uploaded video.
 - Preparing custom avatars and previewing or cloning voices.
 - Common parameters, ports, backends, and environment files.
 
@@ -25,9 +26,9 @@ Start with [Command Line Tools](./cli.md), then use [Advanced CLI Arguments](./c
 
 ### WebUI
 
-WebUI is best for interactive validation. It provides avatar selection, model selection, TTS provider and voice configuration, text or voice conversation, video creation, video clone, and status feedback.
+WebUI is best for interactive validation. It provides avatar selection, model selection, TTS provider and voice configuration, text or voice conversation, Video Clone, and status feedback.
 
-Start with [WebUI Basic Usage](./webui/basic.md), then continue to [Custom Avatar](./webui/custom-avatar.md), [Voice and TTS](./webui/voice-and-tts.md), [Video Creation](./webui/video-creation.md), or [Video Clone](./webui/video-clone.md) when needed.
+Start with [WebUI Basic Usage](./webui/basic.md), then continue to [Custom Avatar](./webui/custom-avatar.md), [Voice and TTS](./webui/voice-and-tts.md), or [Video Clone](./webui/video-clone.md) when needed.
 
 ## Recommended Paths
 
@@ -52,21 +53,11 @@ Mock mode does not require model weights, so it is the fastest way to verify the
 2. Select or preview a default voice in WebUI.
 3. If voice cloning is needed, prepare provider credentials, sample audio, and public access settings.
 
-### I Want to Create a Digital-Human Video
+### I Want to Drive an Avatar with Video
 
-1. Confirm WebUI opens and at least one avatar is available.
-2. Read [Video Creation](./webui/video-creation.md), then choose a connected talking-head model for offline generation.
-3. Choose an audio source: upload audio, synthesize text, or clone a voice first.
-4. Preview the result on the right or open the asset library to download the generated video.
-
-Video Creation is an offline or near-realtime generation workflow. It does not require a realtime conversation session or WebRTC session.
-
-### I Want to Drive an Avatar with Camera Expressions
-
-1. Start the FasterLivePortrait OmniRT runtime according to the deployment guide.
-2. Read [Video Clone](./webui/video-clone.md), then choose the source avatar.
-3. Use a camera or uploaded driving video for expression and head-motion input.
-4. Tune pasteback, driving crop, animation region, and mouth controls as needed.
+1. Prepare and start the FasterLivePortrait OmniRT runtime.
+2. Open WebUI and switch to Video Clone.
+3. Read [Video Clone](./webui/video-clone.md), select a source avatar, then use camera frames or an uploaded video as driving input.
 
 ### I Want to Start Services from CLI
 
@@ -92,7 +83,6 @@ The recommended getting-started path currently focuses on WebUI and CLI. Detaile
 
 - Start and debug services with scripts: [Command Line Tools](./cli.md).
 - Learn the UI workflow: [WebUI Basic Usage](./webui/basic.md).
+- Drive an avatar with camera or uploaded video: [Video Clone](./webui/video-clone.md).
 - Add your own avatar: [Custom Avatar](./webui/custom-avatar.md).
 - Configure speech: [Voice and TTS](./webui/voice-and-tts.md).
-- Generate offline videos: [Video Creation](./webui/video-creation.md).
-- Drive an avatar with camera or uploaded video: [Video Clone](./webui/video-clone.md).

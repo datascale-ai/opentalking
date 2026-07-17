@@ -59,6 +59,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
 export OMNIRT_MODEL_ROOT="${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
 
 if [[ "$mock_mode" == "1" ]]; then
@@ -84,6 +85,21 @@ if [[ -f "$pid_file" ]]; then
   if [[ -n "$old_pid" ]] && kill -0 "$old_pid" >/dev/null 2>&1; then
     if curl --max-time 2 -fsS "http://127.0.0.1:$api_port/models" >/dev/null 2>&1; then
       echo "OpenTalking API is already running: pid=$old_pid port=$api_port"
+      if current_quicktalk_device="${OPENTALKING_QUICKTALK_DEVICE:-}"; [[ -n "$current_quicktalk_device" ]]; then
+        existing_quicktalk_device="$(quickstart_pid_env_value "$old_pid" OPENTALKING_QUICKTALK_DEVICE || true)"
+        existing_torch_device="$(quickstart_pid_env_value "$old_pid" OPENTALKING_TORCH_DEVICE || true)"
+        echo "Existing API env:"
+        echo "  OPENTALKING_QUICKTALK_DEVICE=${existing_quicktalk_device:-<unset>}"
+        echo "  OPENTALKING_TORCH_DEVICE=${existing_torch_device:-<unset>}"
+        if [[ "$existing_quicktalk_device" != "$current_quicktalk_device" ]]; then
+          echo "OPENTALKING_QUICKTALK_DEVICE differs from the already-running API process." >&2
+          echo "Requested: $current_quicktalk_device" >&2
+          echo "Running:   ${existing_quicktalk_device:-<unset>}" >&2
+          echo "Stop the existing service before changing device:" >&2
+          echo "  bash scripts/quickstart/stop_all.sh" >&2
+          exit 1
+        fi
+      fi
       echo "Log: $log_file"
       exit 0
     fi

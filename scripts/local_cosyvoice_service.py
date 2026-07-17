@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import importlib
+import importlib.util
 import io
+import inspect
+import hashlib
 import os
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
@@ -18,6 +22,37 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+try:
+    from _standalone_model_paths import load_model_paths
+except ModuleNotFoundError:
+    from scripts._standalone_model_paths import load_model_paths
+
+
+def _load_voice_assets_module():
+    module_name = "_opentalking_voice_assets_local_cosyvoice"
+    module = sys.modules.get(module_name)
+    if module is not None:
+        return module
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    module_path = repo_root / "opentalking" / "providers" / "tts" / "voice_assets.py"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load voice assets module from {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_voice_assets = _load_voice_assets_module()
+LOCAL_COSYVOICE_PROVIDER = _voice_assets.LOCAL_COSYVOICE_PROVIDER
+VoiceAsset = _voice_assets.VoiceAsset
+iter_voice_assets = _voice_assets.iter_voice_assets
+local_audio_model_root = _voice_assets.local_audio_model_root
+resolve_voice_asset = _voice_assets.resolve_voice_asset
+model_repo_root = load_model_paths().model_repo_root
 
 
 def _soundfile_load_wav(wav: str, target_sr: int):
@@ -128,6 +163,7 @@ def _patch_cosyvoice_load_wav() -> None:
 class SynthesizeRequest(BaseModel):
     text: str
     voice: str | None = None
+    zero_shot_spk_id: str | None = None
     model: str | None = None
     sample_rate: int | None = None
     prompt_audio: str | None = None
@@ -148,6 +184,34 @@ def _cosyvoice_llm(cosyvoice: Any) -> Any | None:
 def _cosyvoice_flow(cosyvoice: Any) -> Any | None:
     model = _cosyvoice_model(cosyvoice)
     return getattr(model, "flow", None)
+
+
+def _callable_supports_keyword(fn: Any, name: str) -> bool:
+    try:
+        signature = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return False
+    return name in signature.parameters or any(
+        param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
+    )
+
+
+def _voice_signature(asset: VoiceAsset) -> tuple[str, int, int, str]:
+    try:
+        stat = asset.prompt_audio.stat()
+    except OSError:
+        stat = None
+    try:
+        prompt_text = asset.prompt_text.read_text(encoding="utf-8").strip() if asset.prompt_text else ""
+    except OSError:
+        prompt_text = ""
+    digest = hashlib.sha1(prompt_text.encode("utf-8")).hexdigest()
+    return (
+        str(asset.prompt_audio.resolve()),
+        int(getattr(stat, "st_mtime_ns", 0) or 0),
+        int(getattr(stat, "st_size", 0) or 0),
+        digest,
+    )
 
 
 def current_streaming_tuning(cosyvoice: Any) -> dict[str, Any]:
@@ -193,6 +257,20 @@ def ensure_cosyvoice_flow_half(cosyvoice: Any) -> bool:
         return False
     flow.half()
     return True
+
+
+def _is_cuda_runtime_incompatibility(exc: BaseException) -> bool:
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(
+        marker in text
+        for marker in (
+            "no kernel image is available for execution on the device",
+            "cuda error",
+            "invalid device function",
+            "tensorrt",
+            "trt",
+        )
+    )
 
 
 def reset_streaming_tuning(cosyvoice: Any) -> dict[str, Any]:
@@ -359,6 +437,7 @@ class CosyVoiceService:
         *,
         model_dir: str,
         runtime_dir: str,
+        audio_root: str | None = None,
         device: str,
         prompt_audio: str,
         prompt_text: str,
@@ -373,12 +452,15 @@ class CosyVoiceService:
         token_max_hop_len: int | None = None,
         stream_scale_factor: int | None = None,
         flow_n_timesteps: int | None = None,
-        max_token_text_ratio: float | None = 6.0,
+        max_token_text_ratio: float | None = None,
         min_token_text_ratio: float | None = None,
-        mask_stop_tokens: bool = True,
+        mask_stop_tokens: bool = False,
+        use_zero_shot_spk_id: bool = False,
+        precache_system_spks: bool = False,
     ) -> None:
         self.model_dir = model_dir
         self.runtime_dir = runtime_dir
+        self.audio_root = audio_root or ""
         self.device = device
         self.prompt_audio = prompt_audio
         self.prompt_text = prompt_text
@@ -396,6 +478,8 @@ class CosyVoiceService:
         self.max_token_text_ratio = max_token_text_ratio
         self.min_token_text_ratio = min_token_text_ratio
         self.mask_stop_tokens = mask_stop_tokens
+        self.use_zero_shot_spk_id = use_zero_shot_spk_id
+        self.precache_system_spks = precache_system_spks
         self._model: Any | None = None
         self._model_lock = threading.Lock()
         self._loaded_model_kwargs: dict[str, Any] = {}
@@ -403,6 +487,60 @@ class CosyVoiceService:
         self._flow_tuning: dict[str, Any] = {}
         self._llm_token_ratio_tuning: dict[str, Any] = {}
         self._llm_stop_token_patch: dict[str, Any] = {}
+        self._zero_shot_spk_cache: dict[str, tuple[str, int, int, str]] = {}
+
+    def _audio_root(self) -> Path:
+        if self.audio_root.strip():
+            return Path(self.audio_root).expanduser().resolve()
+        return local_audio_model_root()
+
+    def _resolve_voice_asset(self, voice_id: str | None) -> VoiceAsset | None:
+        voice_key = (voice_id or "").strip()
+        if not voice_key or voice_key == "local-default":
+            return None
+        return resolve_voice_asset(
+            voice_key,
+            provider=LOCAL_COSYVOICE_PROVIDER,
+            sources=("clones", "system"),
+            model_root=self._audio_root(),
+            require_prompt_text=True,
+        )
+
+    def _ensure_zero_shot_spk_registered(self, model: Any, voice_id: str, asset: VoiceAsset) -> bool:
+        if not voice_id or asset.prompt_text is None:
+            return False
+        add_zero_shot_spk = getattr(model, "add_zero_shot_spk", None)
+        if not callable(add_zero_shot_spk):
+            return False
+        signature = _voice_signature(asset)
+        if self._zero_shot_spk_cache.get(voice_id) == signature:
+            return True
+
+        prompt_text = asset.prompt_text.read_text(encoding="utf-8").strip()
+        if not prompt_text:
+            return False
+        prompt_text = self._prompt_text_for_zero_shot(prompt_text)
+        prompt_audio = str(asset.prompt_audio)
+        if _callable_supports_keyword(add_zero_shot_spk, "zero_shot_spk_id"):
+            add_zero_shot_spk(prompt_text, prompt_audio, zero_shot_spk_id=voice_id)
+        else:
+            add_zero_shot_spk(prompt_text, prompt_audio, voice_id)
+        self._zero_shot_spk_cache[voice_id] = signature
+        print(f"zero_shot_spk registered voice_id={voice_id} prompt_audio={prompt_audio}", flush=True)
+        save_spkinfo = getattr(model, "save_spkinfo", None)
+        if callable(save_spkinfo):
+            save_spkinfo()
+        return True
+
+    def _precache_system_zero_shot_spks(self, model: Any) -> None:
+        assets = iter_voice_assets(
+            provider=LOCAL_COSYVOICE_PROVIDER,
+            sources=("system",),
+            model_root=self._audio_root(),
+            require_prompt_text=True,
+        )
+        for asset in assets:
+            self._ensure_zero_shot_spk_registered(model, asset.voice_id, asset)
 
     def model(self) -> Any:
         if self._model is not None:
@@ -438,11 +576,52 @@ class CosyVoiceService:
             "fp16": self.fp16,
             "trt_concurrent": self.trt_concurrent,
         }
-        self._model, self._loaded_model_kwargs = _instantiate_automodel(AutoModel, model_kwargs)
+        try:
+            self._model, self._loaded_model_kwargs = _instantiate_automodel(AutoModel, model_kwargs)
+        except Exception as exc:
+            if not self.load_trt:
+                raise
+            print(
+                "CosyVoice TensorRT startup failed; falling back to non-TRT runtime: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            self.load_trt = False
+            model_kwargs["load_trt"] = False
+            self._model, self._loaded_model_kwargs = _instantiate_automodel(AutoModel, model_kwargs)
         flow_half_applied = False
         if self.load_trt and self.fp16:
-            flow_half_applied = ensure_cosyvoice_flow_half(self._model)
+            try:
+                flow_half_applied = ensure_cosyvoice_flow_half(self._model)
+            except Exception as exc:
+                if not _is_cuda_runtime_incompatibility(exc):
+                    raise
+                print(
+                    "CosyVoice TensorRT/FP16 startup failed after load; "
+                    "falling back to non-TRT fp32 runtime: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                self.load_trt = False
+                self.fp16 = False
+                old_model = self._model
+                self._model = None
+                del old_model
+                gc.collect()
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                model_kwargs["load_trt"] = False
+                model_kwargs["fp16"] = False
+                self._model, self._loaded_model_kwargs = _instantiate_automodel(AutoModel, model_kwargs)
+        self._zero_shot_spk_cache.clear()
         self._apply_runtime_tuning()
+        if self.precache_system_spks:
+            self._precache_system_zero_shot_spks(self._model)
         # Keep the service zero-shot first so it does not require precomputed spk2info.pt.
         print(
             "loaded cosyvoice "
@@ -516,6 +695,35 @@ class CosyVoiceService:
             ),
         }
 
+    def reset_model_after_empty_audio(self, *, reason: str) -> None:
+        with self._model_lock:
+            old_model = self._model
+            self._model = None
+            self._loaded_model_kwargs = {}
+            if self.load_trt or self.fp16:
+                print(
+                    "cosyvoice empty audio recovery: disabling TRT/FP16 for retry",
+                    flush=True,
+                )
+            self.load_trt = False
+            self.fp16 = False
+            self._zero_shot_spk_cache.clear()
+            self._streaming_tuning = {}
+            self._flow_tuning = {}
+            self._llm_token_ratio_tuning = {}
+            self._llm_stop_token_patch = {}
+        if old_model is not None:
+            del old_model
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+        print(f"cosyvoice model reset after empty audio: {reason}", flush=True)
+
     def _to_wav_bytes(self, speech: Any, sample_rate: int) -> bytes:
         if hasattr(speech, "detach"):
             speech = speech.detach().cpu().numpy()
@@ -552,6 +760,14 @@ class CosyVoiceService:
             return f"You are a helpful assistant.<|endofprompt|>{text}"
         return "You are a helpful assistant.<|endofprompt|>"
 
+    def _asset_prompt_text(self, asset: VoiceAsset, fallback_prompt_text: str = "") -> str:
+        prompt_text = ""
+        if asset.prompt_text is not None:
+            prompt_text = asset.prompt_text.read_text(encoding="utf-8").strip()
+        if not prompt_text:
+            prompt_text = fallback_prompt_text.strip()
+        return self._prompt_text_for_zero_shot(prompt_text)
+
     def synthesize_wav(self, req: SynthesizeRequest) -> tuple[bytes, int, float]:
         text = req.text.strip()
         if not text:
@@ -559,6 +775,7 @@ class CosyVoiceService:
         prompt_audio = (req.prompt_audio or self.prompt_audio).strip()
         prompt_text = (req.prompt_text or self.prompt_text).strip()
         mode = (req.mode or self.mode).strip().lower()
+        voice_id = (req.zero_shot_spk_id or req.voice or "").strip()
         model = self.model()
         sample_rate = int(getattr(model, "sample_rate", 24000) or 24000)
         t0 = time.perf_counter()
@@ -572,17 +789,40 @@ class CosyVoiceService:
             instruction = (req.instruction or self.instruction).strip()
             iterator = model.inference_instruct2(text, instruction, prompt_audio, stream=False)
         else:
-            if not prompt_audio or not prompt_text:
-                raise HTTPException(
-                    status_code=400,
-                    detail="zero_shot mode requires prompt_audio and prompt_text",
+            asset = self._resolve_voice_asset(voice_id)
+            if asset is not None:
+                asset_prompt_text = self._asset_prompt_text(asset, prompt_text)
+                asset_prompt_audio = str(asset.prompt_audio)
+                if (
+                    self.use_zero_shot_spk_id
+                    and _callable_supports_keyword(model.inference_zero_shot, "zero_shot_spk_id")
+                    and self._ensure_zero_shot_spk_registered(model, asset.voice_id, asset)
+                ):
+                    iterator = model.inference_zero_shot(text, "", "", stream=False, zero_shot_spk_id=asset.voice_id)
+                else:
+                    iterator = model.inference_zero_shot(
+                        text,
+                        asset_prompt_text,
+                        asset_prompt_audio,
+                        stream=False,
+                    )
+            else:
+                if not prompt_audio or not prompt_text:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="zero_shot mode requires prompt_audio and prompt_text",
+                    )
+                iterator = model.inference_zero_shot(
+                    text,
+                    self._prompt_text_for_zero_shot(prompt_text),
+                    prompt_audio,
+                    stream=False,
                 )
-            iterator = model.inference_zero_shot(
-                text,
-                self._prompt_text_for_zero_shot(prompt_text),
-                prompt_audio,
-                stream=False,
-            )
+            if asset is not None:
+                print(
+                    f"zero_shot {'spk_id' if self.use_zero_shot_spk_id else 'prompt_path'} voice_id={asset.voice_id} stream=False prompt_audio={asset.prompt_audio}",
+                    flush=True,
+                )
         parts: list[np.ndarray] = []
         with self._model_lock:
             for item in _with_request_streaming_tuning(model, iterator):
@@ -595,17 +835,22 @@ class CosyVoiceService:
         wav_bytes = self._to_wav_bytes(np.concatenate(parts), sample_rate)
         return wav_bytes, sample_rate, time.perf_counter() - t0
 
-    def _streaming_iterator(self, req: SynthesizeRequest) -> tuple[Iterator[Any], int, int, float, Any]:
+    def _streaming_iterator(
+        self,
+        req: SynthesizeRequest,
+    ) -> tuple[Iterator[Any], int, int, float, Any, Callable[[], Iterator[Any]] | None]:
         text = req.text.strip()
         if not text:
             raise HTTPException(status_code=400, detail="text is required")
         prompt_audio = (req.prompt_audio or self.prompt_audio).strip()
         prompt_text = (req.prompt_text or self.prompt_text).strip()
         mode = (req.mode or self.mode).strip().lower()
+        voice_id = (req.zero_shot_spk_id or req.voice or "").strip()
         model = self.model()
         source_sr = int(getattr(model, "sample_rate", 24000) or 24000)
         target_sr = int(req.sample_rate or source_sr)
         t0 = time.perf_counter()
+        fallback_iterator_factory: Callable[[], Iterator[Any]] | None = None
         if mode == "cross_lingual":
             if not prompt_audio:
                 raise HTTPException(status_code=400, detail="prompt_audio is required")
@@ -616,47 +861,111 @@ class CosyVoiceService:
             instruction = (req.instruction or self.instruction).strip()
             iterator = model.inference_instruct2(text, instruction, prompt_audio, stream=True)
         else:
-            if not prompt_audio or not prompt_text:
-                raise HTTPException(
-                    status_code=400,
-                    detail="zero_shot mode requires prompt_audio and prompt_text",
+            asset = self._resolve_voice_asset(voice_id)
+            if asset is not None:
+                asset_prompt_text = self._asset_prompt_text(asset, prompt_text)
+                asset_prompt_audio = str(asset.prompt_audio)
+                if (
+                    self.use_zero_shot_spk_id
+                    and _callable_supports_keyword(model.inference_zero_shot, "zero_shot_spk_id")
+                    and self._ensure_zero_shot_spk_registered(model, asset.voice_id, asset)
+                ):
+                    iterator = model.inference_zero_shot(text, "", "", stream=True, zero_shot_spk_id=asset.voice_id)
+
+                    def fallback_iterator(
+                        *,
+                        text: str = text,
+                        prompt_text: str = asset_prompt_text,
+                        prompt_audio: str = asset_prompt_audio,
+                        voice_id: str = asset.voice_id,
+                    ) -> Iterator[Any]:
+                        self._zero_shot_spk_cache.pop(voice_id, None)
+                        print(
+                            "zero_shot_spk_id produced no audio; falling back to prompt "
+                            f"voice_id={voice_id} prompt_audio={prompt_audio}",
+                            flush=True,
+                        )
+                        return model.inference_zero_shot(text, prompt_text, prompt_audio, stream=True)
+
+                    fallback_iterator_factory = fallback_iterator
+                else:
+                    iterator = model.inference_zero_shot(
+                        text,
+                        asset_prompt_text,
+                        asset_prompt_audio,
+                        stream=True,
+                    )
+            else:
+                if not prompt_audio or not prompt_text:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="zero_shot mode requires prompt_audio and prompt_text",
+                    )
+                iterator = model.inference_zero_shot(
+                    text,
+                    self._prompt_text_for_zero_shot(prompt_text),
+                    prompt_audio,
+                    stream=True,
                 )
-            iterator = model.inference_zero_shot(
-                text,
-                self._prompt_text_for_zero_shot(prompt_text),
-                prompt_audio,
-                stream=True,
-            )
-        return iterator, source_sr, target_sr, t0, model
+            if asset is not None:
+                print(
+                    f"zero_shot {'spk_id' if self.use_zero_shot_spk_id else 'prompt_path'} voice_id={asset.voice_id} stream=True prompt_audio={asset.prompt_audio}",
+                    flush=True,
+                )
+        return iterator, source_sr, target_sr, t0, model, fallback_iterator_factory
 
     def synthesize_pcm_stream(self, req: SynthesizeRequest) -> tuple[Iterator[bytes], int]:
-        iterator, source_sr, target_sr, t0, model = self._streaming_iterator(req)
+        iterator, source_sr, target_sr, t0, model, fallback_iterator_factory = self._streaming_iterator(req)
 
         def generate() -> Iterator[bytes]:
             first = True
             chunks = 0
             samples = 0
-            with self._model_lock:
-                tuned_iterator = _with_request_streaming_tuning(model, iterator)
+            output_sr = target_sr
+
+            def emit(
+                tuned_iterator: Iterator[Any],
+                *,
+                source_sr_for_attempt: int,
+                target_sr_for_attempt: int,
+                t0_for_attempt: float,
+            ) -> Iterator[bytes]:
+                nonlocal first, chunks, samples, output_sr
+                output_sr = target_sr_for_attempt
                 for item in tuned_iterator:
                     speech = item.get("tts_speech") if isinstance(item, dict) else item
                     pcm = self._audio_to_i16(speech)
-                    pcm = self._resample_linear(pcm, source_sr, target_sr)
+                    pcm = self._resample_linear(pcm, source_sr_for_attempt, target_sr_for_attempt)
                     if pcm.size == 0:
                         continue
                     if first:
                         print(
-                            f"first_pcm chars={len(req.text.strip())} sr={target_sr} seconds={time.perf_counter() - t0:.3f}",
+                            f"first_pcm chars={len(req.text.strip())} sr={target_sr_for_attempt} seconds={time.perf_counter() - t0_for_attempt:.3f}",
                             flush=True,
                         )
                         first = False
                     chunks += 1
                     samples += int(pcm.size)
                     yield pcm.astype("<i2", copy=False).tobytes()
+
+            with self._model_lock:
+                yield from emit(
+                    _with_request_streaming_tuning(model, iterator),
+                    source_sr_for_attempt=source_sr,
+                    target_sr_for_attempt=target_sr,
+                    t0_for_attempt=t0,
+                )
+                if chunks == 0 and fallback_iterator_factory is not None:
+                    yield from emit(
+                        _with_request_streaming_tuning(model, fallback_iterator_factory()),
+                        source_sr_for_attempt=source_sr,
+                        target_sr_for_attempt=target_sr,
+                        t0_for_attempt=t0,
+                    )
             if chunks == 0:
                 raise RuntimeError("CosyVoice returned no audio")
             print(
-                f"synth_stream chars={len(req.text.strip())} sr={target_sr} chunks={chunks} audio_seconds={samples / target_sr:.3f} wall_seconds={time.perf_counter() - t0:.3f}",
+                f"synth_stream chars={len(req.text.strip())} sr={output_sr} chunks={chunks} audio_seconds={samples / output_sr:.3f} wall_seconds={time.perf_counter() - t0:.3f}",
                 flush=True,
             )
 
@@ -683,17 +992,47 @@ def create_app(service: CosyVoiceService) -> FastAPI:
 
     @app.post("/synthesize")
     def synthesize(req: SynthesizeRequest) -> StreamingResponse:
-        try:
+        def open_stream() -> tuple[Iterator[bytes], bytes, int]:
             stream, sr = service.synthesize_pcm_stream(req)
+            iterator = iter(stream)
+            first = next(iterator)
+            return iterator, first, sr
+
+        try:
+            iterator, first_chunk, sr = open_stream()
         except HTTPException:
             raise
         except Exception as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"cosyvoice synth failed: {type(exc).__name__}: {exc}",
-            ) from exc
+            if "CosyVoice returned no audio" in str(exc):
+                reset = getattr(service, "reset_model_after_empty_audio", None)
+                if callable(reset):
+                    reset(reason=str(exc))
+                    try:
+                        iterator, first_chunk, sr = open_stream()
+                    except HTTPException:
+                        raise
+                    except Exception as retry_exc:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"cosyvoice synth failed after model reset: {type(retry_exc).__name__}: {retry_exc}",
+                        ) from retry_exc
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"cosyvoice synth failed: {type(exc).__name__}: {exc}",
+                    ) from exc
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"cosyvoice synth failed: {type(exc).__name__}: {exc}",
+                ) from exc
+
+        def response_stream() -> Iterator[bytes]:
+            yield first_chunk
+            yield from iterator
+
         return StreamingResponse(
-            stream,
+            response_stream(),
             media_type=f"audio/L16; rate={sr}; channels=1",
             headers={"X-Audio-Sample-Rate": str(sr)},
         )
@@ -702,7 +1041,68 @@ def create_app(service: CosyVoiceService) -> FastAPI:
 
 
 def _local_audio_root() -> Path:
-    return Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio")).expanduser()
+    return local_audio_model_root().expanduser()
+
+
+def _default_system_voice_prompt(root: Path) -> tuple[str, str] | None:
+    repo_root = Path(__file__).resolve().parents[1]
+    voice_roots = [
+        root / "voices" / "system",
+        repo_root / "opentalking" / "assets" / "voices" / "system",
+    ]
+    seen: set[Path] = set()
+    for voice_root in voice_roots:
+        try:
+            resolved = voice_root.resolve()
+        except OSError:
+            resolved = voice_root
+        if resolved in seen or not voice_root.is_dir():
+            continue
+        seen.add(resolved)
+        for voice_dir in sorted(path for path in voice_root.iterdir() if path.is_dir()):
+            prompt_audio = voice_dir / "prompt.wav"
+            prompt_text = voice_dir / "prompt.txt"
+            if not prompt_audio.is_file() or not prompt_text.is_file():
+                continue
+            try:
+                text = prompt_text.read_text(encoding="utf-8").strip()
+            except OSError:
+                text = ""
+            if text:
+                print(f"using default CosyVoice system voice prompt: {voice_dir.name}", flush=True)
+                return str(prompt_audio), text
+    return None
+
+
+def _torch_cuda_supports_device(device: str) -> tuple[bool, str]:
+    if not device.startswith("cuda"):
+        return True, ""
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return False, "torch.cuda.is_available() is false"
+        index = int(device.split(":", 1)[1]) if ":" in device else 0
+        major, minor = torch.cuda.get_device_capability(index)
+        wanted = f"sm_{major}{minor}"
+        arch_list = set(torch.cuda.get_arch_list() or [])
+        if arch_list and wanted not in arch_list:
+            try:
+                torch.cuda.set_device(index)
+                a = torch.ones((1,), device=device)
+                b = a + 1
+                torch.cuda.synchronize(index)
+                if float(b.item()) == 2.0:
+                    return True, ""
+            except Exception as smoke_exc:
+                return False, (
+                    f"device capability {wanted} is not in torch arch list {sorted(arch_list)}; "
+                    f"CUDA smoke test failed: {type(smoke_exc).__name__}: {smoke_exc}"
+                )
+            return False, f"device capability {wanted} is not in torch arch list {sorted(arch_list)}"
+    except Exception as exc:
+        return False, f"failed to inspect torch CUDA support: {type(exc).__name__}: {exc}"
+    return True, ""
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -733,6 +1133,31 @@ def build_service_from_env() -> CosyVoiceService:
     fp16_raw = os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_FP16", "auto").strip().lower()
     fp16 = device.startswith("cuda") if fp16_raw == "auto" else fp16_raw not in {"0", "false", "no", "off"}
     root = _local_audio_root()
+    load_trt = _env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_LOAD_TRT", False)
+    cuda_supported, cuda_reason = _torch_cuda_supports_device(device)
+    if not cuda_supported:
+        print(
+            "CosyVoice CUDA runtime is not compatible with this torch build; "
+            f"falling back to CPU runtime: {cuda_reason}",
+            flush=True,
+        )
+        device = "cpu"
+        fp16 = False
+        load_trt = False
+        os.environ["OPENTALKING_TTS_LOCAL_COSYVOICE_PRELOAD"] = "0"
+    mode = os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_MODE", "zero_shot")
+    prompt_audio = os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_PROMPT_AUDIO", "").strip()
+    prompt_text = os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_PROMPT_TEXT", "").strip()
+    normalized_mode = mode.strip().lower()
+    if (
+        (normalized_mode in {"cross_lingual", "instruct"} and not prompt_audio)
+        or (normalized_mode not in {"cross_lingual", "instruct"} and (not prompt_audio or not prompt_text))
+    ):
+        default_prompt = _default_system_voice_prompt(root)
+        if default_prompt is not None:
+            default_audio, default_text = default_prompt
+            prompt_audio = prompt_audio or default_audio
+            prompt_text = prompt_text or default_text
     return CosyVoiceService(
         model_dir=os.environ.get(
             "OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL_DIR",
@@ -740,28 +1165,31 @@ def build_service_from_env() -> CosyVoiceService:
         ),
         runtime_dir=os.environ.get(
             "OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR",
-            str(root / "runtime" / "CosyVoice"),
+            str((model_repo_root() / "CosyVoice").expanduser()),
         ),
+        audio_root=str(root),
         device=device,
-        prompt_audio=os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_PROMPT_AUDIO", ""),
-        prompt_text=os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_PROMPT_TEXT", ""),
-        mode=os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_MODE", "zero_shot"),
+        prompt_audio=prompt_audio,
+        prompt_text=prompt_text,
+        mode=mode,
         instruction=os.environ.get(
             "OPENTALKING_TTS_LOCAL_COSYVOICE_INSTRUCTION",
             "You are a helpful assistant.<|endofprompt|>",
         ),
         fp16=fp16,
         load_jit=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_LOAD_JIT", False),
-        load_trt=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_LOAD_TRT", False),
+        load_trt=load_trt,
         load_vllm=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_LOAD_VLLM", False),
         trt_concurrent=int(os.environ.get("OPENTALKING_TTS_LOCAL_COSYVOICE_TRT_CONCURRENT", "1") or "1"),
         token_hop_len=_env_optional_int("OPENTALKING_TTS_LOCAL_COSYVOICE_TOKEN_HOP_LEN"),
         token_max_hop_len=_env_optional_int("OPENTALKING_TTS_LOCAL_COSYVOICE_TOKEN_MAX_HOP_LEN"),
         stream_scale_factor=_env_optional_int("OPENTALKING_TTS_LOCAL_COSYVOICE_STREAM_SCALE_FACTOR"),
         flow_n_timesteps=_env_optional_int("OPENTALKING_TTS_LOCAL_COSYVOICE_FLOW_N_TIMESTEPS"),
-        max_token_text_ratio=_env_optional_float("OPENTALKING_TTS_LOCAL_COSYVOICE_MAX_TOKEN_TEXT_RATIO", 6.0),
+        max_token_text_ratio=_env_optional_float("OPENTALKING_TTS_LOCAL_COSYVOICE_MAX_TOKEN_TEXT_RATIO"),
         min_token_text_ratio=_env_optional_float("OPENTALKING_TTS_LOCAL_COSYVOICE_MIN_TOKEN_TEXT_RATIO"),
-        mask_stop_tokens=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_MASK_STOP_TOKENS", True),
+        mask_stop_tokens=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_MASK_STOP_TOKENS", False),
+        use_zero_shot_spk_id=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_USE_SPK_ID", False),
+        precache_system_spks=_env_bool("OPENTALKING_TTS_LOCAL_COSYVOICE_PRECACHE_SPKS", False),
     )
 
 

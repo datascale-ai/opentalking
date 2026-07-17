@@ -13,7 +13,7 @@ export function ShowcaseCarousel({ copy, items, onOpenCase }: ShowcaseCarouselPr
   const [activeIndex, setActiveIndex] = useState(0);
   const activeItem = items[activeIndex];
 
-  const progressItems = useMemo(() => items.slice(0, 5), [items]);
+  const progressItems = useMemo(() => items.slice(0, 7), [items]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -35,6 +35,7 @@ export function ShowcaseCarousel({ copy, items, onOpenCase }: ShowcaseCarouselPr
             src={activeItem.image}
             alt={`${activeItem.title} showcase`}
             className="h-full w-full object-cover"
+            style={{ objectPosition: activeItem.imagePosition ?? "center" }}
           />
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(8,17,31,0.86),rgba(8,17,31,0.32)_54%,rgba(8,17,31,0.10))]" />
         </div>
@@ -83,7 +84,7 @@ export function ShowcaseCarousel({ copy, items, onOpenCase }: ShowcaseCarouselPr
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-5">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         {progressItems.map((item, index) => (
           <button
             key={item.slug}

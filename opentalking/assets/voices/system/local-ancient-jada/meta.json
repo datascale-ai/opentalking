@@ -1,0 +1,19 @@
+{
+  "voice_id": "local-ancient-jada",
+  "display_label": "古风女声 Jada（本地）",
+  "provider": "local_cosyvoice",
+  "target_model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  "mode": "zero_shot",
+  "source": "system",
+  "prompt_audio": "/data2/zhongyi/model/opentalking-local-audio/voices/system/local-ancient-jada/prompt.wav",
+  "prompt_text": "你好，欢迎来到OpenTalking。我会用自然清晰的声音，为你介绍今天的内容。",
+  "prompt_source": "generated_once_from_dashscope_qwen_tts",
+  "qwen_reference_voice": "Jada",
+  "avatar_hint": "古装美女",
+  "role": "ancient-beauty",
+  "style": "柔和、叙事感、适合文化讲解",
+  "duration_sec": 6.8,
+  "sample_rate": 24000,
+  "bytes": 326444,
+  "storage_note": "prompt.wav is a local Qwen-generated reference sample; kept small as one WAV per built-in local voice."
+}

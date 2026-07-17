@@ -65,6 +65,21 @@ def test_scene_asset_store_rejects_spoofed_background_content(tmp_path: Path) ->
         )
 
 
+def test_scene_asset_store_seeds_default_backgrounds_once(tmp_path: Path) -> None:
+    store = SceneAssetStore(tmp_path, seed_defaults=True)
+
+    backgrounds = store.list_backgrounds()
+
+    assert backgrounds[0]["id"] == "bg-default-data-wall"
+    assert backgrounds[0]["name"] == "数据玻璃幕墙"
+    assert backgrounds[0]["kind"] == "image"
+    assert backgrounds[0]["mime_type"] == "image/jpeg"
+    assert store.background_file_path("bg-default-data-wall").is_file()
+
+    assert store.delete_background("bg-default-data-wall") is True
+    assert store.list_backgrounds() == []
+
+
 def test_scene_asset_store_rejects_zero_avatar_scale(tmp_path: Path) -> None:
     store = SceneAssetStore(tmp_path)
 
@@ -194,6 +209,20 @@ def test_scene_asset_api_uploads_lists_downloads_and_deletes_background(tmp_path
         deleted = client.delete(f"/scene-assets/backgrounds/{item['id']}")
         assert deleted.status_code == 200
         assert deleted.json()["deleted"] is True
+
+
+def test_scene_asset_api_lists_default_backgrounds_on_fresh_workspace(tmp_path: Path) -> None:
+    with _client(tmp_path) as client:
+        listed = client.get("/scene-assets/backgrounds")
+
+        assert listed.status_code == 200
+        items = listed.json()["items"]
+        assert items[0]["id"] == "bg-default-data-wall"
+        assert items[0]["name"] == "数据玻璃幕墙"
+
+        downloaded = client.get(items[0]["url"])
+        assert downloaded.status_code == 200
+        assert downloaded.headers["content-type"].startswith("image/jpeg")
 
 
 def test_scene_asset_api_rejects_oversized_background_upload(tmp_path: Path) -> None:

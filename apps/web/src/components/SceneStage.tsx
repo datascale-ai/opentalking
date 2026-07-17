@@ -1,6 +1,7 @@
-import type { CSSProperties, ReactNode, RefObject } from "react";
-import type { SceneBackgroundAsset, SceneComposition } from "../lib/api";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import type { ClientRendererDescriptor, SceneBackgroundAsset, SceneComposition } from "../lib/api";
 import { buildApiUrl } from "../lib/api";
+import { Light2dAvatar } from "./Light2dAvatar";
 import { VideoBackground } from "./VideoBackground";
 
 type SceneStageProps = {
@@ -18,6 +19,7 @@ type SceneStageProps = {
   children?: ReactNode;
   className?: string;
   compactSquareStage?: boolean;
+  clientRenderer?: ClientRendererDescriptor | null;
 };
 
 function backgroundUrl(background: SceneBackgroundAsset): string {
@@ -56,7 +58,11 @@ export function SceneStage({
   children,
   className = "",
   compactSquareStage = false,
+  clientRenderer = null,
 }: SceneStageProps) {
+  const [rendererFailed, setRendererFailed] = useState(false);
+  useEffect(() => setRendererFailed(false), [clientRenderer?.config_url]);
+  const handleRendererError = useCallback(() => setRendererFailed(true), []);
   const background = scene?.background_id
     ? backgrounds.find((item) => item.id === scene.background_id) ?? null
     : null;
@@ -116,7 +122,20 @@ export function SceneStage({
           }
           style={{ transform: avatarTransform, transformOrigin: avatarTransformOrigin }}
         >
-          <VideoBackground ref={videoRef} stream={videoStream} className={`absolute inset-0 h-full w-full ${avatarFit} ${avatarObjectPosition}`} style={avatarMaskStyle} />
+          <VideoBackground
+            ref={videoRef}
+            stream={videoStream}
+            className={`absolute inset-0 h-full w-full ${avatarFit} ${avatarObjectPosition} ${clientRenderer && !rendererFailed ? "opacity-0" : "opacity-100"}`}
+            style={avatarMaskStyle}
+          />
+          {clientRenderer && !rendererFailed ? (
+            <Light2dAvatar
+              renderer={clientRenderer}
+              stream={videoStream}
+              className="absolute inset-0"
+              onRendererError={handleRendererError}
+            />
+          ) : null}
         </div>
       </div>
 

@@ -71,7 +71,7 @@ flowchart LR
     end
 ```
 
-命令行细节详见 [部署](../model-deployment/deployment.md)。
+命令行细节详见 [部署](../deployment/index.md)。
 
 ## 会话生命周期
 

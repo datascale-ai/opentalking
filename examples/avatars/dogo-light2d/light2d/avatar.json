@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "canvas": { "width": 561, "height": 1024 },
+  "layers": {
+    "base": { "source": "layers/base.png", "rect": [0, 0, 561, 1024] },
+    "blink": { "source": "layers/eyes-closed.png", "rect": [154, 250, 250, 115] },
+    "mouth": {
+      "closed": { "source": "layers/mouth-closed.png", "rect": [175, 356, 210, 96] },
+      "small": { "source": "layers/mouth-small.png", "rect": [175, 356, 210, 96] },
+      "medium": { "source": "layers/mouth-medium.png", "rect": [175, 356, 210, 96] },
+      "large": { "source": "layers/mouth-large.png", "rect": [175, 356, 210, 96] }
+    }
+  },
+  "audio": {
+    "silence_gate": 0.025,
+    "small_threshold": 0.055,
+    "medium_threshold": 0.105,
+    "attack_ms": 45,
+    "release_ms": 120,
+    "crossfade_ms": 80
+  },
+  "animation": {
+    "breath_period_ms": 2600,
+    "breath_scale": 0.006,
+    "sway_degrees": 0.7,
+    "blink_period_ms": 4800,
+    "blink_duration_ms": 130
+  }
+}

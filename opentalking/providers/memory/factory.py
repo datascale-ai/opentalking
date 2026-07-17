@@ -7,7 +7,11 @@ from typing import Any
 
 from opentalking.core.config import Settings, get_settings
 from opentalking.providers.memory.base import MemoryProvider
-from opentalking.providers.memory.mem0_provider import InMemoryMemoryProvider, Mem0MemoryProvider
+from opentalking.providers.memory.mem0_provider import (
+    InMemoryMemoryProvider,
+    Mem0MemoryProvider,
+    Mem0UnavailableError,
+)
 from opentalking.providers.memory.noop import NoopMemoryProvider
 from opentalking.providers.memory.sqlite_provider import SQLiteMemoryProvider
 
@@ -141,6 +145,8 @@ def build_memory_provider() -> MemoryProvider:
             return NoopMemoryProvider()
         try:
             return Mem0MemoryProvider(config=config)
+        except Mem0UnavailableError:
+            return SQLiteMemoryProvider(settings.memory_sqlite_path)
         except Exception as exc:  # noqa: BLE001
             if _is_missing_mem0_credentials_error(exc):
                 log.info("mem0 memory provider is missing credentials; using noop memory provider until API keys are applied")

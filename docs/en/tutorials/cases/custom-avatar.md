@@ -2,9 +2,9 @@
 
 ## Goal
 
-Prepare a custom avatar that OpenTalking can discover and use in a browser session. Each
-talking-head model has its own asset expectations; this case uses Wav2Lip-style assets as
-the smallest runnable path.
+Prepare a custom avatar that OpenTalking can discover and use in a browser session.
+The avatar itself is a shared visual asset; this case uses the Wav2Lip preparation
+scripts to generate the smallest runnable reference-frame derivatives.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ the smallest runnable path.
 
 ## Steps
 
-Create a Wav2Lip avatar from an image:
+Create reference-frame derivatives from an image:
 
 ```bash title="Terminal"
 python scripts/prepare_wav2lip_image_asset.py \
@@ -25,7 +25,7 @@ python scripts/prepare_wav2lip_image_asset.py \
   --fps 25
 ```
 
-Create a Wav2Lip avatar from a video:
+Create reference-frame derivatives from a video:
 
 ```bash title="Terminal"
 python scripts/prepare_wav2lip_video_asset.py \

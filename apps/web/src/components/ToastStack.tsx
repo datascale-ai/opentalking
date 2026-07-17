@@ -21,9 +21,11 @@ const DOT_CLASSES: Record<ToastTone, string> = {
 type ToastStackProps = {
   toasts: ToastMessage[];
   onDismiss: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
 };
 
-export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
+export function ToastStack({ toasts, onDismiss, onPause, onResume }: ToastStackProps) {
   if (toasts.length === 0) return null;
 
   return (
@@ -33,9 +35,11 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
           key={toast.id}
           className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm shadow-lg shadow-slate-200/70 ${TONE_CLASSES[toast.tone]}`}
           role="status"
+          onMouseEnter={() => onPause(toast.id)}
+          onMouseLeave={() => onResume(toast.id)}
         >
           <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${DOT_CLASSES[toast.tone]}`} />
-          <p className="min-w-0 flex-1 leading-relaxed">{toast.message}</p>
+          <p className="min-w-0 flex-1 whitespace-pre-line break-words leading-relaxed">{toast.message}</p>
           <button
             type="button"
             onClick={() => onDismiss(toast.id)}

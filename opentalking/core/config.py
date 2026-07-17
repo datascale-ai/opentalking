@@ -10,6 +10,8 @@ from dotenv import dotenv_values
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from opentalking.core.model_paths import local_audio_model_root, model_root
+
 
 def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
     if not raw:
@@ -23,6 +25,12 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "avatars_dir": "avatars_dir",
             "models_dir": "models_dir",
             "worker_url": "worker_url",
+        },
+        "avatar": {
+            "matting_provider": "avatar_matting_provider",
+            "matting_device": "avatar_matting_device",
+            "matting_model_path": "avatar_matting_model_path",
+            "matting_timeout_sec": "avatar_matting_timeout_sec",
         },
         "flashtalk": {
             "ws_url": "flashtalk_ws_url",
@@ -149,6 +157,15 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "local_cosyvoice_max_token_text_ratio": "tts_local_cosyvoice_max_token_text_ratio",
             "local_cosyvoice_min_token_text_ratio": "tts_local_cosyvoice_min_token_text_ratio",
             "local_cosyvoice_mask_stop_tokens": "tts_local_cosyvoice_mask_stop_tokens",
+            "local_f5_tts_model": "tts_local_f5_tts_model",
+            "local_f5_tts_model_dir": "tts_local_f5_tts_model_dir",
+            "local_f5_tts_runtime_dir": "tts_local_f5_tts_runtime_dir",
+            "local_f5_tts_service_url": "tts_local_f5_tts_service_url",
+            "local_f5_tts_ckpt_file": "tts_local_f5_tts_ckpt_file",
+            "local_f5_tts_vocoder_local_path": "tts_local_f5_tts_vocoder_local_path",
+            "local_f5_tts_prompt_audio": "tts_local_f5_tts_prompt_audio",
+            "local_f5_tts_prompt_text": "tts_local_f5_tts_prompt_text",
+            "local_f5_tts_device": "tts_local_f5_tts_device",
             "local_indextts_model": "tts_local_indextts_model",
             "local_indextts_model_dir": "tts_local_indextts_model_dir",
             "local_indextts_cfg_path": "tts_local_indextts_cfg_path",
@@ -306,7 +323,8 @@ def _legacy_env_mapping() -> dict[str, str]:
 
 
 def _load_legacy_dotenv_source() -> dict[str, Any]:
-    values = dotenv_values(".env")
+    env_file = os.environ.get("OPENTALKING_ENV_FILE", ".env")
+    values = dotenv_values(env_file)
     mapping = _legacy_env_mapping()
     return {
         target: value
@@ -323,7 +341,7 @@ def _load_legacy_env_source() -> dict[str, Any]:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="OPENTALKING_",
-        env_file=".env",
+        env_file=os.environ.get("OPENTALKING_ENV_FILE", ".env"),
         extra="ignore",
     )
 
@@ -337,7 +355,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     avatars_dir: str = "./examples/avatars"
-    models_dir: str = "./models"
+    models_dir: str = Field(default_factory=lambda: str(model_root()))
     worker_url: str = "http://127.0.0.1:9001"
     exports_dir: str = "./data/exports"
     scene_assets_dir: str = "./data/scene-assets"
@@ -345,6 +363,12 @@ class Settings(BaseSettings):
     export_max_bytes: int = 1024 * 1024 * 1024
     video_creation_audio_max_bytes: int = 50 * 1024 * 1024
     video_creation_fasterliveportrait_preroll_ms: int = 400
+    video_creation_light2d_max_duration_sec: int = 300
+    video_creation_light2d_max_text_chars: int = 1000
+    avatar_matting_provider: str = "rembg"
+    avatar_matting_device: str = "cpu"
+    avatar_matting_model_path: str = ""
+    avatar_matting_timeout_sec: int = 60
 
     flashtalk_ws_url: str = ""
     flashtalk_ckpt_dir: str = "./models/SoulX-FlashTalk-14B"
@@ -515,6 +539,15 @@ class Settings(BaseSettings):
     tts_local_cosyvoice_max_token_text_ratio: float = 6.0
     tts_local_cosyvoice_min_token_text_ratio: float = 0.0
     tts_local_cosyvoice_mask_stop_tokens: bool = True
+    tts_local_f5_tts_model: str = "SWivid/F5-TTS/F5TTS_v1_Base"
+    tts_local_f5_tts_model_dir: str = ""
+    tts_local_f5_tts_runtime_dir: str = ""
+    tts_local_f5_tts_service_url: str = ""
+    tts_local_f5_tts_ckpt_file: str = ""
+    tts_local_f5_tts_vocoder_local_path: str = ""
+    tts_local_f5_tts_prompt_audio: str = ""
+    tts_local_f5_tts_prompt_text: str = ""
+    tts_local_f5_tts_device: str = "auto"
     tts_local_indextts_model: str = "IndexTeam/IndexTTS-2"
     tts_local_indextts_model_dir: str = ""
     tts_local_indextts_cfg_path: str = ""
@@ -581,7 +614,7 @@ class Settings(BaseSettings):
     stt_xiaomi_audio_format: str = "wav"
 
     #: Shared local model root for local STT/TTS assets.
-    local_audio_model_root: str = "./models/local-audio"
+    local_audio_model_root: str = Field(default_factory=lambda: str(local_audio_model_root()))
     local_audio_device: str = "auto"
     local_qwen3_tts_model: str = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
     local_qwen3_tts_service_url: str = ""

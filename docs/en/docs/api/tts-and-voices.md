@@ -14,10 +14,10 @@ voice auditioning before a session is started.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `text` | string | Yes | Text to synthesize. Maximum length: 1000 characters. |
-| `voice` | string | No | Voice identifier. Format depends on `tts_provider`. |
-| `tts_provider` | string | No | One of `edge`, `dashscope`, `local_cosyvoice`, `indextts`, `cosyvoice`, `elevenlabs`, `openai_compatible`, `xiaomi_mimo`. Defaults to `OPENTALKING_TTS_DEFAULT_PROVIDER`. |
-| `tts_model` | string | No | Provider-specific model identifier. |
+| `text` | string | Yes | Text to synthesize. Recommended maximum length: 200 characters. |
+| `voice` | string | No | Voice identifier. Format depends on `provider`. |
+| `provider` | string | No | One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`. Defaults to `OPENTALKING_TTS_DEFAULT_PROVIDER`. |
+| `model` | string | No | Provider-specific model identifier. |
 
 **Response — `200 OK`**
 
@@ -27,7 +27,7 @@ Content-Type: `audio/wav`. Body is a 16-bit PCM WAV file at the session sample r
 ```bash title="curl"
 curl -s -X POST http://localhost:8000/tts/preview \
   -H 'content-type: application/json' \
-  -d '{"text": "Hello, this is a voice preview.", "tts_provider": "edge", "voice": "en-US-AriaNeural"}' \
+  -d '{"text": "Hello, this is a voice preview.", "provider": "edge", "voice": "en-US-AriaNeural"}' \
   -o preview.wav
 ```
 
@@ -51,7 +51,7 @@ Lists cloned voices.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `provider` | string \| null | Filter by provider. Common values: `dashscope`, `cosyvoice`, `local_cosyvoice`, `indextts`, `xiaomi_mimo`. |
+| `provider` | string \| null | Filter by provider (`cosyvoice` or `dashscope`). |
 
 **Response — `200 OK`**
 
@@ -77,7 +77,7 @@ Field descriptions:
 |-------|------|-------------|
 | `id` | integer | Catalog primary key. Used in `DELETE /voices/{entry_id}`. |
 | `user_id` | string \| null | Reserved for future multi-tenant deployments. |
-| `provider` | string | Voice provider, for example `dashscope`, `cosyvoice`, `local_cosyvoice`, `indextts`, or `xiaomi_mimo`. |
+| `provider` | string | `cosyvoice` or `dashscope`. |
 | `voice_id` | string | Provider-side voice identifier. Pass this value as the session's `tts_voice` when using the cloned voice. |
 | `display_label` | string | Human-readable label. |
 | `target_model` | string | TTS model identifier this clone was created for. |
@@ -89,14 +89,14 @@ curl -s 'http://localhost:8000/voices?provider=dashscope' | jq
 
 ### `POST /voices/clone`
 
-Clones a voice from an audio sample. Local CosyVoice, IndexTTS, cloud CosyVoice,
-DashScope, and Xiaomi MiMo are supported, each with its own requirements.
+Clones a voice from an audio sample. Two providers are supported, each with its own
+requirements.
 
 **Request body — `multipart/form-data`**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `provider` | string | Yes | `local_cosyvoice`, `indextts`, `cosyvoice`, `dashscope`, or `xiaomi_mimo`. |
+| `provider` | string | Yes | `cosyvoice` or `dashscope`. |
 | `target_model` | string | Yes | TTS model identifier the clone will be used with. For DashScope: a voice-cloning-compatible model such as a Qwen VC model. For CosyVoice: a CosyVoice model identifier. |
 | `display_label` | string | Yes | Human-readable label. The endpoint deduplicates labels by appending a timestamp suffix when a conflict exists. |
 | `audio` | file | Yes | Audio sample. Minimum 256 bytes, maximum 12 MB. |
@@ -109,11 +109,8 @@ DashScope, and Xiaomi MiMo are supported, each with its own requirements.
   OpenTalking server must be reachable from DashScope. Configure
   `OPENTALKING_PUBLIC_BASE_URL` to specify the public URL. The sample is removed from
   disk approximately 300 seconds after upload.
-- **local_cosyvoice** and **indextts** store the reference audio in the local voice
-  directory and do not require public reachability.
 - **DashScope** uses base64-encoded inline audio and does not require public
   reachability.
-- **xiaomi_mimo** stores the reference audio as a data URI and sends it to the Xiaomi voice clone model during synthesis.
 
 **Response — `200 OK`**
 
@@ -148,7 +145,7 @@ curl -s -X POST http://localhost:8000/voices/clone \
 
 | Code | Condition |
 |------|-----------|
-| `400` | `provider` is not supported; audio is too short, missing, or exceeds 12 MB; audio format cannot be converted to 24 kHz mono WAV. |
+| `400` | `provider` is not `cosyvoice` or `dashscope`; audio is too short, missing, or exceeds 12 MB; audio format cannot be converted to 24 kHz mono WAV. |
 | `502` | The upstream provider returned an error (DashScope rejection, CosyVoice cloning failure). |
 
 ### `DELETE /voices/{entry_id}`

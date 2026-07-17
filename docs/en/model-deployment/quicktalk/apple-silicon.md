@@ -14,7 +14,7 @@ brew install ffmpeg
 Clone OpenTalking and create the environment with the CPU/macOS extra:
 
 ```bash title="Terminal"
-git clone https://github.com/OpenTalker/opentalking.git
+git clone https://github.com/datascale-ai/opentalking.git
 cd opentalking
 
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -33,37 +33,20 @@ Do not install `quicktalk-cuda` on Apple Silicon. `onnxruntime-gpu` does not pro
 Download the QuickTalk weights and HuBERT files:
 
 ```bash title="Terminal"
-mkdir -p models/quicktalk/checkpoints
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
+mkdir -p "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints
+  --local-dir "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 ```
 
-Download InsightFace `buffalo_l` into the QuickTalk auxiliary directory:
-
-```bash title="Terminal"
-mkdir -p /tmp/opentalking-insightface \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l
-
-curl -L \
-  -o /tmp/opentalking-insightface/buffalo_l.zip \
-  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
-
-unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
-  -d /tmp/opentalking-insightface
-rsync -a /tmp/opentalking-insightface/buffalo_l/ \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
-```
+`datascale-ai/quicktalk` already includes QuickTalk, HuBERT, and InsightFace `buffalo_l`. After download, `$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/` should exist.
 
 The final layout should be:
 
 ```text
-models/quicktalk/
+$OPENTALKING_QUICKTALK_ASSET_ROOT/
   checkpoints/
     quicktalk.pth
     repair.npy
@@ -78,10 +61,10 @@ models/quicktalk/
 Check the required files:
 
 ```bash title="Terminal"
-stat models/quicktalk/checkpoints/quicktalk.pth
-stat models/quicktalk/checkpoints/repair.npy
-stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
-stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/quicktalk.pth
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/repair.npy
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/chinese-hubert-large/pytorch_model.bin
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
 ```
 
 ## 3. Configure `.env`
@@ -98,7 +81,7 @@ Set these values:
 OPENTALKING_DEFAULT_MODEL=quicktalk
 OPENTALKING_FFMPEG_BIN=
 OPENTALKING_QUICKTALK_BACKEND=local
-OPENTALKING_QUICKTALK_ASSET_ROOT=./models/quicktalk
+OPENTALKING_QUICKTALK_ASSET_ROOT=$OPENTALKING_MODEL_ROOT/quicktalk
 OPENTALKING_QUICKTALK_MODEL_BACKEND=auto
 OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
@@ -121,11 +104,12 @@ Leaving `OPENTALKING_FFMPEG_BIN=` empty lets OpenTalking find system `ffmpeg` fi
 ```bash title="Terminal"
 python - <<'PY'
 from pathlib import Path
+import os
 import torch
 import onnxruntime as ort
 from opentalking.models.quicktalk.runtime_v2 import ensure_ffmpeg
 
-root = Path("models/quicktalk/checkpoints")
+root = Path(os.environ["OPENTALKING_QUICKTALK_ASSET_ROOT"]) / "checkpoints"
 for path in [
     root / "quicktalk.pth",
     root / "repair.npy",

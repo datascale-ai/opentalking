@@ -64,6 +64,27 @@ def test_resolve_quicktalk_asset_root_can_skip_default_fallback(tmp_path, monkey
     assert resolve_quicktalk_asset_root(settings, include_default=False) is None
 
 
+def test_resolve_quicktalk_asset_root_prefers_model_root_to_shared_omnirt_root(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    model_root = tmp_path / "unified-models"
+    shared_omnirt_root = tmp_path / "legacy-omnirt-models"
+    monkeypatch.setenv("OPENTALKING_MODEL_ROOT", str(model_root))
+    monkeypatch.setenv("OMNIRT_MODEL_ROOT", str(shared_omnirt_root))
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_ASSET_ROOT", raising=False)
+    monkeypatch.delenv("OPENTALKING_QUICKTALK_MODEL_ROOT", raising=False)
+    monkeypatch.delenv("OMNIRT_QUICKTALK_MODEL_ROOT", raising=False)
+
+    settings = SimpleNamespace(
+        quicktalk_asset_root="",
+        quicktalk_model_root="",
+        models_dir=str(tmp_path / "repo-models"),
+    )
+
+    assert resolve_quicktalk_asset_root(settings) == (model_root / "quicktalk").resolve()
+
+
 def test_resolve_quicktalk_asset_root_warns_on_conflicting_explicit_roots(
     tmp_path,
     monkeypatch,

@@ -12,10 +12,10 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `text` | string | 是 | 待合成文本，最长 1000 字。 |
-| `voice` | string | 否 | 音色标识符，格式取决于 `tts_provider`。 |
-| `tts_provider` | string | 否 | `edge`、`dashscope`、`local_cosyvoice`、`indextts`、`cosyvoice`、`elevenlabs`、`openai_compatible`、`xiaomi_mimo` 之一，默认取 `OPENTALKING_TTS_DEFAULT_PROVIDER`。 |
-| `tts_model` | string | 否 | provider 专属模型标识符。 |
+| `text` | string | 是 | 待合成文本，建议最长 200 字。 |
+| `voice` | string | 否 | 音色标识符，格式取决于 `provider`。 |
+| `provider` | string | 否 | `edge`、`dashscope`、`cosyvoice`、`elevenlabs` 之一，默认取 `OPENTALKING_TTS_DEFAULT_PROVIDER`。 |
+| `model` | string | 否 | provider 专属模型标识符。 |
 
 **响应 — `200 OK`**
 
@@ -25,7 +25,7 @@ Content-Type：`audio/wav`。响应体为 16 位 PCM WAV，采样率与会话默
 ```bash title="curl"
 curl -s -X POST http://localhost:8000/tts/preview \
   -H 'content-type: application/json' \
-  -d '{"text": "你好，这是音色试听。", "tts_provider": "edge", "voice": "zh-CN-XiaoxiaoNeural"}' \
+  -d '{"text": "你好，这是音色试听。", "provider": "edge", "voice": "zh-CN-XiaoxiaoNeural"}' \
   -o preview.wav
 ```
 
@@ -49,7 +49,7 @@ curl -s -X POST http://localhost:8000/tts/preview \
 
 | 参数 | 类型 | 说明 |
 |------|------|------|
-| `provider` | string \| null | 按 provider 过滤。常用值：`dashscope`、`cosyvoice`、`local_cosyvoice`、`indextts`、`xiaomi_mimo`。 |
+| `provider` | string \| null | 按 provider 过滤（`cosyvoice` 或 `dashscope`）。 |
 
 **响应 — `200 OK`**
 
@@ -75,7 +75,7 @@ curl -s -X POST http://localhost:8000/tts/preview \
 |------|------|------|
 | `id` | integer | 目录主键，用于 `DELETE /voices/{entry_id}`。 |
 | `user_id` | string \| null | 为多租户预留。 |
-| `provider` | string | 音色所属 provider，例如 `dashscope`、`cosyvoice`、`local_cosyvoice`、`indextts` 或 `xiaomi_mimo`。 |
+| `provider` | string | `cosyvoice` 或 `dashscope`。 |
 | `voice_id` | string | provider 端的音色标识符。会话中作为 `tts_voice` 传入即可使用该复刻音色。 |
 | `display_label` | string | 人类可读名。 |
 | `target_model` | string | 复刻所针对的 TTS 模型标识符。 |
@@ -87,13 +87,13 @@ curl -s 'http://localhost:8000/voices?provider=dashscope' | jq
 
 ### `POST /voices/clone`
 
-由音频样本复刻音色。支持本地 CosyVoice、IndexTTS、云端 CosyVoice、DashScope 和小米 MiMo，各 provider 有不同要求。
+由音频样本复刻音色。支持两种 provider，各有不同要求。
 
 **请求体 — `multipart/form-data`**
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `provider` | string | 是 | `local_cosyvoice`、`indextts`、`cosyvoice`、`dashscope` 或 `xiaomi_mimo`。 |
+| `provider` | string | 是 | `cosyvoice` 或 `dashscope`。 |
 | `target_model` | string | 是 | 复刻所针对的 TTS 模型标识符。DashScope 需支持复刻的 Qwen VC 模型；CosyVoice 需 CosyVoice 模型标识符。 |
 | `display_label` | string | 是 | 人类可读名。同名时端点自动追加时间戳后缀去重。 |
 | `audio` | file | 是 | 音频样本，最小 256 字节，最大 12 MB。 |
@@ -105,9 +105,7 @@ curl -s 'http://localhost:8000/voices?provider=dashscope' | jq
 - **CosyVoice** 将音频样本上传至本地并把样本的公网 URL 提供给 DashScope；OpenTalking
   服务须能被 DashScope 反向访问。通过 `OPENTALKING_PUBLIC_BASE_URL` 指定公网 URL。
   样本上传后约 300 秒由后台任务自动从磁盘移除。
-- **local_cosyvoice** 和 **indextts** 将参考音频保存到本地音色目录，不需要公网可达。
 - **DashScope** 使用 base64 内联音频，无需公网可达。
-- **xiaomi_mimo** 将参考音频保存为 data URI，合成时传给小米 voice clone 模型。
 
 **响应 — `200 OK`**
 
@@ -142,7 +140,7 @@ curl -s -X POST http://localhost:8000/voices/clone \
 
 | 状态码 | 条件 |
 |--------|------|
-| `400` | `provider` 不在支持列表内；音频过短、缺失或超过 12 MB；音频格式无法转换为 24 kHz 单声道 WAV。 |
+| `400` | `provider` 不是 `cosyvoice` 或 `dashscope`；音频过短、缺失或超过 12 MB；音频格式无法转换为 24 kHz 单声道 WAV。 |
 | `502` | 上游 provider 返回错误（DashScope 拒绝、CosyVoice 复刻失败等）。 |
 
 ### `DELETE /voices/{entry_id}`

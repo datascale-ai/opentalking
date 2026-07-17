@@ -136,7 +136,7 @@ def _install_fake_wav2lip_runtime(monkeypatch) -> type:
         def __init__(self, device="cpu"):
             self.device = device
             self.models_dir = Path(
-                __import__("os").environ.get("OPENTALKING_WAV2LIP_MODEL_ROOT", "./models/wav2lip")
+                __import__("os").environ.get("OPENTALKING_WAV2LIP_MODEL_ROOT", "/deploy/models/wav2lip")
             )
             self.checkpoint = self.models_dir / "wav2lip384.pth"
             self.sessions = []

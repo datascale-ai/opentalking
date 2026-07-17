@@ -271,7 +271,7 @@ System resources required:
 
 For production deployments that require horizontal Worker scaling or component
 isolation. The architecture and operational characteristics are documented in
-[Deployment](../model-deployment/deployment.md#api-and-worker-split).
+[Deployment](../deployment/index.md).
 
 ### Prerequisites
 
@@ -335,7 +335,7 @@ For single-host production deployments using source installation:
    WantedBy=multi-user.target
    ```
 
-4. Configure the production checklist items documented in [Deployment → Production checklist](../model-deployment/deployment.md#production-checklist).
+4. Configure the production checklist items documented in [Deployment → Production checklist](../deployment/index.md).
 
 ## Updates
 

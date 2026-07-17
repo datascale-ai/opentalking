@@ -53,6 +53,7 @@ import {
   type VoiceCatalogItem,
 } from "./lib/api";
 import { modelConnectionBadge, type ModelStatus } from "./lib/modelStatus";
+import { modelLabel } from "./lib/modelLabels";
 import { connectSse } from "./lib/sse";
 import {
   DEFAULT_TTS_PREVIEW_TEXT,
@@ -70,6 +71,7 @@ import {
   COSYVOICE_MODEL_OPTIONS,
   COSYVOICE_VOICE_OPTIONS,
   LOCAL_COSYVOICE_MODEL_OPTIONS,
+  LOCAL_F5_TTS_MODEL_OPTIONS,
   LOCAL_INDEXTTS_MODEL_OPTIONS,
   LOCAL_TTS_VOICE_OPTIONS,
   SAMBERT_MODEL_OPTIONS,
@@ -89,6 +91,12 @@ import {
   TTS_PROVIDER_STORAGE_KEY,
 } from "./constants/ttsQwen";
 import type { ConnectionStatus, MemoryLibrary, Message, QueueInfo } from "./types";
+import {
+  canChangeModelForAvatar,
+  normalizeAvatarModelSelection,
+  pickInitialAvatarForModel,
+  recommendAvatarForModel,
+} from "./light2d/avatarSelection";
 
 const MEMORY_PROFILE_ID = "default";
 
@@ -104,6 +112,8 @@ function bailianModelOptions(provider: TtsProviderExtended): { id: string; label
       return LOCAL_COSYVOICE_MODEL_OPTIONS;
     case "indextts":
       return LOCAL_INDEXTTS_MODEL_OPTIONS;
+    case "local_f5_tts":
+      return LOCAL_F5_TTS_MODEL_OPTIONS;
     case "xiaomi_mimo":
       return XIAOMI_MIMO_MODEL_OPTIONS;
     default:
@@ -121,6 +131,7 @@ function bailianVoiceOptions(provider: TtsProviderExtended): { id: string; label
       return [];
     case "local_cosyvoice":
     case "indextts":
+    case "local_f5_tts":
       return LOCAL_TTS_VOICE_OPTIONS;
     case "xiaomi_mimo":
       return XIAOMI_MIMO_VOICE_OPTIONS;
@@ -134,6 +145,7 @@ function catalogProviderKey(p: TtsProviderExtended): string | null {
   if (p === "cosyvoice") return "cosyvoice";
   if (p === "local_cosyvoice") return "local_cosyvoice";
   if (p === "indextts") return "indextts";
+  if (p === "local_f5_tts") return "local_f5_tts";
   if (p === "xiaomi_mimo") return "xiaomi_mimo";
   return null;
 }
@@ -166,13 +178,15 @@ function mergeVoiceCatalogIntoOptions(
   const extras: VoiceOpt[] = [];
   for (const r of catalog) {
     if (r.provider !== cp) continue;
-    if (activeModel && r.target_model && r.target_model !== activeModel) continue;
+    const sharedSystemPrompt =
+      r.source === "system" && (ttsProvider === "local_cosyvoice" || ttsProvider === "local_f5_tts");
+    if (activeModel && r.target_model && r.target_model !== activeModel && !sharedSystemPrompt) continue;
     if (cloneOnly && r.source !== "clone") continue;
     if (staticIds.has(r.voice_id)) continue;
     extras.push({
       id: r.voice_id,
       label: r.source === "clone" ? `复刻 · ${r.display_label}` : r.display_label,
-      targetModel: r.target_model,
+      targetModel: sharedSystemPrompt ? undefined : r.target_model,
     });
     staticIds.add(r.voice_id);
   }
@@ -320,6 +334,17 @@ function hasSelectableTtsVoice(provider: TtsProviderExtended): boolean {
 
 function ttsModelSelectable(provider: TtsProviderExtended): boolean {
   return !isEdgeTts(provider) && provider !== "openai_compatible";
+}
+
+function resolveSelectableTtsVoice(
+  provider: TtsProviderExtended,
+  voice: string,
+  options: VoiceOpt[],
+): string {
+  if (!hasSelectableTtsVoice(provider)) return "";
+  const trimmed = voice.trim();
+  if (trimmed && options.some((option) => option.id === trimmed)) return trimmed;
+  return options[0]?.id ?? "";
 }
 
 type StoredAvatarSelection = { id: string; source: string | null };
@@ -489,6 +514,7 @@ function normalizeTtsProvider(value: string | null | undefined, fallback: TtsPro
     normalized === "sambert" ||
     normalized === "local_cosyvoice" ||
     normalized === "indextts" ||
+    normalized === "local_f5_tts" ||
     normalized === "xiaomi_mimo" ||
     normalized === "openai_compatible"
   ) {
@@ -684,9 +710,14 @@ function pickInitialAvatar(
   avatars: AvatarSummary[],
   registeredModels: string[],
   storedSelection?: StoredAvatarSelection | null,
+  defaultModel?: string | null,
 ): AvatarSummary | null {
   if (!avatars.length) return null;
   const available = new Set(registeredModels);
+  if (defaultModel) {
+    const recommended = pickInitialAvatarForModel(avatars, defaultModel, storedSelection ?? null);
+    if (recommended?.client_renderer?.recommended_for.includes(defaultModel)) return recommended;
+  }
   const customAvatar = pickInitialCustomAvatar(avatars, available);
   const storedAvatar = storedSelection?.id
     ? avatars.find((avatar) => avatar.id === storedSelection.id)
@@ -753,16 +784,6 @@ function usesCompactSquareStage(model: string): boolean {
   return model === "flashhead";
 }
 
-const MODEL_LABELS_FOR_STAGE: Record<string, string> = {
-  flashhead: "FlashHead",
-  fasterliveportrait: "FasterLivePortrait",
-  flashtalk: "FlashTalk",
-  mock: "无驱动模式",
-  musetalk: "MuseTalk",
-  quicktalk: "QuickTalk",
-  wav2lip: "Wav2Lip",
-};
-
 const PREWARMABLE_MODELS = new Set(["quicktalk", "wav2lip"]);
 
 function wait(ms: number): Promise<void> {
@@ -789,8 +810,7 @@ function selectMediaRecorderMimeType(candidates: string[]): string | undefined {
 }
 
 function realtimeExportTitle(model: string): string {
-  const label = MODEL_LABELS_FOR_STAGE[model] ?? model;
-  return `实时对话录制 · ${label}`;
+  return `实时对话录制 · ${modelLabel(model)}`;
 }
 
 async function requestUserAudioWithTimeout(microphonePermissionTimeoutMs = 8000): Promise<MediaStream> {
@@ -983,7 +1003,6 @@ export default function App() {
     return false;
   });
   const [voiceCloneOpen, setVoiceCloneOpen] = useState(false);
-  const [promptSaving, setPromptSaving] = useState(false);
   const [referenceSaving, setReferenceSaving] = useState(false);
   const [panelTab, setPanelTab] = useState<PanelTab>("chat");
   const [sessionPanelCollapsed, setSessionPanelCollapsed] = useState(() => {
@@ -994,6 +1013,7 @@ export default function App() {
     }
   });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const toastTimersRef = useRef<Map<string, ReturnType<typeof window.setTimeout>>>(new Map());
   const [recordingSaving, setRecordingSaving] = useState(false);
   const [ftRecordPhase, setFtRecordPhase] = useState<"idle" | "recording" | "stopped">("idle");
   const [ftRecordBusy, setFtRecordBusy] = useState(false);
@@ -1091,16 +1111,40 @@ export default function App() {
   );
 
   const dismissToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current.get(id);
+    if (timer) window.clearTimeout(timer);
+    toastTimersRef.current.delete(id);
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
   const notify = useCallback((message: string, tone: ToastTone = "info") => {
     const id = makeToastId();
     setToasts((prev) => [...prev.slice(-2), { id, tone, message }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, tone === "error" ? 5200 : 3600);
+    if (tone !== "error") {
+      const timer = window.setTimeout(() => {
+        toastTimersRef.current.delete(id);
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+      }, 3600);
+      toastTimersRef.current.set(id, timer);
+    }
   }, []);
+
+  const pauseToast = useCallback((id: string) => {
+    const timer = toastTimersRef.current.get(id);
+    if (!timer) return;
+    window.clearTimeout(timer);
+    toastTimersRef.current.delete(id);
+  }, []);
+
+  const resumeToast = useCallback((id: string) => {
+    const toast = toasts.find((item) => item.id === id);
+    if (!toast || toast.tone === "error" || toastTimersRef.current.has(id)) return;
+    const timer = window.setTimeout(() => {
+      toastTimersRef.current.delete(id);
+      setToasts((prev) => prev.filter((item) => item.id !== id));
+    }, 1800);
+    toastTimersRef.current.set(id, timer);
+  }, [toasts]);
 
   const syncRuntimeConfigSelection = useCallback((next: RuntimeConfigResponse) => {
     const nextAsrProvider = normalizeAsrProvider(next.stt.provider, "dashscope");
@@ -1621,7 +1665,7 @@ export default function App() {
     }
   }, [sessionPanelCollapsed]);
 
-  const [llmSystemPrompt, setLlmSystemPrompt] = useState<string>(() => {
+  const [llmSystemPrompt] = useState<string>(() => {
     try {
       return window.localStorage.getItem(LLM_SYSTEM_PROMPT_STORAGE_KEY) ?? "";
     } catch {
@@ -1897,7 +1941,7 @@ export default function App() {
         }));
         if (ready && seq === prewarmSeqRef.current) {
           const cacheStatus = response.cache?.status;
-          const label = MODEL_LABELS_FOR_STAGE[targetModel] ?? targetModel;
+          const label = modelLabel(targetModel);
           if (response.runtime_status === "failed") {
             const detail = response.runtime?.message;
             notify(detail ? `${label} 资产已准备，运行时预热失败：${detail}` : `${label} 资产已准备，运行时预热失败。`, "info");
@@ -1911,7 +1955,7 @@ export default function App() {
         setPrewarmByKey((prev) => ({ ...prev, [key]: "failed" }));
         if (seq === prewarmSeqRef.current) {
           const detail = error instanceof ApiError ? error.detail : null;
-          const label = MODEL_LABELS_FOR_STAGE[targetModel] ?? targetModel;
+          const label = modelLabel(targetModel);
           notify(detail ? `${label} 准备失败：${detail}` : `${label} 准备失败，首次生成会走冷启动。`, "error");
         }
         return false;
@@ -1960,7 +2004,7 @@ export default function App() {
         const statuses = mo.statuses ?? mo.models.map((id) => ({ id, connected: true }));
         setModelStatuses(statuses);
         const storedAvatarSelection = readStoredAvatarSelection();
-        const initialAvatar = pickInitialAvatar(av, mo.models, storedAvatarSelection);
+        const initialAvatar = pickInitialAvatar(av, mo.models, storedAvatarSelection, mo.default_model);
         if (initialAvatar) {
           setAvatarId(initialAvatar.id);
           if (initialAvatar.is_custom || storedAvatarSelection?.source === "explicit") {
@@ -1969,7 +2013,20 @@ export default function App() {
               storedAvatarSelection?.source === "explicit" ? "explicit" : "auto",
             );
           }
-          setModel((prev) => pickInitialModel(prev, mo.models, statuses, initialAvatar, mo.default_model));
+          setModel((prev) => {
+            const requestedModel = pickInitialModel(
+              prev,
+              mo.models,
+              statuses,
+              initialAvatar,
+              mo.default_model,
+            );
+            return normalizeAvatarModelSelection(
+              av,
+              initialAvatar.id,
+              requestedModel,
+            ).model;
+          });
         }
       } catch {
         setConnection("error");
@@ -2081,9 +2138,19 @@ export default function App() {
         clearSubtitleState();
         if (msgId) {
           if (finalText) {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === msgId ? { ...m, text: finalText } : m)),
-            );
+            setMessages((prev) => {
+              let updated = false;
+              const next = prev.map((m) => {
+                if (m.id !== msgId) return m;
+                updated = true;
+                return { ...m, text: finalText };
+              });
+              if (updated) return next;
+              return [
+                ...prev,
+                { id: makeId(), role: "assistant", text: finalText, timestamp: Date.now() },
+              ];
+            });
           } else {
             setMessages((prev) => prev.filter((m) => m.id !== msgId));
           }
@@ -2159,6 +2226,7 @@ export default function App() {
     let createdSessionId: string | null = null;
     try {
       const knowledgeBaseIds = normalizeKnowledgeBaseIds(agentConfig.knowledgeBaseIds);
+      const selectedTtsVoice = resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices);
       const created = await apiPost<CreateSessionResponse>("/sessions", {
         persona_id: selectedPersonaId || undefined,
         avatar_id: avatarId,
@@ -2170,7 +2238,7 @@ export default function App() {
           ? edgeVoice
           : !hasSelectableTtsVoice(ttsProvider)
             ? undefined
-            : qwenVoice,
+            : selectedTtsVoice || undefined,
         tts_model: ttsModelSelectable(ttsProvider) ? qwenModel : undefined,
         wav2lip_postprocess_mode:
           model === "wav2lip" && wav2lipPostprocessMode !== "auto" ? wav2lipPostprocessMode : undefined,
@@ -2252,6 +2320,7 @@ export default function App() {
     agentConfig,
     asrProvider,
     avatarId,
+    bailianVoices,
     clientUserId,
     clearSubtitleState,
     closePeerConnection,
@@ -2311,28 +2380,11 @@ export default function App() {
     }
   }, [connection, fasterliveportraitConfig, model, notify]);
 
-  const handleSavePrompt = useCallback(async () => {
-    setPromptSaving(true);
-    try {
-      await apiPost("/sessions/customize/prompt", {
-        avatar_id: avatarId,
-        llm_system_prompt: llmSystemPrompt,
-      });
-      const sid = sessionIdRef.current;
-      if (sid) await releaseSession(sid);
-      resetLiveState(true);
-      setConnection("idle");
-      notify("System Prompt 已保存，页面即将刷新并在新会话生效。", "success");
-      window.setTimeout(() => window.location.reload(), 900);
-    } catch (e) {
-      console.warn("save prompt failed", e);
-      notify("保存 Prompt 失败，请查看后端日志。", "error");
-    } finally {
-      setPromptSaving(false);
-    }
-  }, [avatarId, llmSystemPrompt, notify, releaseSession, resetLiveState]);
-
-  const handleCreateCustomAvatar = useCallback(async (file: File, name: string) => {
+  const handleCreateCustomAvatar = useCallback(async (
+    file: File,
+    name: string,
+    options?: { removeBackground?: boolean },
+  ) => {
     const trimmedName = name.trim();
     if (!trimmedName) {
       notify("请先给形象起个名字。", "info");
@@ -2350,6 +2402,7 @@ export default function App() {
       fd.set("name", trimmedName);
       fd.set("model", model);
       fd.set("image", file);
+      fd.set("remove_background", options?.removeBackground ? "true" : "false");
       const created = await apiPostForm<AvatarSummary>("/avatars/custom", fd);
       setAvatars((prev) => {
         const filtered = prev.filter((avatar) => avatar.id !== created.id);
@@ -2362,9 +2415,12 @@ export default function App() {
       resetLiveState(true);
       setConnection("idle");
       notify(`自定义形象「${created.name ?? trimmedName}」已加入形象库。`, "success");
+      return created;
     } catch (e) {
       console.warn("create custom avatar failed", e);
-      notify("创建自定义形象失败，请查看后端日志。", "error");
+      const detail = e instanceof ApiError ? e.detail : null;
+      notify(detail ? `创建失败：${detail}` : "创建自定义形象失败，请查看后端日志。", "error");
+      return null;
     } finally {
       setReferenceSaving(false);
     }
@@ -2415,9 +2471,7 @@ export default function App() {
     try {
       const voice = isEdgeTts(ttsProvider)
         ? edgeVoice
-        : !hasSelectableTtsVoice(ttsProvider)
-          ? ""
-          : qwenVoice;
+        : resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices);
       if (hasSelectableTtsVoice(ttsProvider) && !voice.trim()) {
         notify("当前模型没有可用音色，请先复刻音色或切换模型。", "info");
         return;
@@ -2442,11 +2496,12 @@ export default function App() {
       notify("正在播放试听音频。", "success");
     } catch (e) {
       console.warn("tts preview failed", e);
-      notify("试听失败，请确认音色、模型和后端密钥配置。", "error");
+      const detail = apiErrorMessage(e, "请确认音色、模型和后端密钥配置。");
+      notify(`试听失败：${detail}`, "error");
     } finally {
       setTtsPreviewing(false);
     }
-  }, [edgeVoice, notify, qwenModel, qwenVoice, ttsPreviewText, ttsProvider]);
+  }, [bailianVoices, edgeVoice, notify, qwenModel, qwenVoice, ttsPreviewText, ttsProvider]);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -2465,6 +2520,7 @@ export default function App() {
         void apiPost(`/sessions/${sessionId}/interrupt`, {}).catch(() => {});
       }
       const endpoint = "speak";
+      const selectedTtsVoice = resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices);
       const payload = {
         text,
         voice:
@@ -2472,7 +2528,7 @@ export default function App() {
             ? edgeVoice
             : !hasSelectableTtsVoice(ttsProvider)
               ? undefined
-              : qwenVoice,
+              : selectedTtsVoice || undefined,
         tts_provider: ttsProvider,
         tts_model: ttsModelSelectable(ttsProvider) ? qwenModel : undefined,
       };
@@ -2483,7 +2539,7 @@ export default function App() {
         notify(`发送失败：${detail}`, "error");
       });
     },
-    [appendAssistantError, edgeVoice, isSpeaking, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
+    [appendAssistantError, bailianVoices, edgeVoice, isSpeaking, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
   );
 
   /** 流式 STT（WebSocket PCM）成功后仅追加本地消息（speak 已由后端入队） */
@@ -2510,7 +2566,9 @@ export default function App() {
       fd.append("file", blob, "speech.webm");
       fd.append(
         "voice",
-        isEdgeTts(ttsProvider) ? edgeVoice : hasSelectableTtsVoice(ttsProvider) ? qwenVoice : "",
+        isEdgeTts(ttsProvider)
+          ? edgeVoice
+          : resolveSelectableTtsVoice(ttsProvider, qwenVoice, bailianVoices),
       );
       fd.append("tts_provider", ttsProvider);
       fd.append("stt_provider", activeAsrProvider || normalizeAsrProvider(asrProvider, "dashscope"));
@@ -2540,7 +2598,7 @@ export default function App() {
         }
       }
     },
-    [activeAsrProvider, appendAssistantError, asrProvider, edgeVoice, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
+    [activeAsrProvider, appendAssistantError, asrProvider, bailianVoices, edgeVoice, notify, qwenModel, qwenVoice, sessionId, ttsProvider],
   );
 
   const handleInterrupt = useCallback(() => {
@@ -2615,8 +2673,14 @@ export default function App() {
       } catch {
         /* ignore */
       }
-      setAvatarId(newId);
-      writeStoredAvatarId(newId);
+      const normalized = normalizeAvatarModelSelection(avatars, newId, model);
+      setAvatarId(normalized.avatarId);
+      writeStoredAvatarId(normalized.avatarId);
+      const requestedModel = normalized.model;
+      if (requestedModel !== model) {
+        setModel(requestedModel);
+        notify("该形象使用免 GPU 浏览器动画，已切换到轻量模式。", "info");
+      }
       void (async () => {
         const sid = sessionIdRef.current;
         if (sid) {
@@ -2626,7 +2690,7 @@ export default function App() {
         setConnection("idle");
       })();
     },
-    [clearSubtitleState, releaseSession, resetLiveState],
+    [avatars, clearSubtitleState, model, notify, releaseSession, resetLiveState],
   );
 
   const applyPersona = useCallback((persona: PersonaSummary | null) => {
@@ -2648,9 +2712,14 @@ export default function App() {
     } catch {
       /* ignore */
     }
-    setAvatarId(persona.avatar.id);
-    writeStoredAvatarId(persona.avatar.id);
-    setModel(persona.avatar.model);
+    const normalized = normalizeAvatarModelSelection(
+      avatars,
+      persona.avatar.id,
+      persona.avatar.model,
+    );
+    setAvatarId(normalized.avatarId);
+    writeStoredAvatarId(normalized.avatarId);
+    setModel(normalized.model);
     const nextTtsProvider = normalizeTtsProvider(persona.runtime.tts_provider ?? persona.voice.provider, ttsProvider);
     setTtsProvider(nextTtsProvider);
     if (persona.voice.model) {
@@ -2683,6 +2752,7 @@ export default function App() {
     })();
   }, [
     clearSubtitleState,
+    avatars,
     releaseSession,
     resetLiveState,
     setAgentConfig,
@@ -2738,8 +2808,18 @@ export default function App() {
   );
 
   const handleModelChange = useCallback((newModel: string) => {
+    const currentAvatar = avatars.find((avatar) => avatar.id === avatarId) ?? null;
+    if (!canChangeModelForAvatar(currentAvatar, newModel)) {
+      notify("博士小狗仅支持轻量模式，请先更换形象。", "info");
+      return;
+    }
     clearSubtitleState();
     setModel(newModel);
+    const nextAvatarId = recommendAvatarForModel(avatars, newModel, avatarId);
+    if (nextAvatarId !== avatarId) {
+      setAvatarId(nextAvatarId);
+      writeStoredAvatarId(nextAvatarId, "auto");
+    }
     void (async () => {
       const sid = sessionIdRef.current;
       if (sid) {
@@ -2748,7 +2828,7 @@ export default function App() {
       resetLiveState();
       setConnection("idle");
     })();
-  }, [clearSubtitleState, releaseSession, resetLiveState]);
+  }, [avatarId, avatars, clearSubtitleState, notify, releaseSession, resetLiveState]);
 
   useEffect(() => {
     const handlePageHide = () => {
@@ -2787,14 +2867,13 @@ export default function App() {
   const effectiveConversationViewMode = showStart ? "studio" : conversationViewMode;
   const immersiveActive = workflow === "realtime" && effectiveConversationViewMode === "immersive";
   const chatMaxVisible = readChatMaxVisible();
-  const selectedModelLabel = MODEL_LABELS_FOR_STAGE[model] ?? model;
+  const selectedModelLabel = modelLabel(model);
   const wav2lipPostprocessModeLocked = sessionId !== null && connection !== "idle" && connection !== "error";
   const fasterliveportraitDirty = JSON.stringify(fasterliveportraitConfig) !== JSON.stringify(fasterliveportraitAppliedConfig);
   const fasterliveportraitLive = model === "fasterliveportrait" && sessionId !== null && connection !== "idle" && connection !== "error";
   const selectedVoiceLabel = isEdgeTts(ttsProvider)
     ? EDGE_ZH_VOICES.find((voice) => voice.id === edgeVoice)?.label ?? edgeVoice
     : bailianVoices.find((voice) => voice.id === qwenVoice)?.label ?? (qwenVoice || "暂无音色");
-  const selectedMemoryLibrary = memoryLibraries.find((library) => library.id === memoryLibraryId) ?? null;
   const runtimeConfigTtsProvider = runtimeConfig?.tts.provider ?? "";
   const runtimeConfigTtsReady = Boolean(
     runtimeConfig?.tts.api_key_set
@@ -2802,7 +2881,8 @@ export default function App() {
       || runtimeConfigTtsProvider === "local_cosyvoice"
       || runtimeConfigTtsProvider === "indextts"
       || runtimeConfigTtsProvider === "local_indextts"
-      || runtimeConfigTtsProvider === "omnirt_indextts",
+      || runtimeConfigTtsProvider === "omnirt_indextts"
+      || runtimeConfigTtsProvider === "local_f5_tts",
   );
   const runtimeConfigReady = Boolean(
     runtimeConfig?.llm.api_key_set
@@ -2811,11 +2891,6 @@ export default function App() {
       && runtimeConfig.mem0?.llm.api_key_set
       && runtimeConfig.mem0?.embedder.api_key_set,
   );
-  const memorySummary = {
-    enabled: memoryEnabled && Boolean(selectedMemoryLibrary),
-    libraryName: selectedMemoryLibrary?.name || selectedMemoryLibrary?.id || null,
-    memoryCount: selectedMemoryLibrary ? selectedMemoryLibrary.memory_count : null,
-  };
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 lg:h-screen lg:overflow-hidden">
       <audio ref={audioRef} autoPlay playsInline className="hidden" />
@@ -2903,6 +2978,9 @@ export default function App() {
           <VideoCreationWorkspace
             avatars={avatars}
             avatarId={avatarId}
+            sceneBackgrounds={sceneBackgrounds}
+            sceneCompositions={sceneCompositions}
+            selectedSceneIdsByAvatar={selectedSceneIdsByAvatar}
             models={models}
             onAvatarChange={handleAvatarChange}
             onAvatarUploaded={handleVideoCloneAvatarUploaded}
@@ -3012,10 +3090,6 @@ export default function App() {
             onMemoryLibrarySelect={setMemoryLibraryId}
             onMemoryEnabledChange={setMemoryEnabled}
             onManageMemoryLibraries={() => void handleManageMemoryLibraries()}
-            llmSystemPrompt={llmSystemPrompt}
-            onLlmSystemPromptChange={setLlmSystemPrompt}
-            onSavePrompt={() => void handleSavePrompt()}
-            promptSaving={promptSaving}
             onOpenVoiceClone={() => setVoiceCloneOpen(true)}
           />
         </div>
@@ -3050,6 +3124,7 @@ export default function App() {
                 avatarMaskUrl={showStart ? null : selectedAvatarMaskUrl}
                 avatarAdjust={immersiveActive ? immersiveAvatarAdjust : undefined}
                 compactSquareStage={compactSquareStage}
+                clientRenderer={!showStart && model === "mock" ? currentAvatar?.client_renderer ?? null : null}
                 className="h-full w-full"
               >
                 {immersiveActive ? (
@@ -3139,7 +3214,7 @@ export default function App() {
                         WebRTC 舞台
                       </span>
                       <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                        {MODEL_LABELS_FOR_STAGE[model] ?? model}
+                        {modelLabel(model)}
                       </span>
                       <span className="inline-flex max-w-[14rem] items-center gap-1 truncate rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-xs font-medium text-slate-600 shadow-sm">
                         {currentAvatar?.name ?? currentAvatar?.id ?? "未选形象"}
@@ -3169,18 +3244,14 @@ export default function App() {
                     modelBadge={selectedModelBadge}
                     queueInfo={queueInfo}
                     prewarmState={selectedPrewarmState}
-                    agentConfig={agentConfig}
-                    onAgentConfigChange={setAgentConfig}
-                    knowledgeBases={knowledgeBaseSummaries}
                     personas={personas}
                     selectedPersonaId={selectedPersonaId}
                     personaImporting={personaImporting}
                     onPersonaChange={handlePersonaChange}
                     onPersonaImport={handlePersonaImport}
-                    memorySummary={memorySummary}
                     onAvatarChange={handleAvatarChange}
                     onStart={() => void handleStart()}
-                    onCustomAvatarCreate={(file, name) => void handleCreateCustomAvatar(file, name)}
+                    onCustomAvatarCreate={(file, name, options) => handleCreateCustomAvatar(file, name, options)}
                     onAvatarDelete={(target) => void handleDeleteAvatar(target)}
                     referenceSaving={referenceSaving}
                   />
@@ -3284,7 +3355,7 @@ export default function App() {
                       ["连接状态", connection === "live" ? "已连接" : connection === "expiring" ? "即将到期" : connection === "queued" ? "排队中" : connection === "connecting" ? "连接中" : connection === "error" ? "连接错误" : "未连接"],
                       ["当前会话", sessionId ?? "未创建"],
                       ["数字人", currentAvatar?.name ?? currentAvatar?.id ?? "等待加载"],
-                      ["驱动模型", MODEL_LABELS_FOR_STAGE[model] ?? model],
+                      ["驱动模型", modelLabel(model)],
                       ["语音线路", ttsProvider],
                       ["排队信息", queueInfo ? `${queueInfo.position} · ${queueInfo.message}` : "无排队"],
                     ].map(([label, value]) => (
@@ -3314,7 +3385,7 @@ export default function App() {
         </aside>
       </div>
       )}
-      <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      <ToastStack toasts={toasts} onDismiss={dismissToast} onPause={pauseToast} onResume={resumeToast} />
     </div>
   );
 }

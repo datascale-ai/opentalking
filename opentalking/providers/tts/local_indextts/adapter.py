@@ -15,8 +15,10 @@ from typing import Any
 import numpy as np
 import httpx
 
+from opentalking.core.model_paths import local_audio_model_root as resolve_local_audio_model_root
 from opentalking.core.types.frames import AudioChunk
 from opentalking.providers.tts.indextts_config import indextts_infer_kwargs, normalize_indextts_config
+from opentalking.providers.tts.voice_assets import INDEXTTS_PROVIDER, resolve_voice_asset
 
 
 _ENGINE_CACHE_LOCK = threading.Lock()
@@ -47,14 +49,14 @@ def _source_sample_rate_from_headers(headers: Any, fallback: int) -> int:
 
 
 def _local_audio_model_root() -> Path:
-    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
+    configured = ""
     try:
         from opentalking.core.config import get_settings
 
-        raw = raw or (get_settings().local_audio_model_root or "").strip()
+        configured = (get_settings().local_audio_model_root or "").strip()
     except Exception:
         pass
-    return Path(raw or "./models/local-audio").expanduser().resolve()
+    return resolve_local_audio_model_root(configured).resolve()
 
 
 def _bundled_system_voice_root() -> Path:
@@ -113,6 +115,24 @@ def _read_wav_bytes_i16(raw: bytes) -> tuple[np.ndarray, int]:
         return _read_wav_handle_i16(wf)
 
 
+def _write_wav_i16(path: str | Path, data: np.ndarray, sample_rate: int) -> None:
+    pcm = np.asarray(data)
+    if pcm.ndim == 2 and pcm.shape[0] == 1:
+        pcm = pcm[0]
+    elif pcm.ndim == 2:
+        pcm = pcm.T.reshape(-1)
+    if np.issubdtype(pcm.dtype, np.floating):
+        pcm = np.clip(pcm, -1.0, 1.0)
+        pcm = np.round(pcm * 32767.0).astype("<i2")
+    else:
+        pcm = np.clip(pcm, -32768, 32767).astype("<i2")
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(int(sample_rate))
+        wf.writeframes(pcm.reshape(-1).tobytes())
+
+
 class LocalIndexTTSAdapter:
     """In-process IndexTTS2 adapter for OpenTalking local TTS mode."""
 
@@ -141,7 +161,9 @@ class LocalIndexTTSAdapter:
         self.sample_rate = sample_rate
         self.chunk_ms = chunk_ms
         self.model = (model or "IndexTeam/IndexTTS-2").strip()
-        self.model_dir = str(Path(model_dir or f"./models/local-audio/{self.model.replace('/', '__')}").expanduser())
+        self.model_dir = str(
+            Path(model_dir or _local_audio_model_root() / self.model.replace("/", "__")).expanduser()
+        )
         self.cfg_path = str(Path(cfg_path or Path(self.model_dir) / "config.yaml").expanduser())
         self.service_url = (service_url or "").strip().rstrip("/")
         self.prompt_audio = str(Path(prompt_audio).expanduser()) if prompt_audio else ""
@@ -226,11 +248,14 @@ class LocalIndexTTSAdapter:
     def _resolve_voice_prompt(self, voice: str | None) -> Path | None:
         voice_id = (voice or "").strip()
         if voice_id and re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
-            voices_root = _local_audio_model_root() / "voices"
-            for root in (voices_root / "clones", voices_root / "system", _bundled_system_voice_root()):
-                prompt = root / voice_id / "prompt.wav"
-                if prompt.is_file():
-                    return prompt
+            asset = resolve_voice_asset(
+                voice_id,
+                provider=INDEXTTS_PROVIDER,
+                sources=("clones", "system"),
+                model_root=_local_audio_model_root(),
+            )
+            if asset is not None:
+                return asset.prompt_audio
         if self.prompt_audio:
             return Path(self.prompt_audio)
         return None
@@ -369,15 +394,8 @@ class LocalIndexTTSAdapter:
                 text = str(exc)
                 if "TorchCodec is required" not in text and "libtorchcodec" not in text:
                     raise
-                import soundfile as sf
-
                 data = tensor.detach().cpu().numpy() if hasattr(tensor, "detach") else np.asarray(tensor)
-                data = np.asarray(data)
-                if data.ndim == 2 and data.shape[0] == 1:
-                    data = data[0]
-                elif data.ndim == 2:
-                    data = data.T
-                sf.write(path, data, sample_rate, subtype="PCM_16")
+                _write_wav_i16(path, data, sample_rate)
                 return None
 
         torchaudio.save = save
@@ -435,10 +453,15 @@ class LocalIndexTTSAdapter:
         if not callable(infer):
             raise RuntimeError("IndexTTS2 runtime does not expose infer().")
 
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+        fd, tmp_name = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+        try:
             with engine_lock:
-                infer(str(prompt), text, tmp.name, **indextts_infer_kwargs(self.indextts_config))
-                pcm, source_sr = _read_wav_i16(Path(tmp.name))
+                infer(str(prompt), text, tmp_name, **indextts_infer_kwargs(self.indextts_config))
+                pcm, source_sr = _read_wav_i16(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
         pcm = _resample_linear(pcm, source_sr, self.sample_rate)
         return _split_pcm_chunks(pcm, self.sample_rate, self.chunk_ms)

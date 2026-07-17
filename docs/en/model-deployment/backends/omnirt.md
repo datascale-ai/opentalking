@@ -8,9 +8,11 @@ git clone https://github.com/datascale-ai/opentalking.git opentalking
 git clone https://github.com/datascale-ai/omnirt.git omnirt
 
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
-export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
-export OMNIRT_HOME="$OMNIRT_REPO/.omnirt"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OMNIRT_REPO="$OPENTALKING_MODEL_REPO_ROOT/omnirt"
+export OMNIRT_HOME="$DIGITAL_HUMAN_HOME"
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 
 cd "$OMNIRT_REPO"
 uv sync --extra server --python 3.11
@@ -38,8 +40,8 @@ curl -s http://127.0.0.1:8000/models | python3 -m json.tool
 - [QuickTalk with OmniRT](../quicktalk/omnirt.md)
 - [Wav2Lip with OmniRT](../wav2lip/omnirt.md)
 - [MuseTalk with OmniRT](../musetalk/omnirt.md)
-- [FasterLivePortrait](../fasterliveportrait.md)
-- [FlashTalk](../flashtalk.md)
+- [FasterLivePortrait](../../avatar_models/fasterliveportrait.md)
+- [FlashTalk](../../avatar_models/flashtalk.md)
 
 ## Frontend Entry
 

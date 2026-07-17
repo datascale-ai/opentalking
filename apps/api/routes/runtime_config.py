@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
@@ -20,10 +21,11 @@ from opentalking.providers.stt.factory import (
 )
 from opentalking.providers.tts.factory import tts_enabled_providers, tts_provider_config
 from opentalking.providers.tts.providers import normalize_tts_provider
+from opentalking.providers.tts.voice_assets import iter_voice_assets, resolve_voice_asset
 
 router = APIRouter(prefix="/runtime-config", tags=["runtime-config"])
 
-_ENV_PATH = Path(__file__).resolve().parents[3] / ".env"
+_ENV_PATH = Path(os.environ.get("OPENTALKING_ENV_FILE") or Path(__file__).resolve().parents[3] / ".env")
 _ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 
 _RUNTIME_ENV_KEYS = {
@@ -127,6 +129,20 @@ def _strip(value: str | None) -> str:
     return (value or "").strip()
 
 
+def _local_cosyvoice_default_voice() -> str:
+    for asset in iter_voice_assets(provider="local_cosyvoice", sources=("system", "clones")):
+        if asset.voice_id:
+            return asset.voice_id
+    return "local-default"
+
+
+def _normalize_local_cosyvoice_voice(value: str | None) -> str:
+    voice = _strip(value)
+    if voice and resolve_voice_asset(voice, provider="local_cosyvoice") is not None:
+        return voice
+    return _local_cosyvoice_default_voice()
+
+
 def _unquote_env_value(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
         return value[1:-1]
@@ -187,6 +203,81 @@ def _enabled_provider_csv(current: list[str], provider: str) -> str:
     if provider and provider not in providers:
         providers.append(provider)
     return ",".join(providers)
+
+
+def _path_exists(raw: str) -> bool:
+    if not raw:
+        return False
+    try:
+        return Path(raw).expanduser().exists()
+    except OSError:
+        return False
+
+
+def _ensure_sensevoice_available(values: dict[str, str], settings: Any) -> None:
+    status = stt_provider_config("sensevoice")
+    model = _env_value(
+        values,
+        "OPENTALKING_STT_SENSEVOICE_MODEL",
+        _settings_value(settings, "stt_sensevoice_model", "iic/SenseVoiceSmall"),
+    )
+    model_dir = str(status.get("model_dir") or "").strip()
+    candidates = [model_dir]
+    root = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip() or _settings_value(
+        settings,
+        "local_audio_model_root",
+        "",
+    )
+    if root and model:
+        candidates.append(str(Path(root).expanduser() / model.replace("/", "__")))
+    if any(_path_exists(candidate) for candidate in candidates):
+        return
+    raise HTTPException(
+        status_code=400,
+        detail="本地 ASR SenseVoice 模型未就绪，请在启动时启用本地 ASR 或确认模型已下载。",
+    )
+
+
+def _local_cosyvoice_health_url(service_url: str) -> str:
+    value = service_url.strip()
+    if not value:
+        return ""
+    if value.rstrip("/").endswith("/synthesize"):
+        return value.rstrip("/")[: -len("/synthesize")] + "/health"
+    return value.rstrip("/") + "/health"
+
+
+async def _ensure_local_cosyvoice_available(values: dict[str, str], settings: Any) -> None:
+    service_url = _env_value(
+        values,
+        "OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL",
+        _settings_value(settings, "tts_local_cosyvoice_service_url"),
+    )
+    health_url = _local_cosyvoice_health_url(service_url)
+    if not health_url:
+        raise HTTPException(
+            status_code=400,
+            detail="本地 TTS local_cosyvoice 未启动或未配置服务地址，请在启动时启用本地 TTS，或改用 API/Edge TTS。",
+        )
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(1.0, connect=0.5)) as client:
+            response = await client.get(health_url)
+            response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="本地 TTS local_cosyvoice 未启动或不可用，请在启动时启用本地 TTS，或改用 API/Edge TTS。",
+        ) from exc
+
+
+async def _validate_local_provider_switches(updates: dict[str, str], request: Request) -> None:
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    _, current_values = _read_env_lines(_ENV_PATH)
+    values = {**current_values, **updates}
+    if updates.get("OPENTALKING_STT_DEFAULT_PROVIDER") == "sensevoice":
+        _ensure_sensevoice_available(values, settings)
+    if updates.get("OPENTALKING_TTS_DEFAULT_PROVIDER") == "local_cosyvoice":
+        await _ensure_local_cosyvoice_available(values, settings)
 
 
 def _write_env_updates(path: Path, updates: dict[str, str]) -> None:
@@ -301,7 +392,7 @@ def _current_tts_payload(provider: str, settings: Any, values: dict[str, str]) -
     elif provider == "local_cosyvoice":
         base_url = _env_value(values, "OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL", _settings_value(settings, "tts_local_cosyvoice_service_url"))
         model = _env_value(values, "OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL", _settings_value(settings, "tts_local_cosyvoice_model", "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"))
-        voice = _env_value(values, "OPENTALKING_TTS_VOICE", _settings_value(settings, "tts_voice"))
+        voice = _normalize_local_cosyvoice_voice(_env_value(values, "OPENTALKING_TTS_VOICE", _settings_value(settings, "tts_voice")))
         key = ""
     elif provider == "indextts":
         base_url = (
@@ -502,7 +593,9 @@ def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
         }.get(tts_provider)
         if key:
             updates[key] = value
-    if value := _strip(payload.tts_voice):
+    if tts_provider == "local_cosyvoice":
+        updates["OPENTALKING_TTS_VOICE"] = _normalize_local_cosyvoice_voice(payload.tts_voice)
+    elif value := _strip(payload.tts_voice):
         updates["OPENTALKING_TTS_VOICE"] = value
         if tts_provider == "edge":
             updates["OPENTALKING_TTS_EDGE_VOICE"] = value
@@ -592,6 +685,7 @@ async def apply_runtime_config(payload: RuntimeConfigPayload, request: Request) 
     unknown = set(updates) - _RUNTIME_ENV_KEYS
     if unknown:
         raise HTTPException(status_code=400, detail=f"unsupported runtime config keys: {', '.join(sorted(unknown))}")
+    await _validate_local_provider_switches(updates, request)
     _write_env_updates(_ENV_PATH, updates)
     _, values = _read_env_lines(_ENV_PATH)
     for key in _RUNTIME_ENV_KEYS:

@@ -3,8 +3,13 @@
 Use this path to run a lightweight lip-sync model on one machine before introducing a separate inference service.
 
 ```bash title="Terminal"
+# Change this to your deployment root
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
 
 # Set mirrors first when package downloads are slow.
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -15,7 +20,8 @@ export UV_LINK_MODE=copy
 cd "$OPENTALKING_HOME"
 uv sync --extra dev --extra models --python 3.11
 source .venv/bin/activate
-export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_WAV2LIP_MODEL_ROOT="${OPENTALKING_WAV2LIP_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT/wav2lip}"
 mkdir -p "$OPENTALKING_WAV2LIP_MODEL_ROOT"
 
 hf download Pypa/wav2lip384 wav2lip384.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_ROOT"
@@ -25,8 +31,11 @@ hf download rippertnt/wav2lip s3fd.pth --local-dir "$OPENTALKING_WAV2LIP_MODEL_R
 If Hugging Face is not reachable from the server, download the files on a connected machine and sync them to the same directory. Do not commit these model weights into the OpenTalking repository.
 
 ```bash title="Terminal"
-export OPENTALKING_WAV2LIP_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/wav2lip"
-export OPENTALKING_WAV2LIP_DEVICE=cuda
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_WAV2LIP_MODEL_ROOT="${OPENTALKING_WAV2LIP_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT/wav2lip}"
+# Change 1 to the physical GPU you want to use; keep the in-process device as cuda:0.
+export CUDA_VISIBLE_DEVICES=1
+export OPENTALKING_WAV2LIP_DEVICE=cuda:0
 export OPENTALKING_WAV2LIP_BATCH_SIZE=16
 export OPENTALKING_WAV2LIP_MAX_LONG_EDGE=832
 export OPENTALKING_WAV2LIP_FACE_DET_DEVICE=cpu

@@ -5,6 +5,7 @@ import {
   COSYVOICE_MODEL_OPTIONS,
   LOCAL_COSYVOICE_MODEL_OPTIONS,
   LOCAL_INDEXTTS_MODEL_OPTIONS,
+  LOCAL_F5_TTS_MODEL_OPTIONS,
   XIAOMI_MIMO_MODEL_OPTIONS,
 } from "../constants/ttsBailian";
 import { QWEN_VOICE_CLONE_TARGET_OPTIONS } from "../constants/ttsQwen";
@@ -51,6 +52,7 @@ type CloneProvider =
   | "cosyvoice"
   | "local_cosyvoice"
   | "indextts"
+  | "local_f5_tts"
   | "xiaomi_mimo";
 type RecorderPhase = "idle" | "recording" | "paused" | "recorded";
 
@@ -61,6 +63,7 @@ function defaultTargetModelForProvider(provider: CloneProvider): string {
   if (provider === "indextts") {
     return LOCAL_INDEXTTS_MODEL_OPTIONS[0]?.id ?? "";
   }
+  if (provider === "local_f5_tts") return LOCAL_F5_TTS_MODEL_OPTIONS[0]?.id ?? "";
   return COSYVOICE_MODEL_OPTIONS[0]?.id ?? "";
 }
 
@@ -392,6 +395,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
               <option value="xiaomi_mimo">小米 MiMo VoiceClone</option>
               <option value="local_cosyvoice">本地 CosyVoice</option>
               <option value="indextts">Local IndexTTS</option>
+              <option value="local_f5_tts">Local F5-TTS</option>
               <option value="cosyvoice">云端 CosyVoice</option>
             </select>
           </label>
@@ -411,6 +415,8 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
                   ? LOCAL_COSYVOICE_MODEL_OPTIONS
                 : provider === "indextts"
                   ? LOCAL_INDEXTTS_MODEL_OPTIONS
+                : provider === "local_f5_tts"
+                  ? LOCAL_F5_TTS_MODEL_OPTIONS
                   : COSYVOICE_MODEL_OPTIONS
               ).map((o) => (
                 <option key={o.id} value={o.id}>

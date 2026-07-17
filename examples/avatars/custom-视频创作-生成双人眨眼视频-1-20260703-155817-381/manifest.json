@@ -1,0 +1,216 @@
+{
+  "id": "custom-视频创作-生成双人眨眼视频-1-20260703-155817-381",
+  "model_type": "quicktalk",
+  "fps": 25,
+  "sample_rate": 16000,
+  "width": 720,
+  "height": 540,
+  "version": "1.0",
+  "name": "视频通话",
+  "metadata": {
+    "source_image_hash": "dd7a76d7e811f55e72003b64925c4cb27b4e40534aed6397eb4ef3ffd76bbd01",
+    "source_image_path": "reference.png",
+    "preferred_wav2lip_postprocess_mode": "easy_improved",
+    "mouth_polygon_source": "mediapipe",
+    "animation": {
+      "mouth_center": [
+        0.25,
+        0.41667
+      ],
+      "mouth_rx": 0.03333,
+      "mouth_ry": 0.01852,
+      "outer_lip": [
+        [
+          0.21528,
+          0.40926
+        ],
+        [
+          0.21944,
+          0.41667
+        ],
+        [
+          0.22361,
+          0.42407
+        ],
+        [
+          0.23056,
+          0.43148
+        ],
+        [
+          0.23889,
+          0.43704
+        ],
+        [
+          0.24861,
+          0.43889
+        ],
+        [
+          0.25972,
+          0.43704
+        ],
+        [
+          0.26806,
+          0.43333
+        ],
+        [
+          0.275,
+          0.42593
+        ],
+        [
+          0.27917,
+          0.41852
+        ],
+        [
+          0.28333,
+          0.41296
+        ],
+        [
+          0.28056,
+          0.41111
+        ],
+        [
+          0.27639,
+          0.40926
+        ],
+        [
+          0.26944,
+          0.40741
+        ],
+        [
+          0.26111,
+          0.40556
+        ],
+        [
+          0.25,
+          0.40741
+        ],
+        [
+          0.24028,
+          0.4037
+        ],
+        [
+          0.23056,
+          0.40556
+        ],
+        [
+          0.22361,
+          0.40556
+        ],
+        [
+          0.21944,
+          0.40741
+        ]
+      ],
+      "inner_mouth": [
+        [
+          0.21806,
+          0.40926
+        ],
+        [
+          0.22361,
+          0.41481
+        ],
+        [
+          0.22778,
+          0.41852
+        ],
+        [
+          0.23333,
+          0.42222
+        ],
+        [
+          0.24167,
+          0.42593
+        ],
+        [
+          0.25,
+          0.42593
+        ],
+        [
+          0.25833,
+          0.42593
+        ],
+        [
+          0.26528,
+          0.42407
+        ],
+        [
+          0.27083,
+          0.42037
+        ],
+        [
+          0.27639,
+          0.41852
+        ],
+        [
+          0.28056,
+          0.41296
+        ],
+        [
+          0.27639,
+          0.41296
+        ],
+        [
+          0.27222,
+          0.41111
+        ],
+        [
+          0.26667,
+          0.41111
+        ],
+        [
+          0.25972,
+          0.41296
+        ],
+        [
+          0.25,
+          0.41296
+        ],
+        [
+          0.24167,
+          0.41111
+        ],
+        [
+          0.23333,
+          0.41111
+        ],
+        [
+          0.22778,
+          0.40926
+        ],
+        [
+          0.22222,
+          0.40926
+        ]
+      ]
+    },
+    "custom_avatar": true,
+    "base_avatar_id": "anchor",
+    "idle_mode": "loop",
+    "reference_mode": "video",
+    "source_image": "source/source.png",
+    "matting_status": "opaque",
+    "source_video": "source/source_video.mp4",
+    "face_box": [
+      0.04583,
+      0.0,
+      0.45417,
+      0.71296
+    ],
+    "template_video": "source/source_video.mp4",
+    "quicktalk": {
+      "template_video": "source/source_video.mp4"
+    },
+    "duo_dialog": {
+      "speaker_faces": {
+        "male": "left",
+        "female": "right"
+      },
+      "default_voices": {
+        "male": "zh-CN-YunxiNeural",
+        "female": "zh-CN-XiaoxiaoNeural"
+      }
+    },
+    "person_mode": "double"
+  }
+}

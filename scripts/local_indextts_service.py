@@ -4,6 +4,7 @@ import argparse
 import io
 import importlib
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -12,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -63,8 +63,26 @@ def _resample_linear(pcm: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
 
 def _to_wav_bytes(pcm: np.ndarray, sr: int) -> bytes:
     buf = io.BytesIO()
-    sf.write(buf, np.asarray(pcm, dtype=np.int16), sr, format="WAV", subtype="PCM_16")
+    _write_wav_i16(buf, np.asarray(pcm, dtype=np.int16), sr)
     return buf.getvalue()
+
+
+def _write_wav_i16(path_or_file: str | Path | io.BytesIO, data: np.ndarray, sample_rate: int) -> None:
+    pcm = np.asarray(data)
+    if pcm.ndim == 2 and pcm.shape[0] == 1:
+        pcm = pcm[0]
+    elif pcm.ndim == 2:
+        pcm = pcm.T.reshape(-1)
+    if np.issubdtype(pcm.dtype, np.floating):
+        pcm = np.clip(pcm, -1.0, 1.0)
+        pcm = np.round(pcm * 32767.0).astype("<i2")
+    else:
+        pcm = np.clip(pcm, -32768, 32767).astype("<i2")
+    with wave.open(path_or_file if hasattr(path_or_file, "write") else str(path_or_file), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(int(sample_rate))
+        wf.writeframes(pcm.reshape(-1).tobytes())
 
 
 class LocalIndexTTSService:
@@ -126,10 +144,82 @@ class LocalIndexTTSService:
         return self._engine
 
     def _patch_local_runtime_assets(self, module: Any) -> None:
+        self._patch_index_tts_model_download()
         self._patch_w2v_bert_runtime(module)
         self._patch_hf_hub_download(module)
         self._patch_bigvgan_runtime()
         self._patch_torchaudio_save(module)
+
+    def _patch_index_tts_model_download(self) -> None:
+        try:
+            model_download = importlib.import_module("indextts.utils.model_download")
+        except ImportError:
+            return
+        original = getattr(model_download, "ensure_models_available", None)
+
+        def ensure_models_available(model_dir: str, bigvgan_repo: str | None = None) -> dict[str, str]:
+            cache_dir = Path(model_dir or self.model_dir).expanduser() / "hf_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            w2v_dir = self._existing_dir(self.w2v_bert_dir, "preprocessor_config.json")
+            maskgct_file = self._existing_file(self.maskgct_dir, "semantic_codec/model.safetensors")
+            campplus_file = self._existing_file(self.campplus_dir, "campplus_cn_common.bin")
+            bigvgan_dir = self._existing_dir(self.bigvgan_dir, "config.json")
+            if bigvgan_dir is not None and not (bigvgan_dir / "bigvgan_generator.pt").is_file():
+                bigvgan_dir = None
+
+            if all((w2v_dir, maskgct_file, campplus_file, bigvgan_dir)):
+                cached_w2v_dir = cache_dir / "w2v-bert-2.0"
+                cached_semantic_file = cache_dir / "semantic_codec_model.safetensors"
+                cached_semantic_nested = cache_dir / "semantic_codec" / "model.safetensors"
+                cached_campplus_file = cache_dir / "campplus_cn_common.bin"
+                cached_bigvgan_dir = cache_dir / "bigvgan"
+
+                self._mirror_dir(w2v_dir, cached_w2v_dir)
+                self._mirror_file(maskgct_file, cached_semantic_file)
+                self._mirror_file(maskgct_file, cached_semantic_nested)
+                self._mirror_file(campplus_file, cached_campplus_file)
+                self._mirror_dir(bigvgan_dir, cached_bigvgan_dir)
+                print(
+                    "using local IndexTTS auxiliary assets "
+                    f"w2v={w2v_dir} maskgct={maskgct_file} "
+                    f"campplus={campplus_file} bigvgan={bigvgan_dir}",
+                    flush=True,
+                )
+                return {
+                    "w2v_bert": str(cached_w2v_dir),
+                    "semantic_codec": str(cached_semantic_file),
+                    "campplus": str(cached_campplus_file),
+                    "bigvgan": str(cached_bigvgan_dir),
+                }
+
+            if callable(original):
+                if bigvgan_repo is None:
+                    return original(model_dir)
+                return original(model_dir, bigvgan_repo=bigvgan_repo)
+            return {}
+
+        model_download.ensure_models_available = ensure_models_available
+
+    @staticmethod
+    def _mirror_dir(source: Path, target: Path) -> None:
+        if target.exists():
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.symlink_to(source, target_is_directory=True)
+        except Exception:
+            shutil.copytree(source, target, dirs_exist_ok=True)
+
+    @staticmethod
+    def _mirror_file(source: Path, target: Path) -> None:
+        if target.exists():
+            return
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            target.symlink_to(source)
+        except Exception:
+            shutil.copy2(source, target)
 
     def _patch_w2v_bert_runtime(self, module: Any) -> None:
         local_dir = self._existing_dir(self.w2v_bert_dir, "preprocessor_config.json")
@@ -216,7 +306,7 @@ class LocalIndexTTSService:
                     data = data[0]
                 elif data.ndim == 2:
                     data = data.T
-                sf.write(path, data, sample_rate, subtype="PCM_16")
+                _write_wav_i16(path, data, sample_rate)
                 return None
 
         torchaudio.save = save
@@ -286,10 +376,15 @@ class LocalIndexTTSService:
             raise HTTPException(status_code=400, detail=f"prompt_audio does not exist: {prompt_audio}")
         target_sr = int(req.sample_rate or 16000)
         t0 = time.perf_counter()
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
+        fd, tmp_name = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        tmp_path = Path(tmp_name)
+        try:
             with self._lock:
-                self.model().infer(prompt_audio, text, tmp.name, **self._infer_kwargs(req))
-            pcm, sr = _audio_to_i16(Path(tmp.name))
+                self.model().infer(prompt_audio, text, tmp_name, **self._infer_kwargs(req))
+            pcm, sr = _audio_to_i16(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
         pcm = _resample_linear(pcm, sr, target_sr)
         elapsed = time.perf_counter() - t0
         print(
@@ -351,7 +446,16 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def _local_audio_root() -> Path:
-    return Path(os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "./models/local-audio")).expanduser()
+    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    raw = os.environ.get("OPENTALKING_MODEL_ROOT", "").strip()
+    if raw:
+        return (Path(raw).expanduser() / "local-audio")
+    raw = os.environ.get("DIGITAL_HUMAN_HOME", "").strip()
+    if raw:
+        return Path(raw).expanduser() / "models" / "local-audio"
+    return Path("./models/local-audio").expanduser()
 
 
 def _existing_dir(value: str, required_file: str) -> Path | None:

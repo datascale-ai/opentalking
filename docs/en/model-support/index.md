@@ -24,10 +24,10 @@ runtime backend.
 | Mock | `mock` | Install and WebUI flow validation |
 | Wav2Lip | `local` / `omnirt` | Lightweight lip sync and avatar asset validation |
 | QuickTalk | `local` / `omnirt` | Realtime talking-head validation |
+| FasterLivePortrait | `omnirt` | Single-GPU realtime portrait driving; supports JoyVASA audio driving and camera / uploaded-video Video Clone |
 | MuseTalk | `local` / `omnirt` / `direct_ws` | Higher-quality lip sync; local mode runs official avatar preprocessing before session initialization |
 | FlashTalk | `omnirt` | High-quality realtime digital human, better as a service |
 | FlashHead | `direct_ws` / HTTP adapter | Clip-style generation or existing FlashHead service |
-| FasterLivePortrait | `omnirt` | Single-GPU portrait pasteback, audio-driven realtime conversation, and video clone |
 
 Actual availability depends on weights, hardware, backend services, and installed
 dependencies. Model-specific pages describe the supported parameters and asset
@@ -36,7 +36,7 @@ requirements.
 ## Next Steps
 
 - Not sure which model to choose: start with [Model and Backend Selection](./selection.md).
-- Need local STT/TTS with QuickTalk: read [Model Deployment / Local Audio + QuickTalk](../model-deployment/recipes/local-quicktalk-audio.md).
+- Need local STT/TTS with QuickTalk: read [Local Audio + QuickTalk](../recipes/local-quicktalk-audio.md).
+- Need camera or uploaded-video driving: read [FasterLivePortrait](../../avatar_models/fasterliveportrait.md) and [Video Clone](../usage/webui/video-clone.md).
 - Need local runtime details: read [Local Adapter](./runtime-backends/local-adapter.md).
-- Need MuseTalk local setup: read [MuseTalk](./models/musetalk.md).
-- Need camera- or selfie-video-driven cloning: read [FasterLivePortrait](./models/fasterliveportrait.md).
+- Need MuseTalk local setup: read [MuseTalk](../../avatar_models/musetalk.md).

@@ -66,6 +66,8 @@ done
 quickstart_source_env "$env_file"
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
+export OPENTALKING_RUNTIME_ROOT="${OPENTALKING_RUNTIME_ROOT:-$DIGITAL_HUMAN_HOME/runtimes}"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
 run_dir="$DIGITAL_HUMAN_HOME/run"
 log_dir="$DIGITAL_HUMAN_HOME/logs"
 mkdir -p "$run_dir" "$log_dir"
@@ -100,9 +102,9 @@ resolve_cosyvoice_python() {
   local candidate_dir=""
   for candidate_dir in \
     "${OPENTALKING_COSYVOICE_VENV_DIR:-}" \
+    "$OPENTALKING_RUNTIME_ROOT/cosyvoice/venv" \
     "$repo_root/.venv-cosyvoice" \
-    "$DIGITAL_HUMAN_HOME/.venv-cosyvoice" \
-    "/root/cosyvoice/.venv"
+    "$DIGITAL_HUMAN_HOME/.venv-cosyvoice"
   do
     [[ -n "$candidate_dir" ]] || continue
     if [[ -x "$candidate_dir/bin/python" ]]; then
@@ -112,7 +114,7 @@ resolve_cosyvoice_python() {
   done
 
   echo "Missing CosyVoice sidecar venv." >&2
-  echo "Create it first: OPENTALKING_COSYVOICE_VENV_DIR=\"$repo_root/.venv-cosyvoice\" bash scripts/prepare_cosyvoice_venv.sh" >&2
+  echo "Create it first: bash scripts/prepare_cosyvoice_venv.sh" >&2
   return 1
 }
 

@@ -79,7 +79,7 @@ export function Navbar({
             <span className={language === "zh" ? "language-toggle-active" : ""}>中</span>
             <span className={language === "en" ? "language-toggle-active" : ""}>EN</span>
           </button>
-          <GitHubStats />
+          <GitHubStats language={language} />
         </div>
 
         <button

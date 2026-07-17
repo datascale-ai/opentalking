@@ -1,5 +1,6 @@
 import type { QueueInfo } from "../types";
 import type { AvatarSummary } from "../lib/api";
+import { modelLabel } from "../lib/modelLabels";
 
 interface StartOverlayProps {
   avatar: AvatarSummary | null;
@@ -33,7 +34,7 @@ export function StartOverlay({ avatar, loading, queued, queueInfo, onStart, visi
           </h2>
           {avatar && (
             <span className="mt-1 inline-block rounded-full border border-slate-200 bg-slate-50 px-3 py-0.5 text-xs text-slate-500">
-              {avatar.model_type}
+              {modelLabel(avatar.model_type)}
             </span>
           )}
         </div>

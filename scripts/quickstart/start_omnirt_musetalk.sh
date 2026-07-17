@@ -91,9 +91,11 @@ case "$device" in
 esac
 
 export DIGITAL_HUMAN_HOME="${DIGITAL_HUMAN_HOME:-$default_home}"
-export OMNIRT_REPO="${OMNIRT_REPO:-$DIGITAL_HUMAN_HOME/omnirt}"
-export OMNIRT_MODEL_ROOT="${OMNIRT_MUSETALK_MODEL_ROOT:-${OMNIRT_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}}"
-export OMNIRT_HOME="${OMNIRT_HOME:-$OMNIRT_REPO/.omnirt}"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OMNIRT_REPO="${OMNIRT_REPO:-$OPENTALKING_MODEL_REPO_ROOT/omnirt}"
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OMNIRT_MODEL_ROOT="${OMNIRT_MUSETALK_MODEL_ROOT:-${OMNIRT_MODEL_ROOT:-$OPENTALKING_MODEL_ROOT}}"
+export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME}"
 export TMPDIR="${TMPDIR:-$DIGITAL_HUMAN_HOME/tmp}"
 export UV_CACHE_DIR="${UV_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.cache/uv}"
 export PIP_CACHE_DIR="${PIP_CACHE_DIR:-$DIGITAL_HUMAN_HOME/.cache/pip}"
@@ -231,6 +233,7 @@ PY
 
 test -f "$OMNIRT_MODEL_ROOT/musetalk/pytorch_model.bin" || { echo "Missing MuseTalk UNet weights" >&2; exit 1; }
 test -f "$OMNIRT_MODEL_ROOT/musetalk/musetalk.json" || { echo "Missing MuseTalk UNet config" >&2; exit 1; }
+test -d "$OMNIRT_MODEL_ROOT/sd-vae-ft-mse" || { echo "Missing Stable Diffusion VAE directory" >&2; exit 1; }
 test -f "$OMNIRT_MODEL_ROOT/whisper/tiny.pt" || { echo "Missing Whisper tiny checkpoint" >&2; exit 1; }
 test -f "$OMNIRT_MODEL_ROOT/dwpose/dw-ll_ucoco_384.pth" || { echo "Missing DWPose checkpoint" >&2; exit 1; }
 test -f "$OMNIRT_MODEL_ROOT/face-parse-bisenet/79999_iter.pth" || { echo "Missing face parsing checkpoint" >&2; exit 1; }

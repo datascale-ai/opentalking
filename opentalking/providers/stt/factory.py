@@ -14,6 +14,8 @@ from typing import Any
 
 import numpy as np
 
+from opentalking.core.model_paths import local_audio_model_root
+
 STT_PROVIDERS = frozenset({"dashscope", "openai_compatible", "xiaomi_mimo", "funasr", "sensevoice", "sherpa_onnx"})
 LOCAL_STT_PROVIDERS = frozenset({"funasr", "sensevoice", "sherpa_onnx"})
 _SENSEVOICE_TAG_RE = re.compile(r"<\|[^|<>]+\|>")
@@ -67,12 +69,7 @@ def _provider() -> str:
 
 
 def _model_root() -> Path:
-    raw = (
-        os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
-        or _settings_value("local_audio_model_root", "")
-        or "./models/local-audio"
-    )
-    return Path(raw).expanduser()
+    return local_audio_model_root(_settings_value("local_audio_model_root", ""))
 
 
 def _device() -> str:
@@ -267,20 +264,22 @@ def _stt_model_dir(provider: str, model: str | None = None) -> str:
     provider = normalize_stt_provider(provider, default="dashscope") or "dashscope"
     direct = _provider_env(provider, "MODEL_DIR") or _settings_value(f"stt_{provider}_model_dir", "")
     if direct:
-        return direct
+        return str(Path(direct).expanduser().resolve())
     if provider in LOCAL_STT_PROVIDERS:
         return str(_local_path_for_model((model or _stt_model(provider)).strip()))
-    return ""
     return ""
 
 
 def _local_path_for_model(model: str) -> Path:
     path = Path(model).expanduser()
-    if path.is_absolute() or path.exists():
-        return path
+    if path.is_absolute():
+        return path.resolve()
+    root = _model_root().expanduser()
+    if path.exists():
+        return path.resolve()
     if "/" in model:
-        return _model_root() / model.replace("/", "__")
-    return _model_root() / model
+        return (root / model.replace("/", "__")).resolve()
+    return (root / model).resolve()
 
 
 def _write_pcm_queue_to_wav(
@@ -335,9 +334,9 @@ class LocalFunASRSTTAdapter:
 
     def _runtime_model_name(self) -> str:
         if self.model_dir:
-            return self.model_dir
+            return str(Path(self.model_dir).expanduser().resolve())
         local_path = _local_path_for_model(self.model)
-        return str(local_path) if local_path.exists() else self.model
+        return str(local_path)
 
     def _load_runtime(self) -> Any:
         if self._runtime is not None:

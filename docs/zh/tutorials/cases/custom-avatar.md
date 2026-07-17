@@ -2,8 +2,8 @@
 
 ## 目标
 
-准备一个可被 OpenTalking 识别的自定义 avatar，并在浏览器会话中选择使用。不同 talking-head
-模型对 avatar 资产格式要求不同，本案例以 Wav2Lip 风格资产为最小可运行路径。
+准备一个可被 OpenTalking 识别的自定义 avatar，并在浏览器会话中选择使用。avatar 本身是
+通用形象资产；本案例使用 Wav2Lip 准备脚本生成最小可运行的参考帧派生产物。
 
 ## 前置条件
 
@@ -13,7 +13,7 @@
 
 ## 步骤
 
-从图片生成 Wav2Lip avatar：
+从图片生成参考帧派生产物：
 
 ```bash title="终端"
 python scripts/prepare_wav2lip_image_asset.py \
@@ -24,7 +24,7 @@ python scripts/prepare_wav2lip_image_asset.py \
   --fps 25
 ```
 
-从视频生成 Wav2Lip avatar：
+从视频生成参考帧派生产物：
 
 ```bash title="终端"
 python scripts/prepare_wav2lip_video_asset.py \

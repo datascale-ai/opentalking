@@ -5,8 +5,16 @@ Use this path when OpenTalking should load the MuseTalk local adapter in-process
 ## 1. Prepare OpenTalking
 
 ```bash title="Terminal"
+# Change this to your deployment root
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_REPO_ROOT="$DIGITAL_HUMAN_HOME/model-repos"
+export OPENTALKING_RUNTIME_ROOT="$DIGITAL_HUMAN_HOME/runtimes"
 
 # Set mirrors first when package downloads are slow.
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -23,7 +31,7 @@ uv pip install --python .venv/bin/python pip "setuptools<81" openmim
 The local adapter reads `$OPENTALKING_MUSETALK_MODEL_ROOT`. Put the MuseTalk-related weights under one root, for example:
 
 ```bash title="Terminal"
-export OPENTALKING_MUSETALK_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models/musetalk-v15"
+export OPENTALKING_MUSETALK_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 mkdir -p "$OPENTALKING_MUSETALK_MODEL_ROOT"
 ```
 
@@ -63,16 +71,16 @@ ln -s face-parse-bisent face-parse-bisenet 2>/dev/null || true
 
 ## 3. Prepare MuseTalk source and preprocessing dependencies
 
-The local runtime uses OpenTalking's own `.venv` for realtime inference. Official MuseTalk avatar preprocessing needs the full OpenMMLab environment with `mmcv._ext`, so do not point the preprocessing Python at the main `.venv` when it only contains `mmcv-lite`. Use a separate `$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv`.
+The local runtime uses OpenTalking's own `.venv` for realtime inference. Official MuseTalk avatar preprocessing needs the full OpenMMLab environment with `mmcv._ext`, so do not point the preprocessing Python at the main `.venv` when it only contains `mmcv-lite`. Use a separate `$OPENTALKING_RUNTIME_ROOT/musetalk-preprocess/venv`.
 
 ```bash title="Terminal"
-mkdir -p "$DIGITAL_HUMAN_HOME/model-repos"
+mkdir -p "$OPENTALKING_MODEL_REPO_ROOT"
 
-git clone https://github.com/TMElyralab/MuseTalk.git "$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
+git clone https://github.com/TMElyralab/MuseTalk.git "$OPENTALKING_MODEL_REPO_ROOT/MuseTalk"
 # If the server already has an official MuseTalk checkout, point OPENTALKING_MUSETALK_REPO to it.
 
-export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_ROOT="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess"
+export OPENTALKING_MUSETALK_REPO="$OPENTALKING_MODEL_REPO_ROOT/MuseTalk"
+export OPENTALKING_MUSETALK_PREPROCESS_ROOT="$OPENTALKING_RUNTIME_ROOT/musetalk-preprocess"
 export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_MUSETALK_PREPROCESS_ROOT/venv/bin/python"
 
 bash scripts/quickstart/prepare_local_musetalk.sh
@@ -85,12 +93,14 @@ bash scripts/quickstart/prepare_local_musetalk.sh
 ## 4. Start OpenTalking
 
 ```bash title="Terminal"
-export OPENTALKING_MUSETALK_REPO="$DIGITAL_HUMAN_HOME/model-repos/MuseTalk"
-export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$DIGITAL_HUMAN_HOME/runtimes/musetalk-preprocess/venv/bin/python"
+export OPENTALKING_MODEL_REPO_ROOT="$DIGITAL_HUMAN_HOME/model-repos"
+export OPENTALKING_RUNTIME_ROOT="$DIGITAL_HUMAN_HOME/runtimes"
+export OPENTALKING_MUSETALK_REPO="$OPENTALKING_MODEL_REPO_ROOT/MuseTalk"
+export OPENTALKING_MUSETALK_PREPROCESS_PYTHON="$OPENTALKING_RUNTIME_ROOT/musetalk-preprocess/venv/bin/python"
+# Change 1 to the physical GPU you want to use; keep the in-process device as cuda:0.
+export CUDA_VISIBLE_DEVICES=1
 export OPENTALKING_MUSETALK_DEVICE=cuda:0
 export OPENTALKING_TORCH_DEVICE=cuda:0
-# On multi-GPU hosts, optionally pin the visible GPU.
-export CUDA_VISIBLE_DEVICES=0
 
 cd "$OPENTALKING_HOME"
 bash scripts/start_unified.sh --backend local --model musetalk --api-port 8000 --web-port 5173

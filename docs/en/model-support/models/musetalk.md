@@ -127,4 +127,4 @@ When OmniRT or the local runtime provides the model, it should report
 | `reason=omnirt_unavailable` | Check that OmniRT reports `/v1/audio2video/musetalk`. |
 | `No module named 'mmcv._ext'` | The preprocessing Python lacks full OpenMMLab dependencies; use an `OPENTALKING_MUSETALK_PREPROCESS_PYTHON` environment with full `mmcv`. |
 | Session fails during preprocessing | Check that `OPENTALKING_MUSETALK_REPO` points to the official MuseTalk source and that `dwpose` and `face-parse-bisenet` weights exist. |
-| Avatar mismatch | Use an avatar with `model_type: musetalk`. |
+| Avatar asset unavailable | Check that the avatar is uploaded, readable, and the session configuration is complete. |

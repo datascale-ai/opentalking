@@ -5,10 +5,16 @@
 ## 1. 准备 OmniRT 环境
 
 ```bash title="终端"
+# 改成你自己的部署根目录
 export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
-export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
-export OMNIRT_HOME="$OMNIRT_REPO/.omnirt"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OMNIRT_REPO="$OPENTALKING_MODEL_REPO_ROOT/omnirt"
+export OMNIRT_HOME="$DIGITAL_HUMAN_HOME"
 
 # 网络较慢时先设置镜像。
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -24,7 +30,8 @@ source .venv/bin/activate
 ## 2. 准备权重
 
 ```bash title="终端"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 mkdir -p "$OMNIRT_MODEL_ROOT/wav2lip"
 
 hf download Pypa/wav2lip384 wav2lip384.pth --local-dir "$OMNIRT_MODEL_ROOT/wav2lip"

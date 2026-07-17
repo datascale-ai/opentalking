@@ -261,7 +261,7 @@ bash scripts/deploy_ascend_910b.sh
 ## 场景：API 与 Worker 分离 {#api-and-worker-split}
 
 适用于需要 Worker 横向扩展或组件隔离的生产部署。架构与运行特性详见
-[部署 → API 与 Worker 分离](../model-deployment/deployment.md#api-worker)。
+[部署 → API 与 Worker 分离](../deployment/index.md)。
 
 ### 前置条件
 
@@ -324,7 +324,7 @@ python -m apps.worker.main --host 0.0.0.0 --port 9001
    WantedBy=multi-user.target
    ```
 
-4. 按 [部署 → 生产部署清单](../model-deployment/deployment.md#production-checklist) 完成上线前的配置项。
+4. 按 [部署 → 生产部署清单](../deployment/index.md) 完成上线前的配置项。
 
 ## 更新
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AvatarSummary, ExportVideoItem } from "../lib/api";
 import { ApiError, apiPostForm, buildApiUrl, buildWsUrl, uploadExportVideo } from "../lib/api";
+import { modelLabel } from "../lib/modelLabels";
 import type { FasterLivePortraitConfig } from "./SettingsPanel";
 
 const MAGIC_FRAME = new TextEncoder().encode("FRAM");
@@ -660,7 +661,7 @@ export function VideoCloneWorkspace({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-slate-900">{avatar.name ?? avatar.id}</span>
-                    <span className="block truncate text-xs text-slate-500">{avatar.model_type} · {avatar.width}x{avatar.height}</span>
+                    <span className="block truncate text-xs text-slate-500">{modelLabel(avatar.model_type)} · {avatar.width}x{avatar.height}</span>
                   </span>
                 </button>
               );

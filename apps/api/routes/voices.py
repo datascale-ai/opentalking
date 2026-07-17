@@ -7,7 +7,6 @@ import base64
 import io
 import json
 import logging
-import os
 import re
 import shutil
 import uuid
@@ -21,6 +20,16 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Reque
 from fastapi.responses import FileResponse, JSONResponse
 
 from opentalking.providers.tts.dashscope_qwen import clone as bailian_clone
+from opentalking.providers.tts.voice_assets import (
+    INDEXTTS_PROVIDER,
+    INDEXTTS_PROVIDERS,
+    LOCAL_COSYVOICE_PROVIDER,
+    LOCAL_F5_TTS_PROVIDER,
+    bundled_system_voice_root,
+    iter_voice_assets,
+    local_audio_model_root,
+    system_voice_roots,
+)
 from opentalking.voice.store import delete_entry, get_entry, init_voice_store, insert_clone, list_voices
 
 log = logging.getLogger(__name__)
@@ -31,13 +40,16 @@ _UPLOAD_DIR = Path("data/voice_uploads")
 LOCAL_COSYVOICE_SAMPLE_TEXT = "你好，今天阳光很好，我正在用自然清晰的声音，记录这一段音色。"
 LOCAL_COSYVOICE_MIN_ACTIVE_SEC = 2.0
 LOCAL_COSYVOICE_MIN_RMS_DBFS = -45.0
+_TECHNICAL_VOICE_LABEL_PREFIX_RE = re.compile(
+    r"^\s*(?:IndexTTS|CosyVoice|local_cosyvoice|local_indextts|local|本地)\s*[-_/：:·|]?\s*",
+    re.IGNORECASE,
+)
+_TECHNICAL_VOICE_LABEL_SUFFIX_RE = re.compile(
+    r"\s*[（(]\s*(?:IndexTTS|CosyVoice|local_cosyvoice|local_indextts|local|本地)\s*[)）]\s*$",
+    re.IGNORECASE,
+)
 LOCAL_COSYVOICE_MIN_RECOGNIZED_CHARS = 4
 LOCAL_COSYVOICE_MIN_TEXT_OVERLAP = 0.45
-INDEXTTS_PROVIDER = "indextts"
-INDEXTTS_LEGACY_PROVIDERS = {"local_indextts", "omnirt_indextts"}
-INDEXTTS_PROVIDERS = {INDEXTTS_PROVIDER, *INDEXTTS_LEGACY_PROVIDERS}
-
-
 class VoiceItem(TypedDict):
     id: int
     user_id: int
@@ -61,16 +73,7 @@ def _upload_dir() -> Path:
 
 
 def _local_audio_model_root() -> Path:
-    raw = os.environ.get("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "").strip()
-    try:
-        from opentalking.core.config import get_settings
-
-        raw = raw or (get_settings().local_audio_model_root or "").strip()
-    except Exception:
-        pass
-    if not raw:
-        raw = "./models/local-audio"
-    return Path(raw).expanduser().resolve()
+    return local_audio_model_root()
 
 
 def _safe_local_voice_id(label: str) -> str:
@@ -112,6 +115,19 @@ def _write_local_cosyvoice_prompt(
         + "\n",
         encoding="utf-8",
     )
+    return voice_dir
+
+
+def _write_local_f5_tts_prompt(*, voice_id: str, wav: bytes, prompt_text: str, display_label: str, target_model: str, validation: dict[str, Any] | None = None) -> Path:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
+        raise ValueError("invalid local voice id")
+    voice_dir = _local_audio_model_root() / "voices" / "clones" / voice_id
+    voice_dir.mkdir(parents=True, exist_ok=True)
+    clean_prompt_text = prompt_text.strip()
+    (voice_dir / "prompt.wav").write_bytes(wav)
+    if clean_prompt_text:
+        (voice_dir / "prompt.txt").write_text(clean_prompt_text, encoding="utf-8")
+    (voice_dir / "meta.json").write_text(json.dumps({"voice_id": voice_id, "display_label": display_label, "provider": LOCAL_F5_TTS_PROVIDER, "target_model": target_model, "prompt_audio": str(voice_dir / "prompt.wav"), "prompt_text": clean_prompt_text, "validation": validation or {}, "source": "clone"}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return voice_dir
 
 
@@ -183,6 +199,15 @@ def _wav_audio_stats(wav: bytes) -> dict[str, float]:
         "active_sec": float(active_sec),
         "rms_dbfs": float(rms_dbfs),
     }
+
+
+def _validate_local_f5_tts_prompt(wav: bytes) -> dict[str, Any]:
+    stats = _wav_audio_stats(wav)
+    if stats["duration_sec"] < 1.0:
+        raise HTTPException(status_code=400, detail="F5-TTS 参考音频过短，请录制 3-15 秒清晰人声。")
+    if stats["active_sec"] < 0.5 or stats["rms_dbfs"] < LOCAL_COSYVOICE_MIN_RMS_DBFS:
+        raise HTTPException(status_code=400, detail="F5-TTS 参考音频声音太小或静音太多，请靠近麦克风重录。")
+    return stats
 
 
 def _validate_local_indextts_prompt(wav: bytes) -> dict[str, Any]:
@@ -259,47 +284,38 @@ def _remove_local_cosyvoice_prompt(voice_id: str) -> None:
 
 
 def _bundled_system_voice_root() -> Path:
-    return Path(__file__).resolve().parents[3] / "opentalking" / "assets" / "voices" / "system"
+    return bundled_system_voice_root()
 
 
 def _system_voice_roots() -> list[Path]:
-    roots = [_local_audio_model_root() / "voices" / "system", _bundled_system_voice_root()]
-    out: list[Path] = []
-    seen: set[Path] = set()
-    for root in roots:
-        try:
-            resolved = root.resolve()
-        except OSError:
-            resolved = root
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        out.append(root)
-    return out
+    return system_voice_roots(_local_audio_model_root())
+
+
+def _public_voice_label(label: str, *, fallback: str) -> str:
+    cleaned = _TECHNICAL_VOICE_LABEL_PREFIX_RE.sub("", label or "").strip()
+    cleaned = _TECHNICAL_VOICE_LABEL_SUFFIX_RE.sub("", cleaned).strip()
+    return cleaned or fallback
 
 
 def _local_cosyvoice_system_voice_items() -> list[VoiceItem]:
-    root = _local_audio_model_root() / "voices" / "system"
-    if not root.is_dir():
-        return []
     items: list[VoiceItem] = []
-    for idx, voice_dir in enumerate(sorted(p for p in root.iterdir() if p.is_dir()), start=1):
-        voice_id = voice_dir.name
+    for idx, asset in enumerate(
+        iter_voice_assets(
+            provider=LOCAL_COSYVOICE_PROVIDER,
+            sources=("system",),
+            model_root=_local_audio_model_root(),
+            require_prompt_text=True,
+        ),
+        start=1,
+    ):
+        voice_id = asset.voice_id
         if not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
             continue
-        if not (voice_dir / "prompt.wav").is_file() or not (voice_dir / "prompt.txt").is_file():
-            continue
         label = voice_id
-        target_model: str | None = None
-        meta_path = voice_dir / "meta.json"
-        if meta_path.is_file():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                label = str(meta.get("display_label") or meta.get("label") or label)
-                tm = str(meta.get("target_model") or "").strip()
-                target_model = tm or None
-            except Exception:
-                pass
+        meta = asset.meta
+        label = _public_voice_label(str(meta.get("display_label") or meta.get("label") or label), fallback=voice_id)
+        tm = str(meta.get("target_model") or "").strip()
+        target_model = tm or None
         items.append(
             {
                 "id": -idx,
@@ -314,48 +330,46 @@ def _local_cosyvoice_system_voice_items() -> list[VoiceItem]:
     return items
 
 
-def _local_indextts_voice_items(provider: str, source: str) -> list[VoiceItem]:
-    if provider not in INDEXTTS_PROVIDERS or source not in {"system", "clones"}:
+def _local_f5_tts_voice_items(source: str) -> list[VoiceItem]:
+    if source not in {"system", "clones"}:
         return []
-    roots = [_local_audio_model_root() / "voices" / source]
-    if source == "system":
-        roots = _system_voice_roots()
     items: list[VoiceItem] = []
-    idx = 0
-    for root in roots:
-        if not root.is_dir():
+    for asset in iter_voice_assets(
+        provider=LOCAL_F5_TTS_PROVIDER,
+        sources=(source,),
+        model_root=_local_audio_model_root(),
+        require_prompt_text=source == "system",
+    ):
+        voice_id = asset.voice_id
+        if not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
             continue
-        for voice_dir in sorted(p for p in root.iterdir() if p.is_dir()):
-            idx += 1
-            voice_id = voice_dir.name
-            if not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
+        meta = asset.meta
+        label = _public_voice_label(str(meta.get("display_label") or meta.get("label") or voice_id), fallback=voice_id)
+        tm = str(meta.get("target_model") or "").strip()
+        items.append({"id": -len(items) - 1, "user_id": 1, "provider": LOCAL_F5_TTS_PROVIDER, "voice_id": voice_id, "display_label": label, "target_model": tm or None, "source": "clone" if source == "clones" else "system"})
+    return items
+
+
+def _local_indextts_voice_items(source: str) -> list[VoiceItem]:
+    if source not in {"system", "clones"}:
+        return []
+    items: list[VoiceItem] = []
+    seen: set[str] = set()
+    for provider in sorted(INDEXTTS_PROVIDERS):
+        for asset in iter_voice_assets(provider=provider, sources=(source,), model_root=_local_audio_model_root()):
+            voice_id = asset.voice_id
+            if voice_id in seen or not re.fullmatch(r"[A-Za-z0-9_-]{3,80}", voice_id):
                 continue
-            if not (voice_dir / "prompt.wav").is_file():
-                continue
-            label = voice_id
-            target_model: str | None = None
-            meta_path = voice_dir / "meta.json"
-            if meta_path.is_file():
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                    raw_providers = meta.get("providers")
-                    requested = {provider, *INDEXTTS_LEGACY_PROVIDERS} if provider == INDEXTTS_PROVIDER else {provider}
-                    if isinstance(raw_providers, list):
-                        allowed = {str(item).strip().lower() for item in raw_providers}
-                        if allowed and not (allowed & requested):
-                            continue
-                    elif str(meta.get("provider") or "").strip().lower() not in {"", *INDEXTTS_PROVIDERS}:
-                        continue
-                    label = str(meta.get("display_label") or meta.get("label") or label)
-                    tm = str(meta.get("target_model") or "").strip()
-                    target_model = tm or None
-                except Exception:
-                    pass
+            seen.add(voice_id)
+            meta = asset.meta
+            label = _public_voice_label(str(meta.get("display_label") or meta.get("label") or voice_id), fallback=voice_id)
+            tm = str(meta.get("target_model") or "").strip()
+            target_model = tm or None
             items.append(
                 {
-                    "id": -idx,
+                    "id": -len(items) - 1,
                     "user_id": 1,
-                    "provider": provider,
+                    "provider": INDEXTTS_PROVIDER,
                     "voice_id": voice_id,
                     "display_label": label,
                     "target_model": target_model,
@@ -428,9 +442,16 @@ async def get_voices(provider: str | None = None) -> JSONResponse:
             if key not in existing:
                 items.append(item)
                 existing.add(key)
+    if public_p is None or public_p == LOCAL_F5_TTS_PROVIDER:
+        for source in ("system", "clones"):
+            for item in _local_f5_tts_voice_items(source):
+                key = (item["provider"], item["voice_id"])
+                if key not in existing:
+                    items.append(item)
+                    existing.add(key)
     if public_p is None or public_p == INDEXTTS_PROVIDER:
         for source in ("system", "clones"):
-            for item in _local_indextts_voice_items(INDEXTTS_PROVIDER, source):
+            for item in _local_indextts_voice_items(source):
                 key = (item["provider"], item["voice_id"])
                 if key not in existing:
                     items.append(item)
@@ -474,10 +495,10 @@ async def post_voice_clone(
     prov = provider.strip().lower()
     if prov in {"xiaomi", "mimo"}:
         prov = "xiaomi_mimo"
-    if prov not in {"local_cosyvoice", "cosyvoice", "dashscope", "xiaomi_mimo", *INDEXTTS_PROVIDERS}:
+    if prov not in {"local_cosyvoice", "local_f5_tts", "cosyvoice", "dashscope", "xiaomi_mimo", *INDEXTTS_PROVIDERS}:
         raise HTTPException(
             status_code=400,
-            detail="provider 须为 local_cosyvoice、indextts、cosyvoice、dashscope 或 xiaomi_mimo",
+            detail="provider 须为 local_cosyvoice、local_f5_tts、indextts、cosyvoice、dashscope 或 xiaomi_mimo",
         )
 
     raw = await audio.read()
@@ -500,6 +521,14 @@ async def post_voice_clone(
     )
 
     try:
+        if prov == LOCAL_F5_TTS_PROVIDER:
+            voice_id = _safe_local_voice_id(label)
+            effective_model = tm or "SWivid/F5-TTS/F5TTS_v1_Base"
+            validation = _validate_local_f5_tts_prompt(wav)
+            _write_local_f5_tts_prompt(voice_id=voice_id, wav=wav, prompt_text=(prompt_text or "").strip(), display_label=label, target_model=effective_model, validation=validation)
+            eid = insert_clone(provider=LOCAL_F5_TTS_PROVIDER, voice_id=voice_id, display_label=label, target_model=effective_model)
+            return JSONResponse({"ok": True, "entry_id": eid, "voice_id": voice_id, "display_label": label, "provider": LOCAL_F5_TTS_PROVIDER, "target_model": effective_model, "message": "F5-TTS 复刻音色已保存，可用于 F5-TTS 合成。"})
+
         if prov in INDEXTTS_PROVIDERS:
             voice_id = _safe_local_voice_id(label)
             effective_model = tm or "IndexTeam/IndexTTS-2"
@@ -670,7 +699,7 @@ async def delete_voice_entry(entry_id: int) -> JSONResponse:
     if row.get("source") != "clone":
         raise HTTPException(status_code=400, detail="不能删除系统预设音色")
     if delete_entry(entry_id):
-        if row.get("provider") in {"local_cosyvoice", *INDEXTTS_PROVIDERS}:
+        if row.get("provider") in {"local_cosyvoice", "local_f5_tts", *INDEXTTS_PROVIDERS}:
             _remove_local_prompt(str(row.get("voice_id") or ""))
         return JSONResponse({"ok": True})
     raise HTTPException(status_code=404, detail="not found")

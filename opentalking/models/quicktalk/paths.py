@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from opentalking.core.model_paths import model_root
+
 log = logging.getLogger(__name__)
 
 
@@ -60,6 +62,21 @@ def quicktalk_asset_root_candidates(
             QuickTalkRootCandidate("OPENTALKING_QUICKTALK_ASSET_ROOT", env_asset_root)
         )
 
+    default_candidate: QuickTalkRootCandidate | None = None
+    if include_default and settings is not None:
+        models_dir = _path_from_raw(getattr(settings, "models_dir", ""))
+        default_candidate = QuickTalkRootCandidate(
+            "OPENTALKING_MODEL_ROOT/quicktalk",
+            (model_root(models_dir) / "quicktalk").resolve(),
+            default=True,
+        )
+        if os.environ.get("OPENTALKING_MODEL_ROOT", "").strip() or os.environ.get(
+            "DIGITAL_HUMAN_HOME",
+            "",
+        ).strip():
+            candidates.append(default_candidate)
+            default_candidate = None
+
     if include_legacy:
         legacy_settings_root = _settings_path(settings, "quicktalk_model_root")
         if legacy_settings_root is not None:
@@ -86,16 +103,8 @@ def quicktalk_asset_root_candidates(
                 )
             )
 
-    if include_default and settings is not None:
-        models_dir = _path_from_raw(getattr(settings, "models_dir", ""))
-        if models_dir is not None:
-            candidates.append(
-                QuickTalkRootCandidate(
-                    "settings.models_dir/quicktalk",
-                    (models_dir / "quicktalk").resolve(),
-                    default=True,
-                )
-            )
+    if default_candidate is not None:
+        candidates.append(default_candidate)
 
     return candidates
 

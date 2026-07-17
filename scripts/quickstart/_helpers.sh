@@ -135,6 +135,22 @@ quickstart_describe_port() {
   return 1
 }
 
+quickstart_pid_env_value() {
+  local pid="$1"
+  local name="$2"
+  local env_file="/proc/$pid/environ"
+
+  if [[ ! -r "$env_file" ]]; then
+    return 1
+  fi
+
+  tr '\0' '\n' < "$env_file" | awk -F= -v key="$name" '$1 == key {
+    sub("^[^=]*=", "")
+    print
+    exit
+  }'
+}
+
 quickstart_resolve_ffmpeg() {
   local py_bin="${repo_root:-}/.venv/bin/python"
 

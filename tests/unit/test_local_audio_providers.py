@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import queue
 import wave
 import importlib
 import sys
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,6 +35,7 @@ def _settings(**overrides):
         ("local_cosyvoice", "LocalCosyVoiceTTSAdapter"),
         ("local_qwen3_tts", "LocalQwen3TTSAdapter"),
         ("local_indextts", "LocalIndexTTSAdapter"),
+        ("local_f5_tts", "LocalF5TTSAdapter"),
     ],
 )
 def test_local_tts_providers_are_supported(provider: str, expected_cls: str, monkeypatch):
@@ -53,10 +56,54 @@ def test_local_tts_providers_are_supported(provider: str, expected_cls: str, mon
     assert adapter.model == "test-model"
 
 
-def test_local_indextts_status_uses_local_model_root(monkeypatch):
+def test_local_f5_tts_status_uses_local_model_root(monkeypatch, tmp_path):
     from opentalking.providers.tts.factory import tts_provider_config
 
-    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "/tmp/opentalking-local-audio")
+    local_audio_root = tmp_path / "local-audio"
+    model_repo_root = tmp_path / "model-repos"
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(local_audio_root))
+    monkeypatch.setenv("OPENTALKING_MODEL_REPO_ROOT", str(model_repo_root))
+    monkeypatch.setenv("OPENTALKING_TTS_LOCAL_F5_TTS_SERVICE_URL", "http://127.0.0.1:19095/synthesize")
+    monkeypatch.setattr(
+        "opentalking.providers.tts.factory._settings_value",
+        lambda _name, default="": default,
+    )
+    for key in (
+        "OPENTALKING_TTS_LOCAL_F5_TTS_MODEL",
+        "OPENTALKING_TTS_LOCAL_F5_TTS_MODEL_DIR",
+        "OPENTALKING_TTS_LOCAL_F5_TTS_RUNTIME_DIR",
+        "OPENTALKING_TTS_LOCAL_F5_TTS_CKPT_FILE",
+        "OPENTALKING_TTS_LOCAL_F5_TTS_VOCODER_LOCAL_PATH",
+        "OPENTALKING_TTS_LOCAL_F5_TTS_PROMPT_AUDIO",
+        "OPENTALKING_TTS_LOCAL_F5_TTS_DEVICE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    status = tts_provider_config("local_f5_tts")
+
+    assert status == {
+        "provider": "local_f5_tts",
+        "model": "SWivid/F5-TTS/F5TTS_v1_Base",
+        "model_dir": str(local_audio_root / "SWivid__F5-TTS__F5TTS_v1_Base"),
+        "voice": "local-default",
+        "device": "auto",
+        "key_set": False,
+        "service_url": "http://127.0.0.1:19095/synthesize",
+        "service_url_set": True,
+        "runtime_dir": str(model_repo_root / "F5-TTS"),
+        "ckpt_file": str(
+            local_audio_root / "SWivid__F5-TTS__F5TTS_v1_Base" / "model_1250000.safetensors"
+        ),
+        "vocoder_local_path": "",
+        "prompt_audio_set": False,
+    }
+
+
+def test_local_indextts_status_uses_local_model_root(monkeypatch, tmp_path):
+    from opentalking.providers.tts.factory import tts_provider_config
+
+    local_audio_root = tmp_path / "local-audio"
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(local_audio_root))
     monkeypatch.setenv("OPENTALKING_TTS_LOCAL_INDEXTTS_SERVICE_URL", "http://127.0.0.1:19092/synthesize")
     monkeypatch.setattr(
         "opentalking.providers.tts.factory._settings_value",
@@ -77,18 +124,18 @@ def test_local_indextts_status_uses_local_model_root(monkeypatch):
     assert status == {
         "provider": "local_indextts",
         "model": "IndexTeam/IndexTTS-2",
-        "model_dir": "/tmp/opentalking-local-audio/IndexTeam__IndexTTS-2",
+        "model_dir": str(local_audio_root / "IndexTeam__IndexTTS-2"),
         "voice": "local-default",
         "device": "auto",
         "key_set": False,
         "service_url": "http://127.0.0.1:19092/synthesize",
         "service_url_set": True,
-        "cfg_path": "/tmp/opentalking-local-audio/IndexTeam__IndexTTS-2/config.yaml",
+        "cfg_path": str(local_audio_root / "IndexTeam__IndexTTS-2" / "config.yaml"),
         "prompt_audio_set": False,
-        "w2v_bert_dir": "/tmp/opentalking-local-audio/facebook__w2v-bert-2.0",
-        "maskgct_dir": "/tmp/opentalking-local-audio/amphion__MaskGCT",
-        "campplus_dir": "/tmp/opentalking-local-audio/funasr__campplus",
-        "bigvgan_dir": "/tmp/opentalking-local-audio/nvidia__bigvgan_v2_22khz_80band_256x",
+        "w2v_bert_dir": str(local_audio_root / "facebook__w2v-bert-2.0"),
+        "maskgct_dir": str(local_audio_root / "amphion__MaskGCT"),
+        "campplus_dir": str(local_audio_root / "funasr__campplus"),
+        "bigvgan_dir": str(local_audio_root / "nvidia__bigvgan_v2_22khz_80band_256x"),
     }
 
 def test_indextts_public_provider_routes_to_configured_backend(monkeypatch):
@@ -1042,6 +1089,8 @@ def test_local_tts_adapters_read_settings_when_env_is_absent(monkeypatch):
         "OPENTALKING_LOCAL_TTS_DEVICE",
         "OPENTALKING_TTS_LOCAL_COSYVOICE_MODEL",
         "OPENTALKING_TTS_LOCAL_COSYVOICE_SERVICE_URL",
+        "OPENTALKING_TTS_LOCAL_QWEN3_TTS_MODEL",
+        "OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL",
         "OPENTALKING_LOCAL_QWEN3_TTS_MODEL",
         "OPENTALKING_LOCAL_QWEN3_TTS_SERVICE_URL",
     ]:
@@ -1067,6 +1116,24 @@ def test_local_tts_adapters_read_settings_when_env_is_absent(monkeypatch):
     assert cosy.device == "cpu"
     assert qwen3.model == "settings/Qwen3-TTS"
     assert qwen3.service_url == "http://127.0.0.1:19091/qwen3"
+
+
+def test_local_qwen3_provider_env_reaches_adapter(monkeypatch):
+    monkeypatch.setenv("OPENTALKING_TTS_LOCAL_QWEN3_TTS_MODEL", "provider/Qwen3")
+    monkeypatch.setenv(
+        "OPENTALKING_TTS_LOCAL_QWEN3_TTS_SERVICE_URL",
+        "http://127.0.0.1:19091/synthesize",
+    )
+
+    adapter = create_tts_adapter(
+        sample_rate=16000,
+        chunk_ms=20.0,
+        default_voice="local-voice",
+        tts_provider="local_qwen3_tts",
+    )
+
+    assert adapter.model == "provider/Qwen3"
+    assert adapter.service_url == "http://127.0.0.1:19091/synthesize"
 
 
 def test_tts_local_cosyvoice_service_url_map_routes_by_model(monkeypatch):
@@ -1265,6 +1332,7 @@ def test_stt_device_prefers_local_audio_env_over_default_settings(monkeypatch):
 
 def test_download_script_default_models_use_verified_12g_set(monkeypatch):
     monkeypatch.delenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", raising=False)
+    monkeypatch.setenv("OPENTALKING_MODEL_ROOT", "/opt/digital-human/models")
     from scripts import download_local_audio_models as downloader
 
     downloader = importlib.reload(downloader)
@@ -1279,7 +1347,7 @@ def test_download_script_default_models_use_verified_12g_set(monkeypatch):
         "indextts2-campplus",
         "indextts2-bigvgan",
     }.issubset(downloader.MODELS)
-    assert downloader.DEFAULT_ROOT == Path("./models/local-audio")
+    assert downloader.DEFAULT_ROOT == Path("/opt/digital-human/models/local-audio")
     assert "/data2" not in Path("scripts/download_local_audio_models.py").read_text(encoding="utf-8")
 
 
@@ -1974,3 +2042,143 @@ def test_local_cosyvoice_service_prewarm_loads_model_and_runs_short_synthesis(mo
     service.prewarm(text="你好")
 
     assert calls == ["model", "synth:你好:True"]
+
+
+def test_local_f5_tts_streams_pcm_from_service(monkeypatch):
+    from opentalking.providers.tts.local_f5_tts.adapter import LocalF5TTSAdapter
+
+    class FakeHeaders(dict):
+        def get(self, key, default=None):
+            return super().get(key.lower(), default)
+
+    class FakeResponse:
+        headers = FakeHeaders({"content-type": "audio/L16; rate=24000; channels=1", "x-audio-sample-rate": "24000"})
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_bytes(self):
+            yield np.array([0, 1200, -1200, 0], dtype="<i2").tobytes()
+
+    class FakeStream:
+        async def __aenter__(self):
+            return FakeResponse()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def stream(self, method, url, json):
+            assert method == "POST"
+            assert url == "http://127.0.0.1:19095/synthesize"
+            assert json["text"] == "你好"
+            assert json["sample_rate"] == 16000
+            return FakeStream()
+
+    monkeypatch.setattr("opentalking.providers.tts.local_f5_tts.adapter.httpx.AsyncClient", FakeClient)
+    adapter = LocalF5TTSAdapter(
+        service_url="http://127.0.0.1:19095/synthesize",
+        sample_rate=16000,
+        chunk_ms=20.0,
+    )
+
+    async def collect():
+        return [chunk async for chunk in adapter.synthesize_stream("你好", voice="local-default")]
+
+    chunks = asyncio.run(collect())
+
+    assert chunks
+    assert all(chunk.sample_rate == 16000 for chunk in chunks)
+    assert sum(int(chunk.data.size) for chunk in chunks) > 0
+
+
+def test_local_f5_tts_resolves_prompt_text_and_audio(tmp_path, monkeypatch):
+    from opentalking.providers.tts.local_f5_tts.adapter import LocalF5TTSAdapter
+
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(tmp_path / "models"))
+    voice_dir = tmp_path / "models" / "voices" / "clones" / "local-f5-voice"
+    voice_dir.mkdir(parents=True)
+    (voice_dir / "prompt.wav").write_bytes(b"RIFFtest")
+    (voice_dir / "prompt.txt").write_text("这是一段参考文本。", encoding="utf-8")
+    (voice_dir / "meta.json").write_text('{"provider":"local_f5_tts"}', encoding="utf-8")
+
+    adapter = LocalF5TTSAdapter(service_url="http://127.0.0.1:19095/synthesize")
+    prompt = adapter._resolve_voice_prompt("local-f5-voice")
+
+    assert prompt is not None
+    assert prompt.prompt_audio == voice_dir / "prompt.wav"
+    assert prompt.prompt_text == "这是一段参考文本。"
+
+
+def test_local_f5_tts_resolves_bundled_zero_shot_system_voice(monkeypatch):
+    from opentalking.providers.tts.local_f5_tts.adapter import LocalF5TTSAdapter
+    from opentalking.providers.tts.voice_assets import bundled_system_voice_root
+
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", "/tmp/opentalking-local-audio")
+    adapter = LocalF5TTSAdapter(service_url="http://127.0.0.1:19095/synthesize")
+    prompt = adapter._resolve_voice_prompt("local-office-serena")
+
+    assert prompt is not None
+    assert prompt.prompt_audio == bundled_system_voice_root() / "local-office-serena" / "prompt.wav"
+    assert prompt.prompt_text == "你好，欢迎来到OpenTalking。我会用自然清晰的声音，为你介绍今天的内容。"
+
+
+def test_download_script_knows_f5_tts_base_model():
+    from scripts import download_local_audio_models as downloader
+
+    assert downloader.MODELS["f5-tts-v1-base"] == ("hf", "SWivid/F5-TTS")
+    assert downloader.HF_ALLOW_PATTERNS["f5-tts-v1-base"] == [
+        "README.md",
+        "F5TTS_v1_Base/model_1250000.safetensors",
+        "F5TTS_v1_Base/vocab.txt",
+    ]
+    assert downloader.MODEL_REQUIRED_FILES["f5-tts-v1-base"] == (
+        "model_1250000.safetensors",
+    )
+    assert downloader._target(Path("/models"), "SWivid/F5-TTS", model_key="f5-tts-v1-base") == Path(
+        "/models/SWivid__F5-TTS__F5TTS_v1_Base"
+    )
+
+
+def test_local_f5_tts_service_module_exposes_routes(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENTALKING_LOCAL_AUDIO_MODEL_ROOT", str(tmp_path / "models"))
+    monkeypatch.setenv("OPENTALKING_TTS_LOCAL_F5_TTS_PRELOAD", "0")
+    module = importlib.import_module("scripts.local_f5_tts_service")
+
+    service = module.F5TTSService(preload=False)
+    app = module.create_app(service)
+    routes = {getattr(route, "path", "") for route in app.routes}
+
+    assert "/health" in routes
+    assert "/synthesize" in routes
+    assert service.model_dir == tmp_path / "models" / "SWivid__F5-TTS__F5TTS_v1_Base"
+    assert service.ckpt_file == service.model_dir / "model_1250000.safetensors"
+
+
+def test_start_local_f5_tts_script_refuses_main_venv(tmp_path):
+    repo = Path(__file__).resolve().parents[2]
+
+    result = subprocess.run(
+        ["bash", str(repo / "scripts" / "quickstart" / "start_local_f5_tts.sh"), "--port", "19995"],
+        cwd=repo,
+        env={
+            **os.environ,
+            "OPENTALKING_F5_TTS_PYTHON": str(repo / ".venv" / "bin" / "python"),
+            "OPENTALKING_QUICKSTART_ENV": str(tmp_path / "missing-env"),
+        },
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 1
+    assert "Refusing to start local F5-TTS from the OpenTalking main venv" in result.stderr

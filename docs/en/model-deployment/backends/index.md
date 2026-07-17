@@ -10,12 +10,19 @@ OpenTalking keeps orchestration, LLM, STT, TTS, avatar management, and WebRTC in
 ## Recommended Layout
 
 ```bash title="Terminal"
-export DIGITAL_HUMAN_HOME="$HOME/digital-human"
+# Change this to your deployment root
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
 export OPENTALKING_HOME="$DIGITAL_HUMAN_HOME/opentalking"
-export OMNIRT_REPO="$DIGITAL_HUMAN_HOME/omnirt"
-export OMNIRT_HOME="$OMNIRT_REPO/.omnirt"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
+export OMNIRT_REPO="$OPENTALKING_MODEL_REPO_ROOT/omnirt"
+export OMNIRT_HOME="$DIGITAL_HUMAN_HOME"
 export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
 ```
 
 ## Package Mirrors
@@ -42,7 +49,7 @@ curl -fsS http://127.0.0.1:9000/v1/audio2video/models | python3 -m json.tool
 - [Local Adapter](local.md)
 - [OmniRT](omnirt.md)
 - [Talking-Head Models](../talking-head/index.md)
-- [Support Matrix](../support-matrix.md)
+- [Support Matrix](../../deployment/support-matrix.md)
 
 ## Frontend Entry
 

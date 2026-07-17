@@ -13,6 +13,7 @@ from typing import Any, Protocol, runtime_checkable
 
 import numpy as np
 
+from opentalking.core.model_paths import model_root, runtime_root
 from opentalking.core.interfaces.model_adapter import ModelAdapter
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.pipeline.speak.render_pipeline import render_audio_chunk_sync
@@ -300,13 +301,7 @@ class LocalAudio2VideoClient:
         )
         if raw:
             return Path(raw).expanduser().resolve()
-        digital_home = os.environ.get("DIGITAL_HUMAN_HOME")
-        if digital_home:
-            return (Path(digital_home) / "models").expanduser().resolve()
-        sibling_models = (repo_root.parent / "models").resolve()
-        if sibling_models.exists():
-            return sibling_models
-        return (repo_root / "models").resolve()
+        return model_root().expanduser().resolve()
 
     @staticmethod
     def _resolve_musetalk_preprocess_python(repo_root: Path) -> Path | None:
@@ -318,8 +313,7 @@ class LocalAudio2VideoClient:
         digital_home = os.environ.get("DIGITAL_HUMAN_HOME")
         if digital_home:
             candidate = (
-                Path(digital_home)
-                / "runtimes"
+                runtime_root(repo_root=repo_root)
                 / "musetalk-preprocess"
                 / "venv"
                 / "bin"

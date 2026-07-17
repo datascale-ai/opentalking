@@ -14,7 +14,7 @@ brew install ffmpeg
 拉取 OpenTalking，并使用 CPU/macOS extra 创建环境：
 
 ```bash title="终端"
-git clone https://github.com/OpenTalker/opentalking.git
+git clone https://github.com/datascale-ai/opentalking.git
 cd opentalking
 
 export UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
@@ -33,37 +33,20 @@ source .venv/bin/activate
 下载 QuickTalk 权重和 HuBERT 文件：
 
 ```bash title="终端"
-mkdir -p models/quicktalk/checkpoints
+export OPENTALKING_MODEL_ROOT="${OPENTALKING_MODEL_ROOT:-$DIGITAL_HUMAN_HOME/models}"
+export OPENTALKING_QUICKTALK_ASSET_ROOT="${OPENTALKING_QUICKTALK_ASSET_ROOT:-$OPENTALKING_MODEL_ROOT/quicktalk}"
+mkdir -p "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 
 hf download datascale-ai/quicktalk \
-  quicktalk.pth \
-  repair.npy \
-  chinese-hubert-large/config.json \
-  chinese-hubert-large/preprocessor_config.json \
-  chinese-hubert-large/pytorch_model.bin \
-  --local-dir models/quicktalk/checkpoints
+  --local-dir "$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints"
 ```
 
-下载 InsightFace `buffalo_l` 到 QuickTalk auxiliary 目录：
-
-```bash title="终端"
-mkdir -p /tmp/opentalking-insightface \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l
-
-curl -L \
-  -o /tmp/opentalking-insightface/buffalo_l.zip \
-  https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip
-
-unzip -q -o /tmp/opentalking-insightface/buffalo_l.zip \
-  -d /tmp/opentalking-insightface
-rsync -a /tmp/opentalking-insightface/buffalo_l/ \
-  models/quicktalk/checkpoints/auxiliary/models/buffalo_l/
-```
+`datascale-ai/quicktalk` 已包含 QuickTalk、HuBERT 和 InsightFace `buffalo_l`。下载后应能看到 `$OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/`。
 
 最终目录应为：
 
 ```text
-models/quicktalk/
+$OPENTALKING_QUICKTALK_ASSET_ROOT/
   checkpoints/
     quicktalk.pth
     repair.npy
@@ -78,10 +61,10 @@ models/quicktalk/
 检查必需文件：
 
 ```bash title="终端"
-stat models/quicktalk/checkpoints/quicktalk.pth
-stat models/quicktalk/checkpoints/repair.npy
-stat models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin
-stat models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/quicktalk.pth
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/repair.npy
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/chinese-hubert-large/pytorch_model.bin
+stat $OPENTALKING_QUICKTALK_ASSET_ROOT/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx
 ```
 
 ## 3. 配置 `.env`
@@ -98,7 +81,7 @@ cp .env.example .env
 OPENTALKING_DEFAULT_MODEL=quicktalk
 OPENTALKING_FFMPEG_BIN=
 OPENTALKING_QUICKTALK_BACKEND=local
-OPENTALKING_QUICKTALK_ASSET_ROOT=./models/quicktalk
+OPENTALKING_QUICKTALK_ASSET_ROOT=$OPENTALKING_MODEL_ROOT/quicktalk
 OPENTALKING_QUICKTALK_MODEL_BACKEND=auto
 OPENTALKING_QUICKTALK_WORKER_CACHE=1
 
@@ -121,11 +104,12 @@ OPENTALKING_QUICKTALK_FPS=14
 ```bash title="终端"
 python - <<'PY'
 from pathlib import Path
+import os
 import torch
 import onnxruntime as ort
 from opentalking.models.quicktalk.runtime_v2 import ensure_ffmpeg
 
-root = Path("models/quicktalk/checkpoints")
+root = Path(os.environ["OPENTALKING_QUICKTALK_ASSET_ROOT"]) / "checkpoints"
 for path in [
     root / "quicktalk.pth",
     root / "repair.npy",

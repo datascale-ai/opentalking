@@ -1,0 +1,19 @@
+{
+  "voice_id": "local-office-serena",
+  "display_label": "职场女声 Serena（本地）",
+  "provider": "local_cosyvoice",
+  "target_model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  "mode": "zero_shot",
+  "source": "system",
+  "prompt_audio": "/data2/zhongyi/model/opentalking-local-audio/voices/system/local-office-serena/prompt.wav",
+  "prompt_text": "你好，欢迎来到OpenTalking。我会用自然清晰的声音，为你介绍今天的内容。",
+  "prompt_source": "generated_once_from_dashscope_qwen_tts",
+  "qwen_reference_voice": "Serena",
+  "avatar_hint": "职场女",
+  "role": "office-woman",
+  "style": "稳重、专业、适合客服和商务说明",
+  "duration_sec": 5.52,
+  "sample_rate": 24000,
+  "bytes": 265004,
+  "storage_note": "prompt.wav is a local Qwen-generated reference sample; kept small as one WAV per built-in local voice."
+}

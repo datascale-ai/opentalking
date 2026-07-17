@@ -120,7 +120,7 @@ If several OpenTalking instances are running, check `status.sh` first.
 
 ### `prepare_wav2lip_image_asset.py`
 
-Prepare one image as a Wav2Lip avatar asset:
+Prepare one image as avatar reference-frame derivatives:
 
 ```bash
 uv run python scripts/prepare_wav2lip_image_asset.py \
@@ -134,7 +134,7 @@ The script writes `manifest.json`, `reference.png`, `preview.png`, frame assets,
 
 ### `prepare_wav2lip_video_asset.py`
 
-Prepare one video as a Wav2Lip avatar asset:
+Prepare one video as avatar reference-frame derivatives:
 
 ```bash
 uv run python scripts/prepare_wav2lip_video_asset.py \

@@ -1,4 +1,4 @@
-import { buildTTSPreviewPayload } from "./ttsPreview";
+import { buildTTSPreviewPayload, requestDuoDialogPreview } from "./ttsPreview";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
 import { indexTTSEmotionPresetConfig } from "../components/VideoCreationWorkspace";
 
@@ -102,3 +102,18 @@ localIndexTtsPreviewPayload satisfies {
   tts_provider: TtsProviderExtended;
   indextts_config?: { emotion_mode: "voice" | "text" | "vector" | "audio" };
 };
+
+
+const duoDialogPreviewPromise = requestDuoDialogPreview({
+  lines: [
+    { id: "line-1", role: "left", text: "左侧开场" },
+    { id: "line-2", role: "right", text: "右侧回应" },
+  ],
+  speakers: {
+    left: { tts_provider: "edge", voice: "zh-CN-XiaoxiaoNeural" },
+    right: { tts_provider: "xiaomi_mimo", tts_model: "mimo-v2.5-tts", voice: "冰糖" },
+  },
+  gap_ms: 120,
+});
+
+duoDialogPreviewPromise satisfies Promise<Blob>;

@@ -1,6 +1,7 @@
 import { ArrowUpRight, GitFork, Github, Star, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { productLinks } from "../content";
+import type { Language } from "../locales";
 
 type GitHubRepoStats = {
   stars: number | null;
@@ -26,13 +27,50 @@ const getGitHubStatsUrl = () => {
     : `${githubApiProxyPath}?${cacheBuster}`;
 };
 
-export function GitHubStats() {
+type GitHubStatsProps = {
+  language: Language;
+};
+
+const starNudgeCopy = {
+  zh: {
+    dialogLabel: "GitHub Star 引导",
+    closeLabel: "关闭 GitHub Star 引导",
+    message: (
+      <>
+        如果你也喜欢这个项目
+        <br />
+        来 GitHub 点个🌟吧(=w=)
+      </>
+    ),
+    cta: "打开 GitHub 仓库",
+  },
+  en: {
+    dialogLabel: "GitHub Star prompt",
+    closeLabel: "Close GitHub Star prompt",
+    message: (
+      <>
+        If OpenTalking helps you,
+        <br />
+        give us a star on GitHub 🌟
+      </>
+    ),
+    cta: "Open GitHub repo",
+  },
+} satisfies Record<Language, {
+  dialogLabel: string;
+  closeLabel: string;
+  message: JSX.Element;
+  cta: string;
+}>;
+
+export function GitHubStats({ language }: GitHubStatsProps) {
   const [stats, setStats] = useState<GitHubRepoStats>({
     stars: null,
     forks: null,
     loading: true,
   });
   const [showStarNudge, setShowStarNudge] = useState(false);
+  const copy = starNudgeCopy[language];
 
   useEffect(() => {
     let isMounted = true;
@@ -111,16 +149,16 @@ export function GitHubStats() {
         </span>
       </button>
       {showStarNudge ? (
-        <div id="github-star-nudge" className="github-star-nudge" role="dialog" aria-label="GitHub Star 引导">
+        <div id="github-star-nudge" className="github-star-nudge" role="dialog" aria-label={copy.dialogLabel}>
           <button
             type="button"
             className="focus-ring absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-ink"
-            aria-label="关闭 GitHub Star 引导"
+            aria-label={copy.closeLabel}
             onClick={() => setShowStarNudge(false)}
           >
             <X className="h-4 w-4" />
           </button>
-          <p className="pr-7 text-sm font-semibold text-ink">如果你也喜欢这个项目<br />来GitHub点个🌟吧(=w=)</p>
+          <p className="pr-7 text-sm font-semibold text-ink">{copy.message}</p>
           <p className="mt-2 text-xs leading-5 text-indigo-950/64">
           </p>
           <a
@@ -130,7 +168,7 @@ export function GitHubStats() {
             rel="noreferrer"
             onClick={() => setShowStarNudge(false)}
           >
-            打开 GitHub 仓库
+            {copy.cta}
             <ArrowUpRight className="h-4 w-4" />
           </a>
         </div>

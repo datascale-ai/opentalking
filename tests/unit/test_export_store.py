@@ -8,10 +8,91 @@ import pytest
 from opentalking.export_store import (
     ExportTooLargeError,
     create_video_export,
+    create_video_export_from_file,
     delete_video_export,
     get_video_export,
     list_video_exports,
 )
+
+
+def test_create_video_export_from_file_streams_content_and_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"mp4-file-content")
+
+    def forbidden_read_bytes(_self: Path) -> bytes:
+        raise AssertionError("file export must not call read_bytes")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden_read_bytes)
+    item = create_video_export_from_file(
+        tmp_path / "exports",
+        source=source,
+        mime_type="video/mp4",
+        kind="video_creation",
+        title="DOGO",
+        duration_sec=1.25,
+        session_id=None,
+        avatar_id="dogo-light2d",
+        model="mock",
+        max_bytes=1024,
+    )
+
+    assert item["size_bytes"] == len(b"mp4-file-content")
+    assert item["model"] == "mock"
+    assert Path(item["path"]).open("rb").read() == b"mp4-file-content"
+
+
+def test_create_video_export_from_file_uses_stat_limit_and_cleans_up(tmp_path: Path) -> None:
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"too-large")
+
+    with pytest.raises(ExportTooLargeError):
+        create_video_export_from_file(
+            tmp_path / "exports",
+            source=source,
+            mime_type="video/mp4",
+            kind="video_creation",
+            title="DOGO",
+            duration_sec=None,
+            session_id=None,
+            avatar_id="dogo-light2d",
+            model="mock",
+            max_bytes=3,
+        )
+
+    assert list((tmp_path / "exports").rglob("metadata.json")) == []
+
+
+def test_create_video_export_from_file_cleans_up_partial_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import shutil
+
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"mp4")
+
+    def fail_copy(*_args: object, **_kwargs: object) -> None:
+        raise OSError("copy failed")
+
+    monkeypatch.setattr(shutil, "copyfileobj", fail_copy)
+    with pytest.raises(OSError, match="copy failed"):
+        create_video_export_from_file(
+            tmp_path / "exports",
+            source=source,
+            mime_type="video/mp4",
+            kind="video_creation",
+            title="DOGO",
+            duration_sec=None,
+            session_id=None,
+            avatar_id="dogo-light2d",
+            model="mock",
+            max_bytes=1024,
+        )
+
+    assert not list((tmp_path / "exports").rglob("recording.mp4"))
 
 
 def test_create_video_export_writes_file_and_metadata(tmp_path: Path) -> None:

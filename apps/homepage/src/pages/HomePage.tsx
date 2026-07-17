@@ -16,9 +16,22 @@ type HomePageProps = {
   onOpenCase: (slug: string) => void;
 };
 
+const showcaseCaseSlugs = [
+  "ecommerce-livestream",
+  "huangshan-tour-guide",
+  "medical-guide-assistant",
+  "dual-news-anchor",
+  "museum-artifact-guide",
+  "government-service-guide",
+  "multilingual-product-demo",
+];
+
 export function HomePage({ content, onNavigate, onOpenCase }: HomePageProps) {
   const { home } = content;
-  const showcaseCases = content.caseStudies.filter((item) => !item.comingSoon);
+  const showcaseCases = showcaseCaseSlugs.flatMap((slug) => {
+    const item = content.caseStudies.find((caseItem) => caseItem.slug === slug);
+    return item ? [item] : [];
+  });
 
   return (
     <>

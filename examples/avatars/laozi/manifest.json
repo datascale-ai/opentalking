@@ -196,6 +196,7 @@
         ]
       ]
     },
-    "preferred_wav2lip_postprocess_mode": "opentalking_improved"
+    "preferred_wav2lip_postprocess_mode": "opentalking_improved",
+    "person_mode": "single"
   }
 }

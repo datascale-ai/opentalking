@@ -16,7 +16,7 @@ export type CaseStudy = {
   slug: string;
   title: string;
   eyebrow: string;
-  category: "livestream" | "media" | "character" | "companion" | "experiment";
+  category: "livestream" | "media" | "tourism" | "healthcare" | "government" | "character" | "companion" | "experiment";
   categoryLabel: string;
   description: string;
   detailIntro: string;
@@ -27,6 +27,14 @@ export type CaseStudy = {
   accent: "cyan" | "mint" | "amber" | "violet" | "rose" | "slate";
   comingSoon?: boolean;
   videoUrl?: string;
+  videoVariants?: Array<{
+    title: string;
+    description: string;
+    url: string;
+    embedUrl?: string;
+    poster?: string;
+    videoId?: string;
+  }>;
   sections: Array<{
     title: string;
     body: string;
@@ -83,6 +91,9 @@ export const caseCategories = [
   { key: "all", label: "全部场景" },
   { key: "livestream", label: "直播带货" },
   { key: "media", label: "媒体播报" },
+  { key: "tourism", label: "文旅导览" },
+  { key: "healthcare", label: "医疗服务" },
+  { key: "government", label: "政务服务" },
   { key: "character", label: "角色内容" },
   { key: "companion", label: "陪伴互动" },
   { key: "experiment", label: "创意实验" },
@@ -130,11 +141,28 @@ export const caseStudies: CaseStudy[] = [
       "面向商品讲解、评论问答和直播间陪跑，把语音回复、字幕和实时视频渲染整合到同一链路。",
     detailIntro:
       "用 OpenTalking 搭建一个可互动的数字人直播间，让商品介绍、用户问题和优惠转化都能通过实时语音和画面完成。",
-    route: "Local GPU 或 OmniRT 高质量路线",
+    route: "双机位直播带货演示",
     features: ["实时问答", "角色音色", "字幕同步"],
-    image: "/images/cases/live-sales.jpeg",
+    image: "/images/cases/ecommerce-live-front-preview.png",
     accent: "amber",
-    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d9d848c95001834806724661995/SaicQA0Ah7QA.mp4",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcb745001834809665869890/vkxsFysr5REA.mp4",
+    videoVariants: [
+      {
+        title: "正视直播间",
+        description: "正面机位展示商品讲解、优惠信息和直播间视觉元素，适合官网主案例展示。",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcb745001834809665869890/vkxsFysr5REA.mp4",
+        embedUrl: "https://player.bilibili.com/player.html?bvid=BV1jhT76hENu&page=1&autoplay=0&high_quality=1&danmaku=0",
+        poster: "/images/cases/ecommerce-live-front-preview.png",
+        videoId: "case-ecommerce-livestream-front",
+      },
+      {
+        title: "斜视带货机位",
+        description: "加入真实拍摄机位感，突出桌面商品、导购动作和直播场景的空间层次。",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/cca683435001834809670031995/aswhi0HNmYkA.mp4",
+        poster: "/images/cases/ecommerce-live-angle-preview.png",
+        videoId: "case-ecommerce-livestream-angle",
+      },
+    ],
     sections: [
       {
         title: "场景挑战",
@@ -150,6 +178,208 @@ export const caseStudies: CaseStudy[] = [
       },
     ],
     outcomes: ["商品讲解自动化", "评论问答实时响应", "字幕与视频同步展示"],
+  },
+  {
+    slug: "huangshan-tour-guide",
+    title: "黄山文旅导览",
+    eyebrow: "沉浸讲解",
+    category: "tourism",
+    categoryLabel: "文旅导览",
+    description:
+      "面向景区、城市展馆和文旅宣传，用数字人讲解自然景观、路线亮点和地域文化。",
+    detailIntro:
+      "以黄山介绍为例，把景区画面、导览口播和数字讲解员结合起来，适合游客中心、城市展厅和线上文旅内容展示。",
+    route: "QuickTalk / FlashTalk",
+    features: ["景区讲解", "沉浸画面", "多语言扩展"],
+    image: "/images/cases/huangshan-guide-preview.png",
+    accent: "mint",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/742bcf735001834809665869970/T9jkqMRNCacA.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "文旅内容既要讲清景点特色，也要保持画面感染力和讲解节奏，传统拍摄更新成本较高。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入景区知识库、路线推荐、多语言导览和游客问答，把单条宣传片扩展成可互动的数字导览员。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 QuickTalk / FlashTalk：先快速验证导览脚本和画面融合，再按展厅大屏或宣传片质量要求升级。",
+      },
+    ],
+    outcomes: ["景区讲解视频化", "导览内容可复用", "支持后续多语言与问答扩展"],
+  },
+  {
+    slug: "medical-guide-assistant",
+    title: "医疗导诊助手",
+    eyebrow: "智能导诊",
+    category: "healthcare",
+    categoryLabel: "医疗服务",
+    description:
+      "面向医院大厅、线上问诊入口和健康服务平台，用数字人完成就诊指引、科室导航和检查咨询。",
+    detailIntro:
+      "以医疗导诊助手为例，把数字人讲解、导诊流程、科室导航和多语言服务整合到同一产品体验中，适合医院服务台、互联网医院和健康管理平台。",
+    route: "中英双语导诊演示",
+    features: ["就诊指引", "科室导航", "双语服务"],
+    image: "/images/cases/medical-guide-zh-preview.png",
+    accent: "cyan",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/9b52494c5001834809859448065/S7eTJ67rBLUA.mp4",
+    videoVariants: [
+      {
+        title: "中文导诊助手",
+        description: "面向中文就诊用户，展示挂号缴费、门诊诊室、检查科室和药房等关键导诊路径。",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/9b52494c5001834809859448065/S7eTJ67rBLUA.mp4",
+        poster: "/images/cases/medical-guide-zh-preview.png",
+        videoId: "case-medical-guide-assistant-zh",
+      },
+      {
+        title: "English medical guide",
+        description: "为外籍患者或国际医疗服务场景提供英文导诊说明，覆盖问诊入口、科室导航和检查咨询。",
+        url: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/82952c555001834809852510401/uTMRhy1wCnoA.mp4",
+        poster: "/images/cases/medical-guide-en-preview.png",
+        videoId: "case-medical-guide-assistant-en",
+      },
+    ],
+    sections: [
+      {
+        title: "场景挑战",
+        body: "医院导诊需要把流程、地点、时间和注意事项讲清楚，同时保持服务语气稳定，避免用户在复杂流程里反复询问。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入医院知识库、科室导航、检查须知、挂号规则和多语言问答，让数字人承担高频咨询和基础分诊前置服务。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 QuickTalk / FlashTalk：先快速验证导诊脚本和服务流程，再根据大厅屏幕、服务终端或线上入口的画质要求升级。",
+      },
+    ],
+    outcomes: ["高频导诊问题自动化", "减少服务台重复咨询", "支持中英文患者服务"],
+  },
+  {
+    slug: "dual-news-anchor",
+    title: "双人新闻播报",
+    eyebrow: "演播室播报",
+    category: "media",
+    categoryLabel: "媒体播报",
+    description:
+      "面向新闻栏目、企业资讯和专题访谈，用双人主播形态提升播报节奏和画面层次。",
+    detailIntro:
+      "双人新闻播报适合把资讯口播、主题切换和演播室画面组织成更完整的栏目体验，让数字人内容更接近真实节目形态。",
+    route: "FlashTalk / OmniRT",
+    features: ["双主播画面", "栏目化脚本", "稳定播报"],
+    image: "/images/cases/dual-news-anchor-preview.png",
+    accent: "violet",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/d3cd4cf35001834810577009103/pSgQNxLh7R8A.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "新闻类内容不仅需要稳定口型和清晰声音，还需要更自然的画面节奏。双主播形态能承载片头导语、观点切换和专题播报等更丰富的节目结构。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入新闻稿库、栏目模板、多角色音色和审核流程，把单条播报扩展成可持续生产的企业资讯或行业快讯栏目。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 FlashTalk / OmniRT：更适合双人画面、长文本播报和栏目化展示，对画质稳定性和人物表现的一致性要求更高的场景。",
+      },
+    ],
+    outcomes: ["提升播报画面层次", "适合栏目化内容生产", "支持多角色与多音色扩展"],
+  },
+  {
+    slug: "museum-artifact-guide",
+    title: "博物馆文物讲解",
+    eyebrow: "文化导览",
+    category: "tourism",
+    categoryLabel: "文旅导览",
+    description:
+      "面向博物馆、展厅和文化空间，用数字讲解员呈现文物背景、历史脉络和展陈亮点。",
+    detailIntro:
+      "博物馆文物讲解适合把展品知识、导览脚本和数字人讲述结合起来，帮助观众更轻松地理解文物故事与文化价值。",
+    route: "知识库 + FlashTalk",
+    features: ["文物知识库", "展陈讲解", "多语言扩展"],
+    image: "/images/cases/museum-artifact-guide-preview.png",
+    accent: "mint",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/6e5ec39a5001834810745706622/JafPI96NJ3MA.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "展馆讲解需要兼顾知识准确性、叙事节奏和观众理解门槛，传统讲解视频更新慢，也难以覆盖不同主题和语言版本。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入展品知识库、策展脚本、问答检索和多语言音色，让数字讲解员在不同展区复用，并逐步扩展为互动导览入口。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 FlashTalk / OmniRT：适合展厅大屏、文化宣传片和高质感讲解内容，对画面稳定性、口型自然度和声音质感要求更高。",
+      },
+    ],
+    outcomes: ["降低展品讲解制作成本", "支持知识库驱动内容更新", "适合展厅与线上文博传播"],
+  },
+  {
+    slug: "government-service-guide",
+    title: "政务办事引导",
+    eyebrow: "公共服务",
+    category: "government",
+    categoryLabel: "政务服务",
+    description:
+      "面向政务大厅、线上办事入口和公共服务终端，用数字人说明流程、材料和办理路径。",
+    detailIntro:
+      "政务办事引导可以把办事指南、材料清单、办理窗口和常见问题转化为更友好的数字人讲解，适合大厅屏、政务小程序和自助终端。",
+    route: "知识库 + 私有化部署",
+    features: ["流程说明", "材料清单", "政策问答"],
+    image: "/images/cases/government-service-guide-preview.jpg",
+    accent: "cyan",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/c6e8617c5001834810743173763/AyYa9BzYNj4A.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "政务服务咨询高频且细节多，用户常常需要反复确认材料、窗口、时限和办理条件，服务人员也承担大量重复说明工作。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入政策知识库、办事流程库、表单示例和大厅导览信息，把数字人部署到线上入口或线下终端，承接高频咨询。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 QuickTalk / FlashTalk + 私有化部署：先验证办事流程和知识问答，再根据政务内网、隐私合规和终端形态选择部署路线。",
+      },
+    ],
+    outcomes: ["减少重复咨询压力", "办事指南表达更清晰", "适合政务终端和线上入口"],
+  },
+  {
+    slug: "multilingual-product-demo",
+    title: "多语种商品讲解",
+    eyebrow: "跨境讲解",
+    category: "livestream",
+    categoryLabel: "直播带货",
+    description:
+      "面向跨境电商、品牌出海和多语言商品展示，用数字人完成商品卖点、使用场景和购买引导讲解。",
+    detailIntro:
+      "多语种商品讲解适合把商品知识、脚本模板、音色配置和多语言 TTS 串联起来，让同一套商品内容快速生成不同语言版本。",
+    route: "多语言 TTS + FlashTalk",
+    features: ["多语种讲解", "商品知识库", "品牌出海"],
+    image: "/images/cases/multilingual-product-demo-preview.png",
+    accent: "amber",
+    videoUrl: "https://1441945933.vod-qcloud.com/0b66444dvodcq1441945933/8d86631a5001834811005535947/eWzWhyEB5u4A.mp4",
+    sections: [
+      {
+        title: "场景挑战",
+        body: "跨境商品讲解需要同时处理语言版本、商品卖点、品牌语气和画面一致性，传统拍摄或人工配音很难快速覆盖多个市场。",
+      },
+      {
+        title: "适合扩展",
+        body: "可以接入商品知识库、多语言脚本、音色配置和批量生成流程，把单个商品素材扩展成面向不同国家和平台的讲解模板。",
+      },
+      {
+        title: "推荐模型",
+        body: "推荐 FlashTalk / OmniRT + 多语言 TTS：适合品牌出海、跨境电商和多平台内容分发，对口型自然度和多语言声音一致性要求更高。",
+      },
+    ],
+    outcomes: ["快速生成多语言商品视频", "降低跨境内容制作成本", "适合批量商品讲解与投放"],
   },
   {
     slug: "news-anchor",

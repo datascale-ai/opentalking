@@ -7,13 +7,13 @@
 
 | 模型 | backend | 推荐场景 | 证据等级 | 详情 |
 |------|---------|----------|----------|------|
-| `mock` | `mock` | 首次运行、CI、排查 API/WebRTC | 已内置，已验证 | [Mock](../mock.md) |
+| `mock` | `mock` | 首次运行、CI、排查 API/WebRTC | 已内置，已验证 | [Mock](../../avatar_models/mock.md) |
 | `wav2lip` | `local` / `omnirt` | 第一个真实唇形模型 | local adapter 已内置；OmniRT 路径已验证 | [Local](../wav2lip/local.md) / [OmniRT](../wav2lip/omnirt.md) |
 | `musetalk` | `local` / `omnirt` / `direct_ws` | 使用进程内启动或外部服务获得 MuseTalk 质量 | local adapter 已内置；OmniRT/direct_ws 路径已文档化 | [Local](../musetalk/local.md) / [OmniRT](../musetalk/omnirt.md) |
 | `quicktalk` | `local` / `omnirt` | 本地实时 adapter 或 OmniRT 服务化部署 | local 已内置；OmniRT 路径已接入 | [Local](../quicktalk/local.md) / [OmniRT](../quicktalk/omnirt.md) |
-| `fasterliveportrait` | `omnirt` | 单卡实时音频驱动头像并贴回原始资产图 | 已文档化 | [FasterLivePortrait](../fasterliveportrait.md) |
-| `flashtalk` | `omnirt` | 高质量私有化、GPU/NPU 重模型 | OmniRT/Ascend 路径已验证 | [FlashTalk](../flashtalk.md) |
-| `flashhead` | `direct_ws` | 已有独立 FlashHead 服务 | 已文档化 | [FlashHead](../flashhead.md) |
+| `fasterliveportrait` | `omnirt` | 单卡实时音频驱动头像并贴回原始资产图 | 已文档化 | [FasterLivePortrait](../../avatar_models/fasterliveportrait.md) |
+| `flashtalk` | `omnirt` | 高质量私有化、GPU/NPU 重模型 | OmniRT/Ascend 路径已验证 | [FlashTalk](../../avatar_models/flashtalk.md) |
+| `flashhead` | `direct_ws` | 已有独立 FlashHead 服务 | 已文档化 | [FlashHead](../../avatar_models/flashhead.md) |
 
 ## Backend 行为
 
@@ -27,11 +27,18 @@
 ## 通用准备
 
 ```bash title="终端"
-export DIGITAL_HUMAN_HOME="$HOME/digital-human"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+# 改成你自己的部署根目录
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
 export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
-export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
-export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OMNIRT_HOME="${OMNIRT_HOME:-$OPENTALKING_MODEL_REPO_ROOT/omnirt}"
+export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$OPENTALKING_MODEL_REPO_ROOT/FasterLivePortrait}"
 
 mkdir -p "$DIGITAL_HUMAN_HOME" "$OMNIRT_MODEL_ROOT"
 cd "$DIGITAL_HUMAN_HOME"

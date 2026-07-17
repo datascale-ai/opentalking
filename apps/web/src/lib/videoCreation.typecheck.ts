@@ -81,3 +81,23 @@ const indexTtsVideoCreationVoiceClone: CreateVideoCreationJobInput = {
 };
 
 void indexTtsVideoCreationVoiceClone;
+
+
+const duoDialogPerRoleTtsJob: CreateVideoCreationJobInput = {
+  model: "quicktalk",
+  avatarId: "duo-anchor",
+  audioSource: "duo_dialog",
+  duoDialog: {
+    lines: [
+      { id: "line-1", role: "left", text: "左侧开场" },
+      { id: "line-2", role: "right", text: "右侧回应" },
+    ],
+    speakers: {
+      left: { tts_provider: "edge", voice: "zh-CN-XiaoxiaoNeural" },
+      right: { tts_provider: "xiaomi_mimo", tts_model: "mimo-v2.5-tts", voice: "冰糖" },
+    },
+    gap_ms: 120,
+  },
+};
+
+void duoDialogPerRoleTtsJob;

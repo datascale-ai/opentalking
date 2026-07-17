@@ -37,7 +37,7 @@ flowchart LR
 
 - Finish [AI Customer Support](customer-support.md) or at least validate `mock`.
 - Prepare a display-friendly avatar. See [Custom Avatar](../tutorials/cases/custom-avatar.md).
-- For real lip-sync video, deploy at least one talking-head backend in [Model Deployment](../model-deployment/index.md).
+- For real lip-sync video, deploy at least one talking-head backend in [Model Deployment](../deployment/index.md).
 
 ## 1. Prepare Product Facts
 
@@ -112,5 +112,5 @@ bash scripts/start_unified.sh --backend omnirt --model flashtalk --omnirt http:/
 | Speech sounds mechanical | Shorten each text segment and make the prompt more conversational. |
 | The LLM drifts away from the product | Pass structured product facts from the business layer and require grounded answers. |
 | First frame is slow | Warm up the real model or create the session before the live segment starts. |
-| The live room needs concurrency | Use API/Worker split and external Redis; see [Deployment](../model-deployment/deployment.md). |
+| The live room needs concurrency | Use API/Worker split and external Redis; see [Deployment](../deployment/index.md). |
 

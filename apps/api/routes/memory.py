@@ -15,6 +15,7 @@ from opentalking.persona.wechat_import import WeChatImportJobRegistry
 from opentalking.providers.memory.decision_agent import MemoryDecisionAgent
 from opentalking.providers.memory.factory import build_memory_provider
 from opentalking.providers.memory.runtime import MemoryRuntime, normalize_memory_scope
+from opentalking.providers.memory.sqlite_provider import SQLiteMemoryProvider
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -36,16 +37,6 @@ class MemoryImportRequest(BaseModel):
     character_id: str
     turns: list[MemoryTurn]
     source: str | None = None
-
-
-class WeChatSpeakerSelectionRequest(BaseModel):
-    target_speaker_id: str
-
-
-class WeChatImportCommitRequest(BaseModel):
-    persona_id: str
-    persona_name: str | None = None
-    description: str | None = None
 
 
 def _profile(value: str | None) -> str:
@@ -74,6 +65,28 @@ def _wechat_registry(request: Request) -> WeChatImportJobRegistry:
     )
     request.app.state.wechat_import_registry = registry
     return registry
+
+
+def _fallback_memory_provider() -> SQLiteMemoryProvider:
+    settings = get_settings()
+    return SQLiteMemoryProvider(settings.memory_sqlite_path)
+
+
+async def _memory_provider():
+    try:
+        return build_memory_provider()
+    except Exception:  # noqa: BLE001
+        return _fallback_memory_provider()
+
+
+class WeChatSpeakerSelectionRequest(BaseModel):
+    target_speaker_id: str
+
+
+class WeChatImportCommitRequest(BaseModel):
+    persona_id: str
+    persona_name: str | None = None
+    description: str | None = None
 
 
 @router.post("/wechat-import")
@@ -172,7 +185,7 @@ async def list_libraries(
     profile_id: str = Query("default"),
     character_id: str = Query(...),
 ) -> dict[str, list[dict[str, object]]]:
-    provider = build_memory_provider()
+    provider = await _memory_provider()
     items = await provider.list_libraries(
         profile_id=_profile(profile_id),
         character_id=_ensure_character(character_id),
@@ -182,7 +195,7 @@ async def list_libraries(
 
 @router.post("/libraries")
 async def create_library(body: MemoryLibraryRequest) -> dict[str, object]:
-    provider = build_memory_provider()
+    provider = await _memory_provider()
     library = await provider.create_library(
         library_id=_library_id(body.id),
         name=(body.name or "").strip() or None,
@@ -198,7 +211,7 @@ async def list_items(
     profile_id: str = Query("default"),
     character_id: str = Query(...),
 ) -> dict[str, list[dict[str, object]]]:
-    provider = build_memory_provider()
+    provider = await _memory_provider()
     items = await provider.list_items(
         library_id=library_id,
         profile_id=_profile(profile_id),
@@ -214,7 +227,7 @@ async def delete_item(
     profile_id: str = Query("default"),
     character_id: str = Query(...),
 ) -> dict[str, bool]:
-    provider = build_memory_provider()
+    provider = await _memory_provider()
     deleted = await provider.delete_item(
         library_id=library_id,
         item_id=item_id,
@@ -237,7 +250,7 @@ async def import_items(library_id: str, body: MemoryImportRequest) -> dict[str, 
     )
     runtime = MemoryRuntime(
         scope=scope,
-        provider=build_memory_provider(),
+        provider=await _memory_provider(),
         decision_agent=MemoryDecisionAgent(),
     )
     imported = await runtime.import_turns(

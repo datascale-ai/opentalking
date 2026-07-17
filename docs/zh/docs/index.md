@@ -2,7 +2,7 @@
 
 本区面向开发者和集成方，说明 OpenTalking 的内部概念、接口边界和扩展方式。若目标是“先跑起来”，
 请从 [教程](../tutorials/index.md) 开始；若目标是“了解能做什么业务场景”，请从
-[场景案例](../cases/index.md) 开始；若目标是“部署模型”，请从 [模型部署](../model-deployment/index.md)
+[场景案例](../cases/index.md) 开始；若目标是“部署模型”，请从 [模型部署](../deployment/index.md)
 开始。
 
 ## 理解概念

@@ -5,7 +5,7 @@
 > 适用环境：Ubuntu 22.04 + NVIDIA Driver 580 + CUDA 12.x
 
 本页是一份面向 V100 单机的实战部署配方。通用模型说明请先阅读
-[FasterLivePortrait](../fasterliveportrait.md)、[FlashHead](../flashhead.md) 和
+[FasterLivePortrait](../../avatar_models/fasterliveportrait.md)、[FlashHead](../../avatar_models/flashhead.md) 和
 [OmniRT 部署](../backends/omnirt.md)。
 
 ---

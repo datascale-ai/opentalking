@@ -4,7 +4,7 @@ This section is for developers and integrators. It explains OpenTalking concepts
 boundaries, and extension points. If the goal is to run the project first, start with
 [Tutorials](../tutorials/index.md). If the goal is to understand business scenarios, start
 with [Use Cases](../cases/index.md). If the goal is model serving, start with
-[Model Deployment](../model-deployment/index.md).
+[Model Deployment](../deployment/index.md).
 
 ## Understand Concepts
 

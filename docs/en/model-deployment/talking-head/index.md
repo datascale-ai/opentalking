@@ -8,13 +8,13 @@ inference throughput belong to the selected backend.
 
 | Model | Backend | Best for | Evidence level | Details |
 |-------|---------|----------|----------------|---------|
-| `mock` | `mock` | First run, CI, API/WebRTC debugging | Built in, verified | [Mock](../mock.md) |
+| `mock` | `mock` | First run, CI, API/WebRTC debugging | Built in, verified | [Mock](../../avatar_models/mock.md) |
 | `wav2lip` | `local` / `omnirt` | First real lip-sync model | Local adapter is built in; OmniRT path verified | [Local](../wav2lip/local.md) / [OmniRT](../wav2lip/omnirt.md) |
 | `musetalk` | `local` / `omnirt` / `direct_ws` | MuseTalk quality with either in-process startup or an external service | Local adapter is built in; OmniRT/direct_ws paths documented | [Local](../musetalk/local.md) / [OmniRT](../musetalk/omnirt.md) |
 | `quicktalk` | `local` / `omnirt` | Local realtime adapter or OmniRT-hosted deployment | Local path is built in; OmniRT path is integrated | [Local](../quicktalk/local.md) / [OmniRT](../quicktalk/omnirt.md) |
-| `fasterliveportrait` | `omnirt` | Single-GPU realtime audio-driven portrait with pasteback | Documented | [FasterLivePortrait](../fasterliveportrait.md) |
-| `flashtalk` | `omnirt` | High-quality private GPU/NPU deployment | OmniRT/Ascend path verified | [FlashTalk](../flashtalk.md) |
-| `flashhead` | `direct_ws` | Existing standalone FlashHead service | Documented | [FlashHead](../flashhead.md) |
+| `fasterliveportrait` | `omnirt` | Single-GPU realtime audio-driven portrait with pasteback | Documented | [FasterLivePortrait](../../avatar_models/fasterliveportrait.md) |
+| `flashtalk` | `omnirt` | High-quality private GPU/NPU deployment | OmniRT/Ascend path verified | [FlashTalk](../../avatar_models/flashtalk.md) |
+| `flashhead` | `direct_ws` | Existing standalone FlashHead service | Documented | [FlashHead](../../avatar_models/flashhead.md) |
 
 ## Backend Behavior
 
@@ -28,11 +28,18 @@ inference throughput belong to the selected backend.
 ## Common Setup
 
 ```bash title="Terminal"
-export DIGITAL_HUMAN_HOME="$HOME/digital-human"
-export OMNIRT_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+# Change this to your deployment root
+export DIGITAL_HUMAN_HOME=/path/to/digital_human
+export OPENTALKING_MODEL_ROOT="$DIGITAL_HUMAN_HOME/models"
+export OMNIRT_MODEL_ROOT="$OPENTALKING_MODEL_ROOT"
+export OPENTALKING_MODEL_REPO_ROOT="${OPENTALKING_MODEL_REPO_ROOT:-$DIGITAL_HUMAN_HOME/model-repos}"
 export OPENTALKING_HOME="${OPENTALKING_HOME:-$DIGITAL_HUMAN_HOME/opentalking}"
-export OMNIRT_HOME="${OMNIRT_HOME:-$DIGITAL_HUMAN_HOME/omnirt}"
-export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$DIGITAL_HUMAN_HOME/FasterLivePortrait}"
+mkdir -p "$DIGITAL_HUMAN_HOME"
+if [ ! -d "$OPENTALKING_HOME/.git" ]; then
+  git clone https://github.com/datascale-ai/opentalking.git "$OPENTALKING_HOME"
+fi
+export OMNIRT_HOME="${OMNIRT_HOME:-$OPENTALKING_MODEL_REPO_ROOT/omnirt}"
+export FASTERLIVEPORTRAIT_HOME="${FASTERLIVEPORTRAIT_HOME:-$OPENTALKING_MODEL_REPO_ROOT/FasterLivePortrait}"
 
 mkdir -p "$DIGITAL_HUMAN_HOME" "$OMNIRT_MODEL_ROOT"
 cd "$DIGITAL_HUMAN_HOME"

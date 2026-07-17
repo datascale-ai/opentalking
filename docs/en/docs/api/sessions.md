@@ -25,7 +25,7 @@ Creates a new session.
 |-------|------|----------|-------------|
 | `avatar_id` | string | Yes | Avatar identifier from `GET /avatars`. |
 | `model` | string | Yes | Synthesis model. Must appear in `GET /models` with `connected=true`. |
-| `tts_provider` | string \| null | No | Overrides `OPENTALKING_TTS_DEFAULT_PROVIDER` for this session. Common values: `edge`, `dashscope`, `local_cosyvoice`, `indextts`, `cosyvoice`, `elevenlabs`, `openai_compatible`, `xiaomi_mimo`. |
+| `tts_provider` | string \| null | No | Overrides `OPENTALKING_TTS_DEFAULT_PROVIDER` for this session. One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`. |
 | `tts_voice` | string \| null | No | Overrides the default voice. Format depends on provider. |
 | `llm_system_prompt` | string \| null | No | Overrides `OPENTALKING_LLM_SYSTEM_PROMPT` for this session. |
 | `wav2lip_postprocess_mode` | string \| null | No | wav2lip-specific post-processing flag. Forwarded to the selected Wav2Lip backend when supported. |
@@ -132,7 +132,7 @@ demonstrations, or playback of pre-computed text.
 |-------|------|----------|-------------|
 | `text` | string | Yes | Text to synthesize. |
 | `voice` | string \| null | No | Voice override. For Edge, a `zh-CN-*Neural` short name. For DashScope, a voice name from the console. For ElevenLabs, a `voice_id`. |
-| `tts_provider` | string \| null | No | One of `edge`, `dashscope`, `local_cosyvoice`, `indextts`, `cosyvoice`, `elevenlabs`, `openai_compatible`, `xiaomi_mimo`, `qwen_tts`, `sambert`. |
+| `tts_provider` | string \| null | No | One of `edge`, `dashscope`, `cosyvoice`, `elevenlabs`, `qwen_tts`, `sambert`. |
 | `tts_model` | string \| null | No | Provider-specific model. Examples: `qwen3-tts-flash-realtime`, `cosyvoice-v3-flash`, `eleven_flash_v2_5`. |
 
 **Response — `200 OK`** — empty body. Pipeline output is delivered through SSE and

@@ -18,7 +18,7 @@
 |------|----------|
 | 第一个真实唇形模型 | [Wav2Lip 接入](cases/wav2lip.md) |
 | 高质量 FlashTalk/OmniRT 路径 | [FlashTalk 接入](cases/flashtalk.md) |
-| 选择模型、权重和部署拓扑 | [模型部署](../model-deployment/index.md) |
+| 选择模型、权重和部署拓扑 | [模型部署](../deployment/index.md) |
 
 这些页面偏底层接入步骤；如果想先看“能用在哪些业务场景”，请看
 [场景案例](../cases/index.md)。

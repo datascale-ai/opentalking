@@ -11,6 +11,7 @@ from PIL import Image
 
 from opentalking.avatar.loader import load_avatar_bundle
 from opentalking.core.model_config import get_model_config
+from opentalking.core.model_paths import model_root
 from opentalking.core.types.frames import AudioChunk, VideoFrameData
 from opentalking.media.frame_avatar import (
     FrameAvatarState,
@@ -88,16 +89,10 @@ class MuseTalkAdapter:
     def __init__(self) -> None:
         config = get_model_config("musetalk")
         self._device = os.environ.get("OPENTALKING_TORCH_DEVICE", "cuda")
+        legacy_root = os.environ.get("OPENTALKING_MODELS_DIR", "").strip()
         self._models_dir = Path(
-            os.environ.get("OPENTALKING_MUSETALK_MODEL_ROOT")
-            or os.environ.get("OPENTALKING_MODEL_ROOT")
-            or os.environ.get("OPENTALKING_MODELS_DIR")
-            or (
-                str(Path(os.environ["DIGITAL_HUMAN_HOME"]) / "models")
-                if os.environ.get("DIGITAL_HUMAN_HOME")
-                else ""
-            )
-            or "./models"
+            os.environ.get("OPENTALKING_MUSETALK_MODEL_ROOT", "").strip()
+            or model_root(legacy_root)
         ).resolve()
         self._torch_bundle: dict[str, Any] | None = None
         self._v15_bundle: dict[str, Any] | None = None
@@ -114,16 +109,10 @@ class MuseTalkAdapter:
 
     @staticmethod
     def runtime_available() -> bool:
+        legacy_root = os.environ.get("OPENTALKING_MODELS_DIR", "").strip()
         models_dir = Path(
-            os.environ.get("OPENTALKING_MUSETALK_MODEL_ROOT")
-            or os.environ.get("OPENTALKING_MODEL_ROOT")
-            or os.environ.get("OPENTALKING_MODELS_DIR")
-            or (
-                str(Path(os.environ["DIGITAL_HUMAN_HOME"]) / "models")
-                if os.environ.get("DIGITAL_HUMAN_HOME")
-                else ""
-            )
-            or "./models"
+            os.environ.get("OPENTALKING_MUSETALK_MODEL_ROOT", "").strip()
+            or model_root(legacy_root)
         ).resolve()
         if resolve_musetalk_v15(models_dir) is None and resolve_musetalk_checkpoint(models_dir) is None:
             return False

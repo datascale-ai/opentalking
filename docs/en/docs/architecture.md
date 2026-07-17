@@ -72,7 +72,7 @@ flowchart LR
     end
 ```
 
-Command-line specifics are documented in [Deployment](../model-deployment/deployment.md).
+Command-line specifics are documented in [Deployment](../deployment/index.md).
 
 ## Session lifecycle
 

@@ -77,6 +77,13 @@ const RUNTIME_TTS_PRESETS: Record<TtsProviderExtended, { label: string; baseUrl:
     voice: "",
     needsKey: false,
   },
+  local_f5_tts: {
+    label: "Local F5-TTS",
+    baseUrl: "http://127.0.0.1:9880",
+    model: "SWivid/F5-TTS/F5TTS_v1_Base",
+    voice: "",
+    needsKey: false,
+  },
   xiaomi_mimo: {
     label: "小米 MiMo",
     baseUrl: "",

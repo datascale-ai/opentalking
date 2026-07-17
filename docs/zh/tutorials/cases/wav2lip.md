@@ -8,7 +8,7 @@
 ## 前置条件
 
 - 已完成 [Mock 端到端案例](mock-e2e.md)。
-- 已按 [Talking-head 模型 → Wav2Lip](../../model-deployment/wav2lip/local.md) 下载
+- 已按 [Talking-head 模型 → Wav2Lip](../../avatar_models/wav2lip.md) 下载
   `wav2lip384.pth` 与 `s3fd.pth`。
 - 已准备 OmniRT checkout，且与 `opentalking/` 位于同级目录。
 
@@ -48,4 +48,4 @@ curl -fsS http://127.0.0.1:8000/models | jq '.statuses[] | select(.id=="wav2lip"
 |------|----------|
 | `/models` 显示 `not_configured` | 检查 `OMNIRT_ENDPOINT` 是否写入当前 `.env`，并重启 OpenTalking。 |
 | OmniRT 启动失败 | 查看脚本输出的日志路径，确认 Wav2Lip 与 S3FD 权重文件名和目录一致。 |
-| Avatar 不匹配 | 使用 `model_type: wav2lip` 的 avatar，或用 `scripts/prepare_wav2lip_*_asset.py` 重新生成资产。 |
+| Avatar 资源不可用 | 检查 avatar 是否已上传、可读取，并确认会话配置完整。 |

@@ -378,6 +378,22 @@ def _explicit_cuda_available(device: str) -> bool:
         return False
 
 
+def _is_cuda_oom(exc: BaseException) -> bool:
+    message = str(exc).lower()
+    return (
+        "out of memory" in message
+        or "cudaerrormemoryallocation" in message
+        or "cuda error: out of memory" in message
+    )
+
+
+def _fallback_quicktalk_device(device: str) -> str | None:
+    raw = (device or "").strip().lower()
+    if raw.startswith("cuda"):
+        return "cpu"
+    return None
+
+
 @register_model("quicktalk")
 class QuickTalkAdapter:
     """QuickTalk realtime worker integrated into OpenTalking's model API."""
@@ -588,6 +604,7 @@ class QuickTalkAdapter:
         cache_disabled = _env_value("OPENTALKING_QUICKTALK_WORKER_CACHE", "1") == "0"
 
         worker: RealtimeV3Worker | None = None
+        cache_key_to_store = cache_key
         if not cache_disabled:
             worker = _WORKER_CACHE.get(cache_key)
             if worker is not None:
@@ -607,34 +624,133 @@ class QuickTalkAdapter:
                         "quicktalk worker cache MISS — building (avatar=%s)",
                         bundle.manifest.id,
                     )
-                    worker = RealtimeV3Worker(
-                        asset_root=asset_root,
-                        template_video=template_video,
-                        face_cache_dir=face_cache_dir,
-                        face_cache_file=face_cache_file,
-                        device=self._device,
-                        output_transform=self._output_transform,
-                        scale_h=self._scale_h,
-                        scale_w=self._scale_w,
-                        resolution=self._resolution,
-                        max_template_seconds=max_template_seconds,
-                        neck_fade_start=self._neck_fade_start,
-                        neck_fade_end=self._neck_fade_end,
-                        hubert_device=self._hubert_device,
-                        model_backend=self._model_backend,
-                    )
+                    try:
+                        worker = RealtimeV3Worker(
+                            asset_root=asset_root,
+                            template_video=template_video,
+                            face_cache_dir=face_cache_dir,
+                            face_cache_file=face_cache_file,
+                            device=self._device,
+                            output_transform=self._output_transform,
+                            scale_h=self._scale_h,
+                            scale_w=self._scale_w,
+                            resolution=self._resolution,
+                            max_template_seconds=max_template_seconds,
+                            neck_fade_start=self._neck_fade_start,
+                            neck_fade_end=self._neck_fade_end,
+                            hubert_device=self._hubert_device,
+                            model_backend=self._model_backend,
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        fallback_device = _fallback_quicktalk_device(self._device)
+                        if fallback_device is None or not _is_cuda_oom(exc):
+                            raise
+                        log.warning(
+                            "QuickTalk worker build hit CUDA OOM; retrying on CPU (avatar=%s)",
+                            bundle.manifest.id,
+                            exc_info=True,
+                        )
+                        self._device = fallback_device
+                        self._hubert_device = fallback_device
+                        cache_key_to_store = _worker_cache_key(
+                            asset_root=asset_root,
+                            template_video=template_video,
+                            face_cache_dir=face_cache_dir,
+                            face_cache_file=face_cache_file,
+                            device=self._device,
+                            output_transform=self._output_transform,
+                            scale_h=self._scale_h,
+                            scale_w=self._scale_w,
+                            resolution=self._resolution,
+                            max_template_seconds=max_template_seconds,
+                            neck_fade_start=self._neck_fade_start,
+                            neck_fade_end=self._neck_fade_end,
+                            hubert_device=self._hubert_device,
+                            model_backend=self._model_backend,
+                        )
+                        worker = RealtimeV3Worker(
+                            asset_root=asset_root,
+                            template_video=template_video,
+                            face_cache_dir=face_cache_dir,
+                            face_cache_file=face_cache_file,
+                            device=self._device,
+                            output_transform=self._output_transform,
+                            scale_h=self._scale_h,
+                            scale_w=self._scale_w,
+                            resolution=self._resolution,
+                            max_template_seconds=max_template_seconds,
+                            neck_fade_start=self._neck_fade_start,
+                            neck_fade_end=self._neck_fade_end,
+                            hubert_device=self._hubert_device,
+                            model_backend=self._model_backend,
+                        )
                     if not cache_disabled:
-                        _WORKER_CACHE[cache_key] = worker
+                        _WORKER_CACHE[cache_key_to_store] = worker
                         _enforce_worker_cache_limit()
 
-        session_state = worker.make_state()
-        return QuickTalkState(
-            manifest=bundle.manifest,
-            worker=worker,
-            fps=worker.fps,
-            extra={},
-            session_state=session_state,
-        )
+        try:
+            session_state = worker.make_state()
+            return QuickTalkState(
+                manifest=bundle.manifest,
+                worker=worker,
+                fps=worker.fps,
+                extra={},
+                session_state=session_state,
+            )
+        except Exception as exc:  # noqa: BLE001
+            fallback_device = _fallback_quicktalk_device(self._device)
+            if fallback_device is None or not _is_cuda_oom(exc):
+                raise
+            log.warning(
+                "QuickTalk avatar load hit CUDA OOM; retrying on CPU (avatar=%s)",
+                bundle.manifest.id,
+                exc_info=True,
+            )
+            self._device = fallback_device
+            self._hubert_device = fallback_device
+            fallback_key = _worker_cache_key(
+                asset_root=asset_root,
+                template_video=template_video,
+                face_cache_dir=face_cache_dir,
+                face_cache_file=face_cache_file,
+                device=self._device,
+                output_transform=self._output_transform,
+                scale_h=self._scale_h,
+                scale_w=self._scale_w,
+                resolution=self._resolution,
+                max_template_seconds=max_template_seconds,
+                neck_fade_start=self._neck_fade_start,
+                neck_fade_end=self._neck_fade_end,
+                hubert_device=self._hubert_device,
+                model_backend=self._model_backend,
+            )
+            worker = RealtimeV3Worker(
+                asset_root=asset_root,
+                template_video=template_video,
+                face_cache_dir=face_cache_dir,
+                face_cache_file=face_cache_file,
+                device=self._device,
+                output_transform=self._output_transform,
+                scale_h=self._scale_h,
+                scale_w=self._scale_w,
+                resolution=self._resolution,
+                max_template_seconds=max_template_seconds,
+                neck_fade_start=self._neck_fade_start,
+                neck_fade_end=self._neck_fade_end,
+                hubert_device=self._hubert_device,
+                model_backend=self._model_backend,
+            )
+            if not cache_disabled:
+                _WORKER_CACHE[fallback_key] = worker
+                _enforce_worker_cache_limit()
+            session_state = worker.make_state()
+            return QuickTalkState(
+                manifest=bundle.manifest,
+                worker=worker,
+                fps=worker.fps,
+                extra={"device_fallback": "cpu"},
+                session_state=session_state,
+            )
 
     def warmup(self, avatar_state: QuickTalkState | None = None) -> None:
         if avatar_state is None:

@@ -18,7 +18,7 @@ router = APIRouter(prefix="/scene-assets", tags=["scene-assets"])
 def _store(request: Request) -> SceneAssetStore:
     settings = request.app.state.settings
     root = Path(getattr(settings, "scene_assets_dir", "./data/scene-assets"))
-    return SceneAssetStore(root)
+    return SceneAssetStore(root, seed_defaults=True)
 
 
 @router.get("/backgrounds", response_model=None)

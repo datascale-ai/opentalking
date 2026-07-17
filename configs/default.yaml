@@ -8,7 +8,6 @@ api:
 infrastructure:
   redis_url: redis://localhost:6379/0
   avatars_dir: ./examples/avatars
-  models_dir: ./models
   worker_url: http://127.0.0.1:9001
 flashtalk:
   mode: off

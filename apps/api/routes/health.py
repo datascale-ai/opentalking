@@ -50,8 +50,10 @@ def _runtime_status_payload(request: Request) -> dict[str, Any]:
         tts_provider_list = [tts_provider, *tts_provider_list]
     tts_status_providers = [*tts_provider_list]
     for provider in (
+        "mock",
         "local_cosyvoice",
         "indextts",
+        "local_f5_tts",
         "dashscope",
         "xiaomi_mimo",
         "openai_compatible",
@@ -63,9 +65,11 @@ def _runtime_status_payload(request: Request) -> dict[str, Any]:
             tts_status_providers.append(provider)
     tts_provider_map = {provider: tts_provider_config(provider) for provider in tts_status_providers}
     tts_effective = tts_provider_map.get(tts_provider, tts)
-    llm_key = os.environ.get("OPENTALKING_LLM_API_KEY", "").strip() or str(
-        getattr(settings, "llm_api_key", "") or ""
-    ).strip()
+    llm_key = (
+        os.environ.get("OPENTALKING_LLM_API_KEY", "").strip()
+        or os.environ.get("DASHSCOPE_API_KEY", "").strip()
+        or str(getattr(settings, "llm_api_key", "") or "").strip()
+    )
     ignored_legacy_env = [name for name in _IGNORED_LEGACY_ENV if os.environ.get(name)]
     quicktalk_backend = os.environ.get("OPENTALKING_QUICKTALK_BACKEND", "").strip() or str(
         getattr(settings, "quicktalk_backend", "") or ""

@@ -320,7 +320,7 @@ export async function deleteSceneComposition(compositionId: string): Promise<{ i
 }
 
 
-export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone" | "reference_video";
+export type VideoCreationAudioSource = "upload" | "tts_text" | "voice_clone" | "duo_dialog" | "reference_video";
 
 export type IndexTTSEmotionMode = "voice" | "text" | "vector" | "audio";
 
@@ -337,11 +337,53 @@ export type IndexTTSConfig = {
   quick_streaming_tokens?: number;
 };
 
+export type PersonMode = "single" | "double";
+
+export type DuoDialogRole = "left" | "right";
+
+export type DuoDialogLine = {
+  id: string;
+  role: DuoDialogRole;
+  text: string;
+};
+
+export type DuoDialogSpeakerTTS = {
+  tts_provider?: string;
+  tts_model?: string;
+  voice?: string;
+  indextts_config?: IndexTTSConfig;
+};
+
+export type DuoDialogRequest = {
+  lines: DuoDialogLine[];
+  voices?: Record<DuoDialogRole, string>;
+  speakers?: Record<DuoDialogRole, DuoDialogSpeakerTTS>;
+  gap_ms?: number;
+};
+
+export type DuoDialogCapability = {
+  speaker_faces: Record<string, string>;
+  default_voices: Partial<Record<DuoDialogRole, string>>;
+};
+
 export type VideoCreationJobResponse = {
   job_id: string;
   status: "done" | "error" | string;
   source?: VideoCreationAudioSource | string;
   export_video: ExportVideoItem;
+};
+
+export type VideoCreationCompositionConfig = {
+  scene_composition_id?: string | null;
+  background_id?: string | null;
+  background_color?: string;
+  avatar_fit?: "contain" | "cover";
+  avatar_anchor?: "center" | "bottom" | "left" | "right";
+  avatar_scale?: number;
+  avatar_offset_x?: number;
+  avatar_offset_y?: number;
+  output_width?: number;
+  output_height?: number;
 };
 
 export type CreateVideoCreationJobInput = {
@@ -358,6 +400,8 @@ export type CreateVideoCreationJobInput = {
   fasterliveportraitConfig?: Record<string, unknown>;
   indexttsConfig?: IndexTTSConfig;
   indexttsEmotionAudioFile?: File | null;
+  duoDialog?: DuoDialogRequest;
+  compositionConfig?: VideoCreationCompositionConfig | null;
 };
 
 export async function createVideoCreationJob(input: CreateVideoCreationJobInput): Promise<VideoCreationJobResponse> {
@@ -384,6 +428,12 @@ export async function createVideoCreationJob(input: CreateVideoCreationJobInput)
   }
   if (input.indexttsEmotionAudioFile) {
     form.set("indextts_emotion_audio_file", input.indexttsEmotionAudioFile);
+  }
+  if (input.duoDialog) {
+    form.set("duo_dialog", JSON.stringify(input.duoDialog));
+  }
+  if (input.compositionConfig) {
+    form.set("composition_config", JSON.stringify(input.compositionConfig));
   }
   return apiPostForm<VideoCreationJobResponse>("/video-creation/jobs", form);
 }
@@ -510,15 +560,25 @@ export type PersonasResponse = {
   personas: PersonaSummary[];
 };
 
+export type ClientRendererDescriptor = {
+  type: "light2d";
+  config_url: string;
+  asset_base_url: string;
+  recommended_for: string[];
+};
+
 export type AvatarSummary = {
   id: string;
   name: string | null;
   model_type: string;
   width: number;
   height: number;
+  person_mode: PersonMode;
   is_custom: boolean;
   has_preview_video: boolean;
   matting_status: "unknown" | "opaque" | "transparent_ready";
+  duo_dialog: DuoDialogCapability | null;
+  client_renderer: ClientRendererDescriptor | null;
 };
 
 export type CreateSessionResponse = { session_id: string; status: string };

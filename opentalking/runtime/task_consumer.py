@@ -226,6 +226,8 @@ def _create_runner(
         avatar_id=avatar_id,
         library_id=str(task.get("memory_library_id") or ""),
     )
+    if not memory_scope.enabled:
+        memory_scope = None
 
     # Mock mode: pick the in-process mock client (echoes reference image).
     # Selected explicitly when the user picks model=mock in the UI.

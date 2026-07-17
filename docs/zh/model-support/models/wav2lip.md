@@ -12,32 +12,32 @@ Wav2Lip 适合快速验证口型同步、图片 Avatar、短视频 Avatar 和本
 - 模型权重包含 `wav2lip384.pth` 或兼容 checkpoint。
 - 需要 `s3fd.pth` 做人脸检测。
 - 推荐 NVIDIA GPU；CPU 只适合功能验证。
-- Avatar 需要参考图、预处理帧或可检测的人脸区域。
+- Avatar 使用 OpenTalking 通用形象流程；Wav2Lip 推理时会按需使用参考图、预处理帧或可检测的人脸区域。
 
 ## 准备权重
 
 默认模型目录：
 
 ```text
-./models/wav2lip
+./avatar_models/wav2lip
 ```
 
 可调整：
 
 ```bash
-export OPENTALKING_WAV2LIP_MODEL_ROOT=./models/wav2lip
-export OPENTALKING_WAV2LIP_CHECKPOINT=./models/wav2lip/wav2lip384.pth
+export OPENTALKING_WAV2LIP_MODEL_ROOT=./avatar_models/wav2lip
+export OPENTALKING_WAV2LIP_CHECKPOINT=./avatar_models/wav2lip/wav2lip384.pth
 ```
 
 `s3fd.pth` 可以放在：
 
 ```text
-./models/wav2lip/s3fd.pth
+./avatar_models/wav2lip/s3fd.pth
 ```
 
-## 准备 Avatar
+## 准备 Avatar 派生产物
 
-图片 Avatar：
+如需提前为 Wav2Lip 生成图片帧资产：
 
 ```bash
 uv run python scripts/prepare_wav2lip_image_asset.py \
@@ -47,7 +47,7 @@ uv run python scripts/prepare_wav2lip_image_asset.py \
   --name "My Wav2Lip Avatar"
 ```
 
-视频 Avatar：
+如需提前为 Wav2Lip 生成视频帧资产：
 
 ```bash
 uv run python scripts/prepare_wav2lip_video_asset.py \
@@ -65,7 +65,7 @@ uv run python scripts/prepare_wav2lip_video_asset.py \
 | --- | --- | --- |
 | `OPENTALKING_WAV2LIP_BACKEND` | `local` | 模型后端，可设为 `local` 或 `omnirt` |
 | `OPENTALKING_WAV2LIP_DEVICE` | `cuda` | Wav2Lip 推理设备 |
-| `OPENTALKING_WAV2LIP_MODEL_ROOT` | `./models/wav2lip` | 权重目录 |
+| `OPENTALKING_WAV2LIP_MODEL_ROOT` | `./avatar_models/wav2lip` | 权重目录 |
 | `OPENTALKING_WAV2LIP_CHECKPOINT` | `wav2lip384.pth` | 指定 checkpoint |
 | `OPENTALKING_WAV2LIP_WORK_DIR` | 系统临时目录 | 中间文件目录 |
 | `OPENTALKING_WAV2LIP_CPU_THREADS` | `4` | CPU / OpenCV 线程数 |

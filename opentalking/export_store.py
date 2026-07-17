@@ -4,9 +4,11 @@ import json
 import re
 import shutil
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+UTC = timezone.utc
 
 _ALLOWED_KINDS = {"realtime_dialogue", "video_clone", "video_creation"}
 _SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]{1,128}$")
@@ -145,6 +147,62 @@ def create_video_export(
         encoding="utf-8",
     )
     return item
+
+
+def create_video_export_from_file(
+    root: Path | str,
+    *,
+    source: Path | str,
+    mime_type: str,
+    kind: str,
+    title: str,
+    duration_sec: float | None,
+    session_id: str | None,
+    avatar_id: str | None,
+    model: str | None,
+    max_bytes: int,
+    created_at: str | None = None,
+) -> dict[str, Any]:
+    source_path = Path(source)
+    size = source_path.stat().st_size
+    if size > max(0, int(max_bytes)):
+        raise ExportTooLargeError("export video is too large")
+    normalized_kind = _validate_kind(kind)
+    created = created_at or _utc_now()
+    try:
+        day = datetime.fromisoformat(created.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except ValueError:
+        day = datetime.now(UTC).strftime("%Y-%m-%d")
+    export_id = uuid.uuid4().hex
+    target_dir = (_video_root(root) / day / export_id).resolve()
+    target_dir.mkdir(parents=True, exist_ok=False)
+    try:
+        target_dir.relative_to(_video_root(root).resolve())
+        file_path = target_dir / f"recording{_extension_for_mime(mime_type)}"
+        with source_path.open("rb") as source_file, file_path.open("xb") as target_file:
+            shutil.copyfileobj(source_file, target_file, length=1024 * 1024)
+        item: dict[str, Any] = {
+            "id": export_id,
+            "kind": normalized_kind,
+            "title": title.strip() or "Untitled export",
+            "duration_sec": duration_sec,
+            "size_bytes": size,
+            "mime_type": (mime_type or "application/octet-stream").split(";", 1)[0].strip()
+            or "application/octet-stream",
+            "created_at": created,
+            "path": str(file_path.resolve()),
+            "session_id": _normalize_optional_text(session_id),
+            "avatar_id": _normalize_optional_text(avatar_id),
+            "model": _normalize_optional_text(model),
+        }
+        (target_dir / "metadata.json").write_text(
+            json.dumps(item, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return item
+    except Exception:
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise
 
 
 def list_video_exports(
