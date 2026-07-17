@@ -39,7 +39,7 @@ dependencies = [
   "lightrag-hku>=1.4.9",
   "mem0ai>=0.1.115",
   "huggingface-hub[cli]<1.0",
-  "rembg>=2.0.69",
+  "rembg==2.0.69",
 ]
 
 [project.optional-dependencies]
