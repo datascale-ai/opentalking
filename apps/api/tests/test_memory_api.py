@@ -8,11 +8,13 @@ from fastapi.testclient import TestClient
 
 from apps.api.routes import memory as memory_routes
 from apps.api.routes import sessions as sessions_routes
-from opentalking.core.config import get_settings
+from opentalking.core.config import Settings, get_settings
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.core.redis_keys import TASK_QUEUE
 from opentalking.core.session_store import get_session_record
+from opentalking.providers.memory import factory as memory_factory
 from opentalking.providers.memory.mem0_provider import InMemoryMemoryProvider
+from opentalking.providers.memory.noop import NoopMemoryProvider
 
 
 def test_memory_api_import_list_delete(monkeypatch) -> None:
@@ -67,6 +69,29 @@ def test_memory_api_import_list_delete(monkeypatch) -> None:
         )
         assert deleted.status_code == 200
         assert deleted.json() == {"deleted": True}
+
+
+def test_mem0_provider_without_credentials_uses_noop(monkeypatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_ADMIN_KEY", raising=False)
+    monkeypatch.setattr(
+        memory_factory,
+        "get_settings",
+        lambda: Settings(
+            _env_file=None,
+            memory_provider="mem0",
+            memory_mem0_llm_api_key="",
+            memory_mem0_embedder_api_key="",
+            memory_mem0_config="",
+        ),
+    )
+    memory_factory.build_memory_provider.cache_clear()
+    try:
+        provider = memory_factory.build_memory_provider()
+    finally:
+        memory_factory.build_memory_provider.cache_clear()
+
+    assert isinstance(provider, NoopMemoryProvider)
 
 
 def test_memory_api_generates_unique_library_ids_when_id_is_omitted(monkeypatch) -> None:

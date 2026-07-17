@@ -65,9 +65,9 @@ const KIND_LABELS: Record<ExportVideoItem["kind"], string> = {
   video_creation: "视频创作",
 };
 
-const KNOWLEDGE_FILE_ACCEPT = ".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf";
-const KNOWLEDGE_FILE_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".pdf"]);
-const KNOWLEDGE_FILE_FORMAT_LABEL = ".txt、.md、.markdown、.pdf";
+const KNOWLEDGE_FILE_ACCEPT = ".txt,.md,.markdown,.pdf,.pptx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const KNOWLEDGE_FILE_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".pdf", ".pptx"]);
+const KNOWLEDGE_FILE_FORMAT_LABEL = ".txt、.md、.markdown、.pdf、.pptx";
 const KNOWLEDGE_FILE_HINT = `支持格式：${KNOWLEDGE_FILE_FORMAT_LABEL}`;
 const KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE = `仅支持 ${KNOWLEDGE_FILE_FORMAT_LABEL} 文件，已忽略不支持的文件。`;
 

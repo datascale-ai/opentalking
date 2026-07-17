@@ -2,19 +2,129 @@ from __future__ import annotations
 
 import asyncio
 import fractions
+import json
 import logging
 import os
 import time
 from dataclasses import dataclass
 
 import numpy as np
-from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaBlackhole
 from av import AudioFrame, VideoFrame
 
 from opentalking.core.types.frames import VideoFrameData
 
 log = logging.getLogger(__name__)
+
+
+def _split_ice_urls(value: str) -> list[str]:
+    return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
+
+
+def _ice_server_from_mapping(value: dict[str, object]) -> RTCIceServer | None:
+    urls = value.get("urls") or value.get("url")
+    if isinstance(urls, str):
+        normalized_urls: str | list[str] = urls.strip()
+    elif isinstance(urls, list):
+        normalized_urls = [str(item).strip() for item in urls if str(item).strip()]
+    else:
+        return None
+    if not normalized_urls:
+        return None
+
+    username = value.get("username")
+    credential = value.get("credential")
+    credential_type = value.get("credentialType") or value.get("credential_type") or "password"
+    return RTCIceServer(
+        urls=normalized_urls,
+        username=str(username) if username is not None else None,
+        credential=str(credential) if credential is not None else None,
+        credentialType=str(credential_type),
+    )
+
+
+def _ice_server_urls(server: RTCIceServer) -> list[str]:
+    if isinstance(server.urls, list):
+        return [str(item) for item in server.urls]
+    return [str(server.urls)]
+
+
+def _has_turn_server(servers: list[RTCIceServer]) -> bool:
+    return any(url.startswith(("turn:", "turns:")) for server in servers for url in _ice_server_urls(server))
+
+
+def get_webrtc_ice_transport_policy() -> str:
+    configured = os.environ.get("OPENTALKING_WEBRTC_ICE_TRANSPORT_POLICY", "").strip().lower()
+    if configured in {"all", "relay"}:
+        return configured
+    return "relay" if _has_turn_server(get_webrtc_ice_servers()) else "all"
+
+
+def get_webrtc_ice_servers() -> list[RTCIceServer]:
+    """Return WebRTC ICE servers for both browser and aiortc."""
+    raw_config = os.environ.get("OPENTALKING_WEBRTC_ICE_SERVERS", "").strip()
+    servers: list[RTCIceServer] = []
+    if raw_config:
+        if raw_config[0] in "[{":
+            try:
+                parsed = json.loads(raw_config)
+            except Exception:
+                log.exception("Ignoring invalid OPENTALKING_WEBRTC_ICE_SERVERS")
+                parsed = None
+            if isinstance(parsed, list):
+                for item in parsed:
+                    if isinstance(item, str) and item.strip():
+                        servers.append(RTCIceServer(urls=item.strip()))
+                    elif isinstance(item, dict):
+                        server = _ice_server_from_mapping(item)
+                        if server is not None:
+                            servers.append(server)
+            elif isinstance(parsed, dict):
+                server = _ice_server_from_mapping(parsed)
+                if server is not None:
+                    servers.append(server)
+        else:
+            servers.extend(RTCIceServer(urls=url) for url in _split_ice_urls(raw_config))
+
+    if not servers:
+        stun_urls = _split_ice_urls(
+            os.environ.get("OPENTALKING_WEBRTC_STUN_URLS", "")
+            or os.environ.get("OPENTALKING_WEBRTC_STUN_URL", "")
+            or "stun:stun.l.google.com:19302"
+        )
+        servers.extend(RTCIceServer(urls=url) for url in stun_urls)
+
+    turn_urls = _split_ice_urls(
+        os.environ.get("OPENTALKING_WEBRTC_TURN_URLS", "")
+        or os.environ.get("OPENTALKING_WEBRTC_TURN_URL", "")
+    )
+    if turn_urls and not _has_turn_server(servers):
+        servers.append(
+            RTCIceServer(
+                urls=turn_urls if len(turn_urls) > 1 else turn_urls[0],
+                username=os.environ.get("OPENTALKING_WEBRTC_TURN_USERNAME") or None,
+                credential=os.environ.get("OPENTALKING_WEBRTC_TURN_CREDENTIAL") or None,
+            )
+        )
+
+    return servers
+
+
+def get_webrtc_ice_config_payload() -> dict[str, object]:
+    ice_servers: list[dict[str, object]] = []
+    for server in get_webrtc_ice_servers():
+        item: dict[str, object] = {"urls": server.urls}
+        if server.username:
+            item["username"] = server.username
+        if server.credential:
+            item["credential"] = server.credential
+        ice_servers.append(item)
+    return {
+        "iceServers": ice_servers,
+        "iceTransportPolicy": get_webrtc_ice_transport_policy(),
+    }
+
 
 try:
     from aiortc.mediastreams import MediaStreamTrack
@@ -298,7 +408,7 @@ class WebRTCSession:
             asyncio.get_event_loop()
         except RuntimeError:
             asyncio.set_event_loop(asyncio.new_event_loop())
-        self.pc = RTCPeerConnection()
+        self.pc = RTCPeerConnection(RTCConfiguration(iceServers=get_webrtc_ice_servers()))
         normalized_mode = mode.strip().lower()
         self._shared_clock = _SharedWallClock()
         if normalized_mode == "legacy":

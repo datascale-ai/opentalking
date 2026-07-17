@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
-SUPPORTED_EXTENSIONS = SUPPORTED_TEXT_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS
-SUPPORTED_EXTENSIONS_LABEL = ".txt, .md, .markdown and .pdf"
+SUPPORTED_PRESENTATION_EXTENSIONS = {".pptx"}
+SUPPORTED_EXTENSIONS = SUPPORTED_TEXT_EXTENSIONS | SUPPORTED_PDF_EXTENSIONS | SUPPORTED_PRESENTATION_EXTENSIONS
+SUPPORTED_EXTENSIONS_LABEL = ".txt, .md, .markdown, .pdf and .pptx"
 MAX_DOCUMENT_BYTES = 20 * 1024 * 1024
 MAX_CHUNK_CHARS = 1200
 CHUNK_OVERLAP_CHARS = 160
@@ -338,6 +339,42 @@ def _extract_pdf_with_fallbacks(path: Path, initial_text: str = "", initial_erro
     return "", ocr_error or pdftotext_error or initial_error or "document has no extractable text"
 
 
+def _extract_pptx_text(path: Path) -> tuple[str, str | None]:
+    if not path.is_file():
+        return "", "pptx document is missing"
+    if path.suffix.lower() != ".pptx":
+        return "", "unsupported presentation type"
+    try:
+        import zipfile
+        from xml.etree import ElementTree as ET
+    except Exception as exc:  # pragma: no cover - stdlib import failure is unexpected
+        return "", f"failed to load pptx parser: {exc}"
+    if not zipfile.is_zipfile(path):
+        return "", "invalid pptx archive"
+    try:
+        with zipfile.ZipFile(path) as zf:
+            slide_names = sorted(
+                name for name in zf.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)
+            )
+            if not slide_names:
+                return "", "pptx contains no slides"
+            parts: list[str] = []
+            for slide_name in slide_names:
+                try:
+                    root = ET.fromstring(zf.read(slide_name))
+                except Exception:
+                    continue
+                slide_text = "".join(root.itertext()).strip()
+                if slide_text:
+                    parts.append(slide_text)
+            text = "\n\n".join(part for part in parts if part).strip()
+            if text:
+                return text, None
+            return "", "pptx contains no extractable text"
+    except Exception as exc:  # noqa: BLE001
+        return "", f"failed to extract pptx text: {exc}"
+
+
 def _extract_text(path: Path) -> tuple[str, str | None]:
     suffix = path.suffix.lower()
     if suffix in SUPPORTED_TEXT_EXTENSIONS:
@@ -357,6 +394,8 @@ def _extract_text(path: Path) -> tuple[str, str | None]:
             return _extract_pdf_with_fallbacks(path, initial_text=text)
         except Exception as exc:  # noqa: BLE001
             return _extract_pdf_with_fallbacks(path, initial_error=f"failed to extract PDF text: {exc}")
+    if suffix in SUPPORTED_PRESENTATION_EXTENSIONS:
+        return _extract_pptx_text(path)
     return "", "unsupported document type"
 
 

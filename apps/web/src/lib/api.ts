@@ -1,9 +1,10 @@
 import type { MemoryItem, MemoryLibrary, MemoryTurn, WeChatImportCommitResult, WeChatImportJob } from "../types";
 
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "api";
 
 export function buildApiUrl(path: string): string {
-  return `${API_BASE}${path}`;
+  const p = path.startsWith("/") ? path.slice(1) : path;
+  return new URL(p, normalizedApiBase()).toString();
 }
 
 export function buildApiDownloadUrl(path: string): string {
@@ -14,16 +15,27 @@ export function buildApiDownloadUrl(path: string): string {
 export function buildWsUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   if (typeof window === "undefined") {
-    return `ws://127.0.0.1:5173${API_BASE}${p}`;
+    const apiBase = API_BASE.endsWith("/") ? API_BASE.slice(0, -1) : API_BASE;
+    return `ws://127.0.0.1:5173/${apiBase}${p}`;
   }
   try {
-    const baseUrl = new URL(API_BASE, window.location.origin);
+    const baseUrl = new URL(normalizedApiBase());
     const wsProto = baseUrl.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProto}//${baseUrl.host}${baseUrl.pathname}${p}`;
+    const pathname = baseUrl.pathname.endsWith("/") ? baseUrl.pathname.slice(0, -1) : baseUrl.pathname;
+    return `${wsProto}//${baseUrl.host}${pathname}${p}`;
   } catch {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${proto}//${window.location.host}${API_BASE}${p}`;
+    const apiBase = API_BASE.endsWith("/") ? API_BASE.slice(0, -1) : API_BASE;
+    return `${proto}//${window.location.host}/${apiBase}${p}`;
   }
+}
+
+function normalizedApiBase(): URL {
+  const base = API_BASE.endsWith("/") ? API_BASE : `${API_BASE}/`;
+  if (typeof window === "undefined") {
+    return new URL(base, "http://127.0.0.1:5173/");
+  }
+  return new URL(base, window.location.href);
 }
 
 /** Rich error type so callers can show the FastAPI {"detail": "..."} message. */

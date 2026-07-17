@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import zipfile
+from pathlib import Path
+
 import pytest
 
+from opentalking.agent import knowledge_store as knowledge_store_module
 from opentalking.agent.context_builder import AgentSessionConfig, build_agent_context
 from opentalking.agent.knowledge_index import LightRAGSearchResult, LightRAGStatus
 from opentalking.agent.knowledge_store import KnowledgeStore
@@ -18,12 +22,58 @@ def test_knowledge_store_unsupported_file_message_lists_all_supported_formats(tm
         knowledge_index=FakeKnowledgeIndex(),
     )
 
-    with pytest.raises(ValueError, match=r"\.txt, \.md, \.markdown and \.pdf"):
+    with pytest.raises(ValueError, match=r"\.txt, \.md, \.markdown, \.pdf and \.pptx"):
         store._add_file_sync(  # noqa: SLF001
             filename=source.name,
             mime_type="text/csv",
             source_path=source,
         )
+
+
+def test_knowledge_store_extracts_pptx_text(tmp_path) -> None:
+    pptx = tmp_path / "slides.pptx"
+    with zipfile.ZipFile(pptx, "w") as zf:
+        zf.writestr(
+            "[Content_Types].xml",
+            """<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">
+  <Default Extension=\"xml\" ContentType=\"application/xml\"/>
+  <Override PartName=\"/ppt/presentation.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml\"/>
+  <Override PartName=\"/ppt/slides/slide1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.presentationml.slide+xml\"/>
+</Types>
+""",
+        )
+        zf.writestr(
+            "ppt/presentation.xml",
+            """<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<p:presentation xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
+  <p:sldIdLst><p:sldId id=\"256\" r:id=\"rId1\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"/></p:sldIdLst>
+</p:presentation>
+""",
+        )
+        zf.writestr(
+            "ppt/slides/slide1.xml",
+            """<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>
+<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\">
+  <p:cSld>
+    <p:spTree>
+      <p:sp>
+        <p:txBody>
+          <a:p xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">
+            <a:r><a:t>知识库支持 PPTX</a:t></a:r>
+          </a:p>
+        </p:txBody>
+      </p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>
+""",
+        )
+
+    text, error = knowledge_store_module._extract_text(pptx)
+
+    assert error is None
+    assert "知识库支持 PPTX" in text
 
 
 class FakeKnowledgeIndex:

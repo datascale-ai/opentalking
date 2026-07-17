@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from typing import Any
 
@@ -101,6 +102,30 @@ def _mem0_config(settings: Settings) -> dict[str, Any]:
     return _split_mem0_config(settings)
 
 
+def _contains_mem0_credential(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower()
+            if normalized in {"api_key", "apikey", "admin_api_key", "workload_identity"} and _strip(child):
+                return True
+            if _contains_mem0_credential(child):
+                return True
+    if isinstance(value, list):
+        return any(_contains_mem0_credential(item) for item in value)
+    return False
+
+
+def _mem0_credentials_available(config: dict[str, Any]) -> bool:
+    if _contains_mem0_credential(config):
+        return True
+    return bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("OPENAI_ADMIN_KEY"))
+
+
+def _is_missing_mem0_credentials_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "Missing credentials" in message or "OPENAI_API_KEY" in message or "OPENAI_ADMIN_KEY" in message
+
+
 @lru_cache(maxsize=1)
 def build_memory_provider() -> MemoryProvider:
     settings = get_settings()
@@ -110,7 +135,17 @@ def build_memory_provider() -> MemoryProvider:
     if provider in {"sqlite", "local"}:
         return SQLiteMemoryProvider(settings.memory_sqlite_path)
     if provider == "mem0":
-        return Mem0MemoryProvider(config=_mem0_config(settings))
+        config = _mem0_config(settings)
+        if not _mem0_credentials_available(config):
+            log.info("mem0 memory provider is not configured; using noop memory provider until API keys are applied")
+            return NoopMemoryProvider()
+        try:
+            return Mem0MemoryProvider(config=config)
+        except Exception as exc:  # noqa: BLE001
+            if _is_missing_mem0_credentials_error(exc):
+                log.info("mem0 memory provider is missing credentials; using noop memory provider until API keys are applied")
+                return NoopMemoryProvider()
+            raise
     if provider in {"memory", "inmemory", "in-memory"}:
         return InMemoryMemoryProvider()
     raise ValueError(f"unsupported memory provider: {settings.memory_provider}")

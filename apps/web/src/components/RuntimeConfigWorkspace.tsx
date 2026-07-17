@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { RuntimeConfigApplyInput, RuntimeConfigResponse } from "../lib/api";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
 
@@ -160,13 +160,17 @@ function normalizeRuntimeTtsProvider(value: string | null | undefined): TtsProvi
     : "dashscope";
 }
 
-function runtimeFormFromConfig(runtimeConfig: RuntimeConfigResponse | null): RuntimeConfigForm {
+function runtimeFormFromConfig(
+  runtimeConfig: RuntimeConfigResponse | null,
+  preferDashscopeWhenEdge = false,
+): RuntimeConfigForm {
   if (!runtimeConfig) return { ...RUNTIME_FORM_DEFAULTS };
   const sttProvider = Object.prototype.hasOwnProperty.call(RUNTIME_STT_PRESETS, runtimeConfig.stt.provider)
     ? runtimeConfig.stt.provider
     : "dashscope";
   const sttPreset = RUNTIME_STT_PRESETS[sttProvider] ?? RUNTIME_STT_PRESETS.dashscope;
-  const ttsProvider = normalizeRuntimeTtsProvider(runtimeConfig.tts.provider);
+  const resolvedTtsProvider = normalizeRuntimeTtsProvider(runtimeConfig.tts.provider);
+  const ttsProvider = preferDashscopeWhenEdge && resolvedTtsProvider === "edge" ? "dashscope" : resolvedTtsProvider;
   const ttsPreset = RUNTIME_TTS_PRESETS[ttsProvider];
   return {
     llmBaseUrl: runtimeConfig.llm.base_url || RUNTIME_LLM_DEFAULT.baseUrl,
@@ -207,10 +211,20 @@ export function RuntimeConfigWorkspace({
   onRuntimeConfigRefresh,
   onRuntimeConfigApply,
 }: RuntimeConfigWorkspaceProps) {
-  const [runtimeForm, setRuntimeForm] = useState<RuntimeConfigForm>(() => runtimeFormFromConfig(runtimeConfig));
+  const runtimeConfigSyncedRef = useRef(false);
+  const initialRuntimeFormRef = useRef<RuntimeConfigForm | null>(null);
+  const [runtimeForm, setRuntimeForm] = useState<RuntimeConfigForm>(() => runtimeFormFromConfig(runtimeConfig, true));
 
   useEffect(() => {
-    setRuntimeForm(runtimeFormFromConfig(runtimeConfig));
+    if (!runtimeConfig) return;
+    // First paint shows Qwen when persisted TTS is Edge, but this display-only prompt
+    // should not turn an unrelated save into a TTS provider change.
+    const nextRuntimeForm = runtimeFormFromConfig(runtimeConfig, !runtimeConfigSyncedRef.current);
+    setRuntimeForm(nextRuntimeForm);
+    if (!runtimeConfigSyncedRef.current) {
+      initialRuntimeFormRef.current = nextRuntimeForm;
+    }
+    runtimeConfigSyncedRef.current = true;
   }, [runtimeConfig]);
 
   const updateRuntimeForm = <K extends keyof RuntimeConfigForm>(key: K, value: RuntimeConfigForm[K]) => {
@@ -238,13 +252,18 @@ export function RuntimeConfigWorkspace({
   };
 
   const handleRuntimeApply = async () => {
+    const initialRuntimeForm = initialRuntimeFormRef.current;
+    const ttsChangedSinceInitial = !initialRuntimeForm
+      || runtimeForm.ttsProvider !== initialRuntimeForm.ttsProvider
+      || runtimeForm.ttsBaseUrl.trim() !== initialRuntimeForm.ttsBaseUrl.trim()
+      || runtimeForm.ttsModel.trim() !== initialRuntimeForm.ttsModel.trim()
+      || runtimeForm.ttsApiKey.trim() !== initialRuntimeForm.ttsApiKey.trim();
     const payload: RuntimeConfigApplyInput = {
       llm_base_url: runtimeForm.llmBaseUrl.trim(),
       llm_model: runtimeForm.llmModel.trim(),
       stt_provider: runtimeForm.sttProvider,
       stt_base_url: runtimeForm.sttBaseUrl.trim(),
       stt_model: runtimeForm.sttModel.trim(),
-      tts_provider: runtimeForm.ttsProvider,
       mem0_llm_provider: runtimeForm.mem0LlmProvider.trim(),
       mem0_llm_base_url: runtimeForm.mem0LlmBaseUrl.trim(),
       mem0_llm_model: runtimeForm.mem0LlmModel.trim(),
@@ -258,9 +277,12 @@ export function RuntimeConfigWorkspace({
     const ttsApiKey = runtimeForm.ttsApiKey.trim();
     const mem0LlmApiKey = runtimeForm.mem0LlmApiKey.trim();
     const mem0EmbedderApiKey = runtimeForm.mem0EmbedderApiKey.trim();
+    payload.tts_provider = runtimeConfig?.tts.provider && !ttsChangedSinceInitial
+      ? runtimeConfig.tts.provider
+      : runtimeForm.ttsProvider;
     if (llmApiKey) payload.llm_api_key = llmApiKey;
     if (sttApiKey) payload.stt_api_key = sttApiKey;
-    if (runtimeForm.ttsProvider !== "edge") {
+    if (payload.tts_provider !== "edge") {
       payload.tts_base_url = runtimeForm.ttsBaseUrl.trim();
       payload.tts_model = runtimeForm.ttsModel.trim();
     }

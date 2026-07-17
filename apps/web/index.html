@@ -1,6 +1,19 @@
 <!doctype html>
 <html lang="zh-CN">
   <head>
+    <script>
+      (() => {
+        const path = window.location.pathname;
+        const parts = path.split("/").filter(Boolean);
+        const isPortProxyPath =
+          parts.length >= 2
+          && parts[parts.length - 2] === "proxy"
+          && /^[0-9]+$/.test(parts[parts.length - 1]);
+        if (isPortProxyPath && !path.endsWith("/")) {
+          window.location.replace(`${path}/${window.location.search}${window.location.hash}`);
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="%230f172a"/><path d="M16 6l2.2 7.3L26 16l-7.8 2.7L16 26l-2.2-7.3L6 16l7.8-2.7L16 6z" fill="%2322d3ee"/></svg>' />

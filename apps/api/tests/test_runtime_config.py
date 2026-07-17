@@ -33,23 +33,23 @@ async def test_runtime_config_get_masks_secret_values(monkeypatch, tmp_path) -> 
             [
                 "OPENTALKING_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "OPENTALKING_LLM_MODEL=qwen-turbo",
-                "OPENTALKING_LLM_API_KEY=sk-llm-secret",
+                "OPENTALKING_LLM_API_KEY=llm-secret",
                 "OPENTALKING_STT_DEFAULT_PROVIDER=openai_compatible",
                 "OPENTALKING_STT_OPENAI_BASE_URL=https://asr.example.test/v1",
                 "OPENTALKING_STT_OPENAI_MODEL=whisper-1",
-                "OPENTALKING_STT_OPENAI_API_KEY=sk-stt-secret",
+                "OPENTALKING_STT_OPENAI_API_KEY=stt-secret",
                 "OPENTALKING_TTS_DEFAULT_PROVIDER=openai_compatible",
                 "OPENTALKING_TTS_OPENAI_BASE_URL=https://tts.example.test/v1",
                 "OPENTALKING_TTS_OPENAI_MODEL=gpt-4o-mini-tts",
-                "OPENTALKING_TTS_OPENAI_API_KEY=sk-tts-secret",
+                "OPENTALKING_TTS_OPENAI_API_KEY=tts-secret",
                 "OPENTALKING_MEMORY_MEM0_LLM_PROVIDER=openai",
                 "OPENTALKING_MEMORY_MEM0_LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "OPENTALKING_MEMORY_MEM0_LLM_MODEL=qwen-flash",
-                "OPENTALKING_MEMORY_MEM0_LLM_API_KEY=sk-mem0-llm-secret",
+                "OPENTALKING_MEMORY_MEM0_LLM_API_KEY=mem0-llm-secret",
                 "OPENTALKING_MEMORY_MEM0_EMBEDDER_PROVIDER=openai",
                 "OPENTALKING_MEMORY_MEM0_EMBEDDER_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1",
                 "OPENTALKING_MEMORY_MEM0_EMBEDDER_MODEL=text-embedding-v4",
-                "OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY=sk-mem0-embedder-secret",
+                "OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY=mem0-embedder-secret",
             ]
         )
         + "\n",
@@ -75,11 +75,11 @@ async def test_runtime_config_get_masks_secret_values(monkeypatch, tmp_path) -> 
     assert payload["mem0"]["embedder"]["base_url"] == "https://dashscope.aliyuncs.com/compatible-mode/v1"
     assert payload["mem0"]["embedder"]["model"] == "text-embedding-v4"
     assert payload["mem0"]["embedder"]["api_key_set"] is True
-    assert "sk-llm-secret" not in str(payload)
-    assert "sk-stt-secret" not in str(payload)
-    assert "sk-tts-secret" not in str(payload)
-    assert "sk-mem0-llm-secret" not in str(payload)
-    assert "sk-mem0-embedder-secret" not in str(payload)
+    assert "llm-secret" not in str(payload)
+    assert "stt-secret" not in str(payload)
+    assert "tts-secret" not in str(payload)
+    assert "mem0-llm-secret" not in str(payload)
+    assert "mem0-embedder-secret" not in str(payload)
 
 
 async def test_runtime_config_get_expands_mem0_base_url_references(monkeypatch, tmp_path) -> None:
@@ -106,11 +106,11 @@ async def test_runtime_config_apply_persists_llm_stt_tts_and_keeps_blank_keys(mo
     (tmp_path / ".env").write_text(
         "\n".join(
             [
-                "OPENTALKING_LLM_API_KEY=sk-existing-llm",
-                "OPENTALKING_STT_OPENAI_API_KEY=sk-existing-stt",
-                "OPENTALKING_TTS_OPENAI_API_KEY=sk-existing-tts",
-                "OPENTALKING_MEMORY_MEM0_LLM_API_KEY=sk-existing-mem0-llm",
-                "OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY=sk-existing-mem0-embedder",
+                "OPENTALKING_LLM_API_KEY=existing-llm",
+                "OPENTALKING_STT_OPENAI_API_KEY=existing-stt",
+                "OPENTALKING_TTS_OPENAI_API_KEY=existing-tts",
+                "OPENTALKING_MEMORY_MEM0_LLM_API_KEY=existing-mem0-llm",
+                "OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY=existing-mem0-embedder",
             ]
         )
         + "\n",
@@ -164,16 +164,16 @@ async def test_runtime_config_apply_persists_llm_stt_tts_and_keeps_blank_keys(mo
     assert payload["mem0"]["embedder"]["base_url"] == "https://mem0-embed.example.test/v1"
     assert payload["mem0"]["embedder"]["model"] == "text-embedding-v4"
     assert payload["mem0"]["embedder"]["api_key_set"] is True
-    assert "sk-existing-llm" not in str(payload)
-    assert "sk-existing-stt" not in str(payload)
-    assert "sk-existing-tts" not in str(payload)
-    assert "sk-existing-mem0-llm" not in str(payload)
-    assert "sk-existing-mem0-embedder" not in str(payload)
-    assert os.environ["OPENTALKING_LLM_API_KEY"] == "sk-existing-llm"
-    assert os.environ["OPENTALKING_STT_OPENAI_API_KEY"] == "sk-existing-stt"
-    assert os.environ["OPENTALKING_TTS_OPENAI_API_KEY"] == "sk-existing-tts"
-    assert os.environ["OPENTALKING_MEMORY_MEM0_LLM_API_KEY"] == "sk-existing-mem0-llm"
-    assert os.environ["OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY"] == "sk-existing-mem0-embedder"
+    assert "existing-llm" not in str(payload)
+    assert "existing-stt" not in str(payload)
+    assert "existing-tts" not in str(payload)
+    assert "existing-mem0-llm" not in str(payload)
+    assert "existing-mem0-embedder" not in str(payload)
+    assert os.environ["OPENTALKING_LLM_API_KEY"] == "existing-llm"
+    assert os.environ["OPENTALKING_STT_OPENAI_API_KEY"] == "existing-stt"
+    assert os.environ["OPENTALKING_TTS_OPENAI_API_KEY"] == "existing-tts"
+    assert os.environ["OPENTALKING_MEMORY_MEM0_LLM_API_KEY"] == "existing-mem0-llm"
+    assert os.environ["OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY"] == "existing-mem0-embedder"
 
 
 async def test_runtime_config_apply_updates_mem0_keys_and_refreshes_memory_provider(monkeypatch, tmp_path) -> None:
@@ -190,11 +190,11 @@ async def test_runtime_config_apply_updates_mem0_keys_and_refreshes_memory_provi
             mem0_llm_provider="openai",
             mem0_llm_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/",
             mem0_llm_model="qwen-flash",
-            mem0_llm_api_key="sk-new-mem0-llm",
+            mem0_llm_api_key="new-mem0-llm",
             mem0_embedder_provider="openai",
             mem0_embedder_base_url="https://dashscope.aliyuncs.com/compatible-mode/v1/",
             mem0_embedder_model="text-embedding-v4",
-            mem0_embedder_api_key="sk-new-mem0-embedder",
+            mem0_embedder_api_key="new-mem0-embedder",
             sync_dashscope_api_key=False,
         ),
         _request(monkeypatch, tmp_path),
@@ -203,11 +203,11 @@ async def test_runtime_config_apply_updates_mem0_keys_and_refreshes_memory_provi
     assert refreshed is True
     assert payload["mem0"]["llm"]["api_key_set"] is True
     assert payload["mem0"]["embedder"]["api_key_set"] is True
-    assert "sk-new-mem0-llm" not in str(payload)
-    assert "sk-new-mem0-embedder" not in str(payload)
-    assert os.environ["OPENTALKING_MEMORY_MEM0_LLM_API_KEY"] == "sk-new-mem0-llm"
-    assert os.environ["OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY"] == "sk-new-mem0-embedder"
-    assert os.environ.get("DASHSCOPE_API_KEY") != "sk-new-mem0-llm"
+    assert "new-mem0-llm" not in str(payload)
+    assert "new-mem0-embedder" not in str(payload)
+    assert os.environ["OPENTALKING_MEMORY_MEM0_LLM_API_KEY"] == "new-mem0-llm"
+    assert os.environ["OPENTALKING_MEMORY_MEM0_EMBEDDER_API_KEY"] == "new-mem0-embedder"
+    assert os.environ.get("DASHSCOPE_API_KEY") != "new-mem0-llm"
 
 
 async def test_runtime_config_apply_discards_stale_wechat_memory_registry(monkeypatch, tmp_path) -> None:
@@ -219,7 +219,7 @@ async def test_runtime_config_apply_discards_stale_wechat_memory_registry(monkey
     monkeypatch.setattr(runtime_config, "close_cached_memory_provider", fake_close_cached_memory_provider, raising=False)
 
     await runtime_config.apply_runtime_config(
-        runtime_config.RuntimeConfigPayload(mem0_llm_api_key="sk-new-mem0-llm"),
+        runtime_config.RuntimeConfigPayload(mem0_llm_api_key="new-mem0-llm"),
         request,
     )
 

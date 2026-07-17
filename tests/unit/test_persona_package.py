@@ -116,6 +116,12 @@ def test_persona_package_imports_prompt_and_knowledge(tmp_path: Path) -> None:
     assert any(base.id == record.manifest.agent.knowledge_base_ids[0] for base in bases)
 
 
+def test_persona_package_maps_pptx_mime_type() -> None:
+    from opentalking.persona.package import _mime_type_for
+
+    assert _mime_type_for(Path("slides.pptx")) == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+
 
 def test_persona_prompt_is_loaded_before_legacy_prompts(tmp_path: Path) -> None:
     source = tmp_path / "source"

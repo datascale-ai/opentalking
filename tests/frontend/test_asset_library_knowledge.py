@@ -64,8 +64,8 @@ def test_asset_library_reuses_history_documents_in_create_and_upload_modals() ->
 def test_asset_library_limits_knowledge_upload_formats_and_normalizes_documents() -> None:
     source = Path("apps/web/src/components/AssetLibraryWorkspace.tsx").read_text(encoding="utf-8")
 
-    assert 'const KNOWLEDGE_FILE_ACCEPT = ".txt,.md,.markdown,.pdf,text/plain,text/markdown,application/pdf"' in source
-    assert 'const KNOWLEDGE_FILE_FORMAT_LABEL = ".txt、.md、.markdown、.pdf"' in source
+    assert 'const KNOWLEDGE_FILE_ACCEPT = ".txt,.md,.markdown,.pdf,.pptx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"' in source
+    assert 'const KNOWLEDGE_FILE_FORMAT_LABEL = ".txt、.md、.markdown、.pdf、.pptx"' in source
     assert "KNOWLEDGE_FILE_HINT" in source
     assert "KNOWLEDGE_FILE_UNSUPPORTED_MESSAGE" in source
     assert "accept={KNOWLEDGE_FILE_ACCEPT}" in source

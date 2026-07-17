@@ -1084,6 +1084,39 @@ async def test_agent_knowledge_document_routes_upload_list_delete(
 
 
 @pytest.mark.asyncio
+async def test_agent_knowledge_document_routes_accept_pptx(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    store = make_knowledge_store(tmp_path)
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    knowledge_base = await store.create_knowledge_base("PPTX知识库")
+    pptx = tmp_path / "slides.pptx"
+    pptx.write_bytes(b"fake pptx content")
+    monkeypatch.setattr(
+        "opentalking.agent.knowledge_store._extract_text",
+        lambda path: ("PPTX 知识库文本", None),
+    )
+
+    app = FastAPI()
+    app.include_router(agent_routes.router)
+    transport = httpx.ASGITransport(app=app)
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        upload = await client.post(
+            f"/agent/knowledge-bases/{knowledge_base.id}/documents",
+            files={"file": ("slides.pptx", pptx.read_bytes(), "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+        )
+
+    assert upload.status_code == 200, upload.text
+    created = upload.json()
+    assert created["filename"] == "slides.pptx"
+    assert created["mime_type"] == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    assert created["status"] == "ready"
+    assert created["chunk_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_agent_knowledge_document_routes_reject_duplicate_kb_upload(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path,

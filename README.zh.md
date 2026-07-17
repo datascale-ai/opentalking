@@ -136,7 +136,7 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 
 | 路线 | 适合场景 | 需要准备 | 验证内容 |
 | --- | --- | --- | --- |
-| 优云镜像 | 想先体验 OpenTalking，不想配置依赖或下载模型权重。 | 使用已发布镜像创建优云实例，并开放 `5173` 端口。 | WebUI、LLM 回复、流式 TTS、字幕事件、WebRTC 传输和预置镜像工作流。 |
+| 优云镜像 | 想先体验 OpenTalking，不想配置依赖或下载模型权重。 | 使用已发布镜像创建优云实例，并开放 `5173/TCP` 和 `3478/TCP`。 | WebUI、LLM 回复、流式 TTS、字幕事件、WebRTC 传输和预置镜像工作流。 |
 | 自己部署 | 想在自己的机器或服务器运行仓库、调整配置，或继续接本地/远端真实模型。 | Python、Node.js、FFmpeg、`.env` provider 配置；真实模型还需要 GPU、运行时和模型权重。 | 先跑通 Mock 首次运行链路，再切到本地 QuickTalk 或远端 OmniRT。 |
 
 ### 1. 优云
@@ -144,10 +144,11 @@ OpenTalking 的 **编排层**（API / Worker / 前端）和 **数字人合成后
 如果你只是想先体验 OpenTalking + OmniRT + QuickTalk 的实时数字人链路，可以直接使用我们在优云智算发布的社区镜像：
 
 - 镜像地址：<https://www.compshare.cn/images/TdDwmKZUZebI>
-- 对外端口：`5173`（WebUI，内部自动代理 API）
+- 对外端口：`5173/TCP` 用于 WebUI，`3478/TCP` 用于内置 TURN relay；`8000` API 和 `9000` OmniRT 保持内部访问。
+- 公网 WebRTC：镜像启动脚本会启动本机 TURN relay，并强制使用 relay-only WebRTC，不需要开放 `32768-60999` 这类 UDP 端口范围。
 - 操作文档：[优云智算镜像快速体验](docs/zh/quick-start/compshare-image.md)
 
-镜像内已预置 OpenTalking、OmniRT、QuickTalk 运行环境和模型文件。部署实例后开放 `5173` 端口，在浏览器访问平台提供的实例地址即可进入 WebUI；如需手动重启服务，请按操作文档中的命令执行。
+镜像内已预置 OpenTalking、OmniRT、QuickTalk 运行环境、模型文件和本机 TURN relay。部署实例后开放 `5173/TCP` 和 `3478/TCP`，在浏览器访问平台提供的实例地址即可进入 WebUI；如需手动重启服务，请按操作文档中的命令执行。
 
 ### 2. 自己部署
 

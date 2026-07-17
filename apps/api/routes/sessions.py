@@ -49,6 +49,7 @@ from opentalking.providers.stt.dashscope.adapter import (
     ensure_wav_16k_mono,
 )
 from opentalking.providers.stt.factory import normalize_stt_provider, stt_provider_config, transcribe_pcm_chunk_queue_sync, transcribe_wav_path_sync
+from opentalking.providers.rtc.aiortc.adapter import get_webrtc_ice_config_payload
 from opentalking.providers.tts.edge_zh_voices import normalize_optional_edge_voice
 from opentalking.providers.tts.providers import (
     BAILIAN_TTS_PROVIDERS,
@@ -341,6 +342,11 @@ async def _stream_worker_flashtalk_recording(
 
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+@router.get("/webrtc/ice-config")
+async def webrtc_ice_config() -> dict[str, object]:
+    return get_webrtc_ice_config_payload()
 
 
 async def _flashtalk_disk_recording_control(

@@ -119,6 +119,8 @@ def _mime_type_for(path: Path) -> str:
         return "text/plain"
     if suffix == ".pdf":
         return "application/pdf"
+    if suffix == ".pptx":
+        return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     return "application/octet-stream"
 
 

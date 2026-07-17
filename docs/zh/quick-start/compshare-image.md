@@ -4,7 +4,9 @@
 
 - 镜像地址：<https://www.compshare.cn/images/TdDwmKZUZebI>
 - 浏览器访问入口：5173
+- 镜像端口：开放 `5173/TCP` 和 `3478/TCP`；`8000` 和 `9000` 保持内部访问
 - 默认体验链路：OpenTalking Studio + OmniRT + QuickTalk
+- 公网 WebRTC：镜像启动脚本会启动本机 TURN relay，并强制使用 relay-only WebRTC；不需要开放 `32768-60999` 这类 UDP 中继端口范围。
 
 文档中的截图已对账号、余额、实例标识、公网地址、二维码等敏感信息做打码处理。
 

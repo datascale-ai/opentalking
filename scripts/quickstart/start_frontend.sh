@@ -10,6 +10,12 @@ source "$script_dir/_helpers.sh"
 env_file="${OPENTALKING_QUICKSTART_ENV:-$script_dir/env}"
 quickstart_source_env "$env_file"
 
+# Do not let frontend tooling inherit notebook, Codex, or provider credentials.
+unset OPENAI_API_KEY OPENAI_ADMIN_KEY OPENAI_BASE_URL
+unset DASHSCOPE_API_KEY DASHSCOPE_API_TOKEN
+unset ALIBABA_CLOUD_ACCESS_KEY_ID ALIBABA_CLOUD_ACCESS_KEY_SECRET
+unset JUPYTER_TOKEN
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -103,7 +109,12 @@ echo "  api:  http://127.0.0.1:$backend_port"
 (
   cd "$web_dir"
   export VITE_BACKEND_PORT="$backend_port"
-  quickstart_detach "$log_file" ./node_modules/.bin/vite --host "$web_host" --port "$web_port" --strictPort >"$pid_file"
+  if [[ "${OPENTALKING_WEB_DEV_SERVER:-0}" == "1" ]]; then
+    quickstart_detach "$log_file" ./node_modules/.bin/vite --host "$web_host" --port "$web_port" --strictPort >"$pid_file"
+  else
+    npm run build >>"$log_file" 2>&1
+    quickstart_detach "$log_file" ./node_modules/.bin/vite preview --host "$web_host" --port "$web_port" --strictPort >"$pid_file"
+  fi
 )
 
 pid="$(cat "$pid_file" 2>/dev/null || true)"

@@ -58,6 +58,8 @@ def test_runtime_config_tts_hides_voice_and_marks_edge_as_no_setup() -> None:
     source = (ROOT / "apps/web/src/components/RuntimeConfigWorkspace.tsx").read_text(encoding="utf-8")
 
     assert 'const runtimeTtsNeedsSetup = runtimeForm.ttsProvider !== "edge";' in source
+    assert "runtimeConfigSyncedRef" in source
+    assert "preferDashscopeWhenEdge" in source
     assert "{runtimeTtsNeedsSetup ? (" in source
     assert 'label: "Edge（无需配置）"' in source
     assert 'runtimeTtsNeedsSetup ? (runtimeTtsKeySet ? "Key 已设置" : "Key 未设置") : "无需配置"' in source
