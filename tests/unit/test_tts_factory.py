@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import asyncio
+import base64
+import sys
+import threading
+import time
+import types
+
+import numpy as np
 
 from opentalking.providers.tts.factory import build_tts_adapter, create_tts_adapter
 from opentalking.providers.tts.dashscope_qwen.adapter import _qwen_cantonese_voice_override, _qwen_language_type
@@ -82,3 +90,63 @@ def test_qwen_tts_cantonese_voice_override_can_select_rocky(monkeypatch):
     monkeypatch.setenv("OPENTALKING_QWEN_TTS_CANTONESE_VOICE", "rocky")
 
     assert _qwen_cantonese_voice_override() == "Rocky"
+
+
+def test_qwen_tts_one_shot_keeps_callback_alive(monkeypatch):
+    from opentalking.providers.tts.dashscope_qwen.adapter import DashScopeQwenTTSAdapter
+
+    pcm = np.array([1000] * 960, dtype=np.int16).tobytes()
+
+    class FakeCallback:
+        pass
+
+    class FakeClient:
+        def __init__(self, *, callback, **_kwargs):
+            self.callback = callback
+            self.ready = False
+
+        def connect(self):
+            return None
+
+        def update_session(self, **_kwargs):
+            def mark_ready():
+                time.sleep(0.05)
+                self.ready = True
+                self.callback.on_event({"type": "session.updated"})
+
+            threading.Thread(target=mark_ready, daemon=True).start()
+
+        def append_text(self, _text):
+            return None
+
+        def commit(self):
+            if self.ready:
+                self.callback.on_event({"type": "response.audio.delta", "delta": base64.b64encode(pcm).decode()})
+                self.callback.on_event({"type": "response.done"})
+
+        def finish(self):
+            return None
+
+        def close(self):
+            return None
+
+    audio_format = SimpleNamespace(PCM_24000HZ_MONO_16BIT="pcm")
+    realtime = types.ModuleType("dashscope.audio.qwen_tts_realtime")
+    realtime.AudioFormat = audio_format
+    realtime.QwenTtsRealtime = FakeClient
+    realtime.QwenTtsRealtimeCallback = FakeCallback
+    fake_audio = types.ModuleType("dashscope.audio")
+    fake_dashscope = types.ModuleType("dashscope")
+    fake_dashscope.api_key = None
+    fake_dashscope.audio = fake_audio
+    monkeypatch.setitem(sys.modules, "dashscope", fake_dashscope)
+    monkeypatch.setitem(sys.modules, "dashscope.audio", fake_audio)
+    monkeypatch.setitem(sys.modules, "dashscope.audio.qwen_tts_realtime", realtime)
+    monkeypatch.setenv("OPENTALKING_TTS_DASHSCOPE_API_KEY", "test-key")
+
+    async def collect():
+        adapter = DashScopeQwenTTSAdapter(reuse_ws=False)
+        return [chunk async for chunk in adapter.synthesize_stream("你好")]
+
+    chunks = asyncio.run(asyncio.wait_for(collect(), timeout=0.5))
+    assert chunks

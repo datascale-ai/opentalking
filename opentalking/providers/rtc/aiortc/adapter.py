@@ -54,6 +54,33 @@ def _has_turn_server(servers: list[RTCIceServer]) -> bool:
     return any(url.startswith(("turn:", "turns:")) for server in servers for url in _ice_server_urls(server))
 
 
+def _parse_ice_servers(raw_config: str, *, config_name: str) -> list[RTCIceServer]:
+    servers: list[RTCIceServer] = []
+    if not raw_config:
+        return servers
+    if raw_config[0] not in "[{":
+        return [RTCIceServer(urls=url) for url in _split_ice_urls(raw_config)]
+
+    try:
+        parsed = json.loads(raw_config)
+    except Exception:
+        log.exception("Ignoring invalid %s", config_name)
+        return servers
+    if isinstance(parsed, list):
+        for item in parsed:
+            if isinstance(item, str) and item.strip():
+                servers.append(RTCIceServer(urls=item.strip()))
+            elif isinstance(item, dict):
+                server = _ice_server_from_mapping(item)
+                if server is not None:
+                    servers.append(server)
+    elif isinstance(parsed, dict):
+        server = _ice_server_from_mapping(parsed)
+        if server is not None:
+            servers.append(server)
+    return servers
+
+
 def get_webrtc_ice_transport_policy() -> str:
     configured = os.environ.get("OPENTALKING_WEBRTC_ICE_TRANSPORT_POLICY", "").strip().lower()
     if configured in {"all", "relay"}:
@@ -62,30 +89,9 @@ def get_webrtc_ice_transport_policy() -> str:
 
 
 def get_webrtc_ice_servers() -> list[RTCIceServer]:
-    """Return WebRTC ICE servers for both browser and aiortc."""
+    """Return ICE servers exposed to browser clients."""
     raw_config = os.environ.get("OPENTALKING_WEBRTC_ICE_SERVERS", "").strip()
-    servers: list[RTCIceServer] = []
-    if raw_config:
-        if raw_config[0] in "[{":
-            try:
-                parsed = json.loads(raw_config)
-            except Exception:
-                log.exception("Ignoring invalid OPENTALKING_WEBRTC_ICE_SERVERS")
-                parsed = None
-            if isinstance(parsed, list):
-                for item in parsed:
-                    if isinstance(item, str) and item.strip():
-                        servers.append(RTCIceServer(urls=item.strip()))
-                    elif isinstance(item, dict):
-                        server = _ice_server_from_mapping(item)
-                        if server is not None:
-                            servers.append(server)
-            elif isinstance(parsed, dict):
-                server = _ice_server_from_mapping(parsed)
-                if server is not None:
-                    servers.append(server)
-        else:
-            servers.extend(RTCIceServer(urls=url) for url in _split_ice_urls(raw_config))
+    servers = _parse_ice_servers(raw_config, config_name="OPENTALKING_WEBRTC_ICE_SERVERS")
 
     if not servers:
         stun_urls = _split_ice_urls(
@@ -109,6 +115,14 @@ def get_webrtc_ice_servers() -> list[RTCIceServer]:
         )
 
     return servers
+
+
+def get_webrtc_server_ice_servers() -> list[RTCIceServer]:
+    """Return ICE servers used by the server-side aiortc peer."""
+    raw_config = os.environ.get("OPENTALKING_WEBRTC_SERVER_ICE_SERVERS", "").strip()
+    if not raw_config:
+        return get_webrtc_ice_servers()
+    return _parse_ice_servers(raw_config, config_name="OPENTALKING_WEBRTC_SERVER_ICE_SERVERS")
 
 
 def get_webrtc_ice_config_payload() -> dict[str, object]:
@@ -408,7 +422,7 @@ class WebRTCSession:
             asyncio.get_event_loop()
         except RuntimeError:
             asyncio.set_event_loop(asyncio.new_event_loop())
-        self.pc = RTCPeerConnection(RTCConfiguration(iceServers=get_webrtc_ice_servers()))
+        self.pc = RTCPeerConnection(RTCConfiguration(iceServers=get_webrtc_server_ice_servers()))
         normalized_mode = mode.strip().lower()
         self._shared_clock = _SharedWallClock()
         if normalized_mode == "legacy":

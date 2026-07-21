@@ -124,17 +124,19 @@ test -f "$quicktalk_root/repair.npy" || { echo "Missing QuickTalk repair.npy: $q
 test -d "$quicktalk_root/chinese-hubert-large" || { echo "Missing HuBERT directory: $quicktalk_root/chinese-hubert-large" >&2; exit 1; }
 test -d "$quicktalk_root/auxiliary/models/buffalo_l" || { echo "Missing InsightFace buffalo_l directory: $quicktalk_root/auxiliary/models/buffalo_l" >&2; exit 1; }
 
-echo "Starting OmniRT QuickTalk"
-echo "  omnirt:        $omnirt_dir"
-echo "  model root:    $quicktalk_root"
-echo "  checkpoint:    $checkpoint"
-echo "  device:        $device"
-echo "  hubert device: $hubert_device"
-echo "  max edge:      ${OMNIRT_QUICKTALK_MAX_LONG_EDGE:-900}"
-echo "  template sec:  ${OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS:-1}"
-echo "  uv index:      $(quickstart_describe_uv_default_index)"
-echo "  port:          $port"
-echo "  log:           $log_file"
+{
+  echo "Starting OmniRT QuickTalk"
+  echo "  omnirt:        $omnirt_dir"
+  echo "  model root:    $quicktalk_root"
+  echo "  checkpoint:    $checkpoint"
+  echo "  device:        $device"
+  echo "  hubert device: $hubert_device"
+  echo "  max edge:      ${OMNIRT_QUICKTALK_MAX_LONG_EDGE:-900}"
+  echo "  template sec:  ${OMNIRT_QUICKTALK_MAX_TEMPLATE_SECONDS:-1}"
+  echo "  uv index:      $(quickstart_describe_uv_default_index)"
+  echo "  port:          $port"
+  echo "  log:           $log_file"
+}
 
 uv_bin=""
 if [[ "$install_deps" == "1" ]]; then
@@ -164,6 +166,18 @@ allowed_frame_roots="${16}"
 host="${17}"
 port="${18}"
 backend="${19}"
+
+echo "[$(date -Is)] Starting OmniRT QuickTalk"
+echo "  omnirt:        $omnirt_dir"
+echo "  model root:    $quicktalk_root"
+echo "  checkpoint:    $checkpoint"
+echo "  device:        $device"
+echo "  hubert device: $hubert_device"
+echo "  max edge:      $max_long_edge"
+echo "  template sec:  $max_template_seconds"
+echo "  uv index:      ${UV_DEFAULT_INDEX:-${UV_INDEX_URL:-default}}"
+echo "  port:          $port"
+echo "  backend:       $backend"
 
 cd "$omnirt_dir"
 source .venv/bin/activate

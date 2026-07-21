@@ -245,6 +245,7 @@ async def _collect_tts_preview_chunks(
         tts_provider=provider,
         tts_model=model,
         indextts_config=indextts_config,
+        reuse_ws=False if provider == "dashscope" else None,
     )
     chunks: list[np.ndarray] = []
     effective_sample_rate = sample_rate
@@ -323,6 +324,7 @@ async def preview_tts(request: Request) -> Response:
         tts_provider=provider,
         tts_model=model,
         indextts_config=indextts_config,
+        reuse_ws=False if provider == "dashscope" else None,
     )
     chunks: list[np.ndarray] = []
     effective_sample_rate = sample_rate

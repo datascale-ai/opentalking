@@ -6,6 +6,7 @@ import asyncio
 import base64
 import logging
 import os
+import threading
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -132,6 +133,7 @@ class DashScopeQwenTTSAdapter:
         *,
         model: str | None = None,
         service_url: str | None = None,
+        reuse_ws: bool | None = None,
     ) -> None:
         # 对外输出采样率（与 FlashTalk / 会话配置一致，默认 16k）
         self.sample_rate = sample_rate
@@ -153,13 +155,14 @@ class DashScopeQwenTTSAdapter:
             _settings_value("tts_dashscope_service_url", "wss://dashscope.aliyuncs.com/api-ws/v1/realtime"),
         )
         self._mode = _env_str("OPENTALKING_QWEN_TTS_MODE", "commit")
-        self._reuse_ws = _env_bool("OPENTALKING_QWEN_TTS_REUSE_WS", True)
+        self._reuse_ws = _env_bool("OPENTALKING_QWEN_TTS_REUSE_WS", True) if reuse_ws is None else reuse_ws
 
         # Persistent connection (reuse mode)
         self._client: Any | None = None
         self._session_voice: str | None = None
         self._stable_cb: Any | None = None
         self._active_inbox: asyncio.Queue[Any] | None = None
+        self._session_ready = threading.Event()
 
     async def aclose(self) -> None:
         """关闭复用的 WebSocket（在单次 speak / 单次整段朗读结束后务必调用）。"""
@@ -232,7 +235,6 @@ class DashScopeQwenTTSAdapter:
 
         def _prepare_and_send() -> None:
             if self._client is None:
-
                 class _StableCb(QwenTtsRealtimeCallback):
                     def __init__(self, adapter: DashScopeQwenTTSAdapter) -> None:
                         self._adapter = adapter
@@ -240,6 +242,8 @@ class DashScopeQwenTTSAdapter:
                     def on_event(self, message: Any) -> None:
                         if not isinstance(message, dict):
                             return
+                        if message.get("type") == "session.updated":
+                            self._adapter._session_ready.set()
                         q = self._adapter._active_inbox
                         if q is None:
                             return
@@ -256,6 +260,7 @@ class DashScopeQwenTTSAdapter:
                 self._stable_cb = cb
                 client = QwenTtsRealtime(model=self._model, callback=cb, url=self._ws_url)
                 client.connect()
+                self._session_ready.clear()
                 client.update_session(
                     voice=v,
                     response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
@@ -265,8 +270,11 @@ class DashScopeQwenTTSAdapter:
                 )
                 self._session_voice = v
                 self._client = client
+                if not self._session_ready.wait(timeout=5.0):
+                    raise TimeoutError("DashScope TTS session update timed out")
             elif v != self._session_voice:
                 assert self._client is not None
+                self._session_ready.clear()
                 self._client.update_session(
                     voice=v,
                     response_format=AudioFormat.PCM_24000HZ_MONO_16BIT,
@@ -275,6 +283,8 @@ class DashScopeQwenTTSAdapter:
                     language_type=_qwen_language_type(),
                 )
                 self._session_voice = v
+                if not self._session_ready.wait(timeout=5.0):
+                    raise TimeoutError("DashScope TTS session update timed out")
 
             assert self._client is not None
             self._client.append_text(text)
@@ -302,10 +312,14 @@ class DashScopeQwenTTSAdapter:
         """不复用 WS：一轮 connect → 合成 → close（兼容旧行为 / 调试）。"""
         client_holder: dict[str, Any] = {}
 
+        session_ready = threading.Event()
+
         class _Cb(QwenTtsRealtimeCallback):
             def on_event(self, message: Any) -> None:
                 if not isinstance(message, dict):
                     return
+                if message.get("type") == "session.updated":
+                    session_ready.set()
                 try:
                     loop.call_soon_threadsafe(inbox.put_nowait, message)
                 except Exception:  # noqa: BLE001
@@ -327,6 +341,8 @@ class DashScopeQwenTTSAdapter:
                 language_type=_qwen_language_type(),
             )
             client_holder["c"] = client
+            if not session_ready.wait(timeout=5.0):
+                raise TimeoutError("DashScope TTS session update timed out")
             client.append_text(text)
             if self._mode == "commit":
                 client.commit()

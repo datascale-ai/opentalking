@@ -1019,6 +1019,7 @@ def create_tts_adapter(
     tts_provider: str | None = None,
     tts_model: str | None = None,
     indextts_config: Mapping[str, object] | None = None,
+    reuse_ws: bool | None = None,
 ):
     """返回与 EdgeTTSAdapter 相同接口的 TTS 适配器实例。"""
     p = normalize_tts_provider(tts_provider, default=None) or _provider()
@@ -1033,6 +1034,7 @@ def create_tts_adapter(
             chunk_ms=chunk_ms,
             model=(tts_model or "").strip() or _dashscope_model(),
             service_url=_dashscope_service_url(),
+            reuse_ws=reuse_ws,
         )
     if p in _COSY_WS:
         from opentalking.providers.tts.cosyvoice_ws.adapter import DashScopeCosyVoiceWsAdapter
@@ -1303,6 +1305,7 @@ def build_tts_adapter(
     tts_provider: str | None = None,
     tts_model: str | None = None,
     indextts_config: Mapping[str, object] | None = None,
+    reuse_ws: bool | None = None,
 ):
     """Settings-based entry point with optional per-request TTS overrides."""
     from opentalking.core.config import get_settings
@@ -1360,6 +1363,7 @@ def build_tts_adapter(
             tts_provider=provider,
             tts_model=effective_tts_model,
             indextts_config=indextts_config,
+            reuse_ws=reuse_ws,
         )
 
     if provider in _CORE:
