@@ -4,9 +4,7 @@ This page explains how to try the published OpenTalking image on Compshare. The 
 
 - Image URL: <https://www.compshare.cn/images/TdDwmKZUZebI>
 - Browser access entry: 5173
-- Image ports: open `5173/TCP` and `3478/TCP`; keep `8000` and `9000` internal
 - Default experience path: OpenTalking Studio + OmniRT + QuickTalk
-- Public WebRTC: the startup script starts a local TURN relay and forces relay-only WebRTC; the image does not need a `32768-60999` UDP relay range.
 
 The screenshots in this guide have been redacted to hide account, balance, instance identifier, public address, QR code, and other sensitive information.
 

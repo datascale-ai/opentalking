@@ -164,11 +164,9 @@ Choose one of the two quickstart paths first:
 If you want to try the OpenTalking + OmniRT + QuickTalk real-time digital-human path before setting up everything manually, use the community image we published on Compshare:
 
 - Image URL: [image link](https://www.compshare.cn/images/TdDwmKZUZebI?referral_code=Hid5KUhcqlZEptmMEwKy2F)
-- Exposed ports: `5173/TCP` for WebUI and `3478/TCP` for the built-in TURN relay. API port `8000` and OmniRT port `9000` stay internal.
-- Public WebRTC: the image starts a local TURN relay and forces relay-only WebRTC. It does not need a `32768-60999` UDP range.
 - Guide: [Compshare image quick experience](https://datascale-ai.github.io/opentalking/latest/en/quick-start/)
 
-The image includes OpenTalking, OmniRT, the QuickTalk runtime environment, model files, and the local TURN relay. After deploying an instance, open TCP ports `5173` and `3478`, then visit the instance URL provided by the platform. If you need to restart services manually, follow the commands in the guide.
+The image includes OpenTalking, OmniRT, the QuickTalk runtime environment, and model files. After deploying an instance, open port `5173` and visit the instance URL provided by the platform. If you need to restart services manually, follow the commands in the guide.
 
 ### 2. Self Deployment
 
