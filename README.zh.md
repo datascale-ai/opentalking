@@ -6,6 +6,8 @@
 
 <p align="center">
   <a href="./README.md">English</a> ·
+  <a href="./README.zh.md">中文</a> ·
+  <a href="./README.ja.md">日本語</a> ·
   <a href="https://datascale-ai.github.io/opentalking/latest/">文档站</a> ·
   <a href="https://github.com/datascale-ai/opentalking">GitHub</a>
 </p>
