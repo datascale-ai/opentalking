@@ -57,6 +57,85 @@ _TTS_OPENER_PRELOAD_TASK: asyncio.Task[None] | None = None
 _SENTINEL = object()  # unique marker for "not yet set"
 
 
+class _LoopingIdleVideo:
+    """Sequentially replay a reference video without loading every frame into memory."""
+
+    def __init__(
+        self,
+        path: Path,
+        *,
+        width: int,
+        height: int,
+        output_fps: float,
+    ) -> None:
+        import cv2
+
+        self.path = path
+        self._cv2 = cv2
+        self._cap = cv2.VideoCapture(str(path))
+        if not self._cap.isOpened():
+            self._cap.release()
+            raise RuntimeError(f"Cannot open idle video: {path}")
+
+        self.source_fps = float(self._cap.get(cv2.CAP_PROP_FPS))
+        self.frame_count = round(float(self._cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+        if self.source_fps <= 0.0 or self.frame_count <= 0:
+            self._cap.release()
+            raise RuntimeError(f"Idle video has invalid metadata: {path}")
+
+        self.width = max(2, int(width))
+        self.height = max(2, int(height))
+        self.output_fps = max(1.0, float(output_fps))
+        self.duration_seconds = self.frame_count / self.source_fps
+        self._output_frame_index = 0
+        self._source_frame_index = -1
+        self._last_frame: np.ndarray | None = None
+        self._closed = False
+
+    def source_index_for_output(self, output_frame_index: int) -> int:
+        return int(output_frame_index * self.source_fps / self.output_fps) % self.frame_count
+
+    def _resize_frame(self, frame: np.ndarray) -> np.ndarray:
+        h, w = frame.shape[:2]
+        if (w, h) == (self.width, self.height):
+            return np.ascontiguousarray(frame)
+        scale = max(self.height / h, self.width / w)
+        fitted_w = max(self.width, int(np.ceil(scale * w)))
+        fitted_h = max(self.height, int(np.ceil(scale * h)))
+        fitted = self._cv2.resize(frame, (fitted_w, fitted_h), interpolation=self._cv2.INTER_AREA)
+        top = (fitted_h - self.height) // 2
+        left = (fitted_w - self.width) // 2
+        return np.ascontiguousarray(fitted[top:top + self.height, left:left + self.width])
+
+    def next_frame(self) -> np.ndarray | None:
+        if self._closed:
+            return None
+
+        desired_index = self.source_index_for_output(self._output_frame_index)
+        self._output_frame_index += 1
+        if desired_index == self._source_frame_index and self._last_frame is not None:
+            return self._last_frame
+
+        if desired_index <= self._source_frame_index:
+            self._cap.set(self._cv2.CAP_PROP_POS_FRAMES, 0)
+            self._source_frame_index = -1
+            self._last_frame = None
+
+        while self._source_frame_index < desired_index:
+            ok, frame = self._cap.read()
+            if not ok:
+                self.close()
+                return None
+            self._source_frame_index += 1
+            self._last_frame = self._resize_frame(frame)
+        return self._last_frame
+
+    def close(self) -> None:
+        if not self._closed:
+            self._cap.release()
+            self._closed = True
+
+
 def _agent_memory_enabled_for_runtime(
     *,
     memory_enabled: bool,
@@ -320,6 +399,7 @@ class FlashTalkRunner:
         self._idle_frames: list[np.ndarray] = []
         self._idle_playback_indices: list[int] = []
         self._idle_frame_idx = 0
+        self._quicktalk_idle_video: _LoopingIdleVideo | None = None
         self._reference_frame: np.ndarray | None = None
         self._last_frame: np.ndarray | None = None  # cached for idle loop
         self._tts_opener_recent_ids: list[str] = []
@@ -925,6 +1005,27 @@ class FlashTalkRunner:
                     len(idle_frames),
                 )
 
+        if self.model_type == "quicktalk":
+            idle_video = self._open_quicktalk_reference_idle_video()
+            if idle_video is not None:
+                self._quicktalk_idle_video = idle_video
+                log.info(
+                    "Loaded QuickTalk reference video for idle playback: avatar=%s frames=%d fps=%.3f duration=%.3fs",
+                    self.avatar_id,
+                    idle_video.frame_count,
+                    idle_video.source_fps,
+                    idle_video.duration_seconds,
+                )
+            else:
+                idle_frames = self._load_quicktalk_reference_idle_frames()
+                if idle_frames:
+                    self._set_idle_frames(idle_frames, playback_mode="loop")
+                    log.info(
+                        "Loaded QuickTalk reference frames for idle playback: avatar=%s frames=%d",
+                        self.avatar_id,
+                        len(idle_frames),
+                    )
+
         if self.model_type == "fasterliveportrait" and self._reference_frame is not None:
             self._set_idle_frames(self._build_fasterliveportrait_idle_frames(self._reference_frame))
             log.info(
@@ -1087,7 +1188,16 @@ class FlashTalkRunner:
         if self.webrtc.draining:   # block idle injection during queue drain
             return
         from opentalking.core.types.frames import VideoFrameData
-        if self._idle_frames:
+        idle_frame: np.ndarray | None = None
+        if self._quicktalk_idle_video is not None:
+            idle_frame = self._quicktalk_idle_video.next_frame()
+            if idle_frame is None:
+                self._quicktalk_idle_video = None
+                log.warning(
+                    "QuickTalk idle video ended unexpectedly; falling back to static idle frame: avatar=%s",
+                    self.avatar_id,
+                )
+        if idle_frame is None and self._idle_frames:
             if self._idle_playback_indices:
                 frame_idx = self._idle_playback_indices[
                     self._idle_frame_idx % len(self._idle_playback_indices)
@@ -1096,9 +1206,9 @@ class FlashTalkRunner:
                 frame_idx = self._idle_frame_idx % len(self._idle_frames)
             idle_frame = self._idle_frames[frame_idx]
             self._idle_frame_idx += 1
-        elif self._last_frame is not None:
+        elif idle_frame is None and self._last_frame is not None:
             idle_frame = self._last_frame
-        else:
+        if idle_frame is None:
             return
 
         self._ensure_media_clock_started()
@@ -1198,13 +1308,56 @@ class FlashTalkRunner:
                 continue
         return frames or None
 
+    def _open_quicktalk_reference_idle_video(self) -> _LoopingIdleVideo | None:
+        template_video = self._quicktalk_template_video()
+        if template_video is None:
+            return None
+        try:
+            return _LoopingIdleVideo(
+                template_video,
+                width=int(getattr(self.flashtalk, "width", 0) or 0),
+                height=int(getattr(self.flashtalk, "height", 0) or 0),
+                output_fps=float(getattr(self.flashtalk, "fps", 0) or 25.0),
+            )
+        except Exception:
+            log.warning("Cannot load QuickTalk reference video for idle playback: %s", template_video, exc_info=True)
+            return None
+
+    def _load_quicktalk_reference_idle_frames(self) -> list[np.ndarray] | None:
+        frame_dir = self._quicktalk_template_frame_dir()
+        if frame_dir is None:
+            return None
+        frame_paths = sorted(
+            path
+            for path in frame_dir.iterdir()
+            if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+        )
+        if not frame_paths:
+            return None
+
+        from PIL import Image
+
+        from opentalking.media.frame_avatar import resize_reference_image_to_video
+
+        target_w = int(getattr(self.flashtalk, "width", 0) or 0)
+        target_h = int(getattr(self.flashtalk, "height", 0) or 0)
+        frames: list[np.ndarray] = []
+        for path in frame_paths:
+            try:
+                pil_img = Image.open(path).convert("RGB")
+                pil_img = resize_reference_image_to_video(pil_img, width=target_w, height=target_h)
+                frames.append(np.ascontiguousarray(np.asarray(pil_img)[:, :, ::-1]))
+            except Exception:
+                log.warning("Skipping unreadable QuickTalk idle frame: %s", path, exc_info=True)
+        return frames or None
+
     def _build_fasterliveportrait_idle_frames(self, reference_frame: np.ndarray) -> list[np.ndarray]:
         return [np.ascontiguousarray(reference_frame)]
 
-    def _set_idle_frames(self, frames: list[np.ndarray]) -> None:
+    def _set_idle_frames(self, frames: list[np.ndarray], *, playback_mode: str | None = None) -> None:
         self._idle_frames = frames
-        playback_mode = os.environ.get("FLASHTALK_IDLE_CACHE_PLAYBACK", "pingpong").strip().lower()
-        self._idle_playback_indices = _build_idle_playback_indices(len(frames), playback_mode)
+        mode = playback_mode or os.environ.get("FLASHTALK_IDLE_CACHE_PLAYBACK", "pingpong").strip().lower()
+        self._idle_playback_indices = _build_idle_playback_indices(len(frames), mode)
         self._idle_frame_idx = 0
 
     def _make_idle_cache_key(self, ref_image_path: Path) -> str:
@@ -3099,6 +3252,9 @@ class FlashTalkRunner:
         self._closed = True
         self._webrtc_started.set()
         await self.interrupt()
+        if self._quicktalk_idle_video is not None:
+            self._quicktalk_idle_video.close()
+            self._quicktalk_idle_video = None
         if (
             self._tts_opener_warm_task
             and self._tts_opener_warm_task is not _TTS_OPENER_PRELOAD_TASK

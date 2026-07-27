@@ -178,6 +178,12 @@ exclude = [
 line-length = 100
 target-version = "py310"
 
+[tool.ruff.lint]
+# Keep the project's established Ruff baseline explicit. Ruff 0.16 expanded its
+# implicit default ruleset, which would otherwise turn a routine tool upgrade
+# into unrelated lint failures across the repository.
+select = ["E4", "E7", "E9", "F"]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "apps/api/tests"]
