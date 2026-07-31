@@ -100,6 +100,35 @@ a {
     @apply border border-indigo-100 bg-white/90 text-ink shadow-sm backdrop-blur hover:-translate-y-0.5 hover:border-cyanline/40 hover:bg-white hover:text-cyanline;
   }
 
+  .btn-studio {
+    @apply focus-ring relative isolate inline-flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg border border-indigo-300 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm backdrop-blur hover:-translate-y-0.5 hover:border-indigo-500 hover:text-indigo-800;
+    background-image: linear-gradient(110deg, #eef2ff 0%, #eef2ff 46%, #e0e7ff 100%);
+    background-position: 0% 50%;
+    background-size: 220% 100%;
+    animation: studio-cta-pulse 4s ease-in-out infinite;
+    transition:
+      background-position 260ms ease,
+      border-color 220ms ease,
+      box-shadow 220ms ease,
+      color 220ms ease,
+      transform 220ms ease;
+  }
+
+  .btn-studio:hover {
+    background-position: 100% 50%;
+    box-shadow:
+      0 10px 24px rgba(99, 102, 241, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  }
+
+  .btn-studio-arrow {
+    transition: transform 220ms ease;
+  }
+
+  .btn-studio:hover .btn-studio-arrow {
+    transform: translate(2px, -2px);
+  }
+
   .btn-plain {
     @apply text-indigo-950/70 hover:bg-white hover:text-ink;
   }
@@ -385,6 +414,21 @@ a {
   48%,
   100% {
     transform: translateY(460%);
+  }
+}
+
+@keyframes studio-cta-pulse {
+  0%,
+  45%,
+  100% {
+    border-color: #a5b4fc;
+    box-shadow: 0 1px 2px rgba(30, 27, 75, 0.05);
+  }
+  22.5% {
+    border-color: #6366f1;
+    box-shadow:
+      0 0 0 5px rgba(99, 102, 241, 0.12),
+      0 10px 26px rgba(99, 102, 241, 0.16);
   }
 }
 

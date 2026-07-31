@@ -695,7 +695,7 @@ export const siteContent: Record<Language, SiteContent> = {
       heroDescription:
         "从文本、语音到数字人视频，OpenTalking 帮你快速搭建可本地运行、可二次开发、可私有化部署的数字人应用。",
       demoCta: "看看 Demo",
-      quickStartCta: "快速开始",
+      quickStartCta: "立即体验",
       capabilityEyebrow: "Product capability",
       capabilityTitle: "从对话到画面，核心链路一次跑通",
       capabilityDescription: "OpenTalking 把会话、语音、字幕、播放和模型服务串成完整的数字人产品链路。",
@@ -819,7 +819,7 @@ export const siteContent: Record<Language, SiteContent> = {
       heroDescription:
         "OpenTalking helps teams build local, extensible, privately deployable avatar apps from text and voice to real-time video.",
       demoCta: "View demos",
-      quickStartCta: "Quick start",
+      quickStartCta: "Try Studio",
       capabilityEyebrow: "Product capability",
       capabilityTitle: "From conversation to video, in one flow",
       capabilityDescription: "OpenTalking connects dialogue, voice, captions, playback, and model services into a complete AI avatar workflow.",

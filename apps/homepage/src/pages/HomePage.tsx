@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Github, PlayCircle, Quote } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Github, PlayCircle, Quote } from "lucide-react";
 import { CapabilityCard } from "../components/CapabilityCard";
 import { DeploymentRoute } from "../components/DeploymentRoute";
 import { HeroStage } from "../components/HeroStage";
@@ -52,10 +52,15 @@ export function HomePage({ content, onNavigate, onOpenCase }: HomePageProps) {
               <PlayCircle className="h-4 w-4" />
               {home.demoCta}
             </button>
-            <button type="button" className="btn-ghost h-12 px-5" onClick={() => onNavigate("docs")}>
-              <BookOpen className="h-4 w-4" />
-              {home.quickStartCta}
-            </button>
+            <a
+              className="btn-studio h-12 px-5"
+              href={productLinks.studio}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="relative z-10">{home.quickStartCta}</span>
+              <ArrowUpRight className="btn-studio-arrow relative z-10 h-4 w-4" />
+            </a>
             <a className="btn-ghost h-12 px-5" href={productLinks.github} target="_blank" rel="noreferrer">
               <Github className="h-4 w-4" />
               GitHub

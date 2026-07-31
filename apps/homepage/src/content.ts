@@ -78,6 +78,7 @@ export const productLinks = {
   docsZh: "https://datascale-ai.github.io/opentalking/",
   docsEn: "https://datascale-ai.github.io/opentalking/en/",
   github: "https://github.com/datascale-ai/opentalking",
+  studio: "https://studio.opentalking.net/",
 };
 
 export const liveSignals = [
