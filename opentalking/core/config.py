@@ -204,6 +204,12 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "xiaomi_response_format": "tts_xiaomi_response_format",
             "xiaomi_protocol": "tts_xiaomi_protocol",
             "xiaomi_prompt": "tts_xiaomi_prompt",
+            "minimax_base_url": "tts_minimax_base_url",
+            "minimax_region": "tts_minimax_region",
+            "minimax_api_key": "tts_minimax_api_key",
+            "minimax_model": "tts_minimax_model",
+            "minimax_voice": "tts_minimax_voice",
+            "minimax_audio_format": "tts_minimax_audio_format",
         },
         "stt": {
             "default_provider": "stt_default_provider",

@@ -15,6 +15,7 @@ from opentalking.providers.tts.providers import (
     COSYVOICE_TTS_PROVIDERS,
     INDEXTTS_TTS_PROVIDERS,
     LOCAL_TTS_PROVIDERS,
+    MINIMAX_TTS_PROVIDERS,
     OMNIRT_TTS_PROVIDERS,
     OPENAI_COMPATIBLE_TTS_PROVIDERS,
     QWEN_TTS_PROVIDERS,
@@ -546,6 +547,61 @@ def _xiaomi_tts_prompt() -> str:
     )
 
 
+def _minimax_tts_region_base_url() -> str:
+    region = (
+        _provider_env("minimax", "REGION")
+        or os.environ.get("OPENTALKING_TTS_MINIMAX_REGION", "").strip()
+        or _settings_value("tts_minimax_region", "")
+    ).lower()
+    if region in {"cn", "cn_zh", "china", "zh"}:
+        return "https://api.minimaxi.com/v1"
+    return "https://api.minimax.io/v1"
+
+
+def _minimax_tts_base_url() -> str:
+    return (
+        _provider_env("minimax", "BASE_URL")
+        or os.environ.get("OPENTALKING_TTS_MINIMAX_BASE_URL", "").strip()
+        or _settings_value("tts_minimax_base_url", "")
+        or _minimax_tts_region_base_url()
+    ).rstrip("/")
+
+
+def _minimax_tts_api_key() -> str:
+    return (
+        _provider_env("minimax", "API_KEY")
+        or os.environ.get("OPENTALKING_TTS_MINIMAX_API_KEY", "").strip()
+        or _settings_value("tts_minimax_api_key", "")
+    )
+
+
+def _minimax_tts_model() -> str:
+    return (
+        _provider_env("minimax", "MODEL")
+        or os.environ.get("OPENTALKING_TTS_MINIMAX_MODEL", "").strip()
+        or _settings_value("tts_minimax_model", "")
+        or "speech-2.8-hd"
+    )
+
+
+def _minimax_tts_voice() -> str:
+    return (
+        _provider_env("minimax", "VOICE")
+        or os.environ.get("OPENTALKING_TTS_MINIMAX_VOICE", "").strip()
+        or _settings_value("tts_minimax_voice", "")
+        or "male-qn-qingse"
+    )
+
+
+def _minimax_tts_audio_format() -> str:
+    return (
+        _provider_env("minimax", "AUDIO_FORMAT")
+        or os.environ.get("OPENTALKING_TTS_MINIMAX_AUDIO_FORMAT", "").strip()
+        or _settings_value("tts_minimax_audio_format", "")
+        or "mp3"
+    )
+
+
 def tts_enabled_providers() -> list[str]:
     raw = os.environ.get("OPENTALKING_TTS_ENABLED_PROVIDERS", "").strip() or _settings_value(
         "tts_enabled_providers",
@@ -803,6 +859,16 @@ def tts_provider_config(provider: str) -> dict[str, str | bool | int | float]:
             "key_set": bool(_xiaomi_tts_api_key()),
             "service_url_set": bool(_xiaomi_tts_base_url()),
         }
+    if p in _MINIMAX:
+        return {
+            "provider": p,
+            "model": _minimax_tts_model(),
+            "model_dir": "",
+            "voice": _minimax_tts_voice(),
+            "device": "",
+            "key_set": bool(_minimax_tts_api_key()),
+            "service_url_set": bool(_minimax_tts_base_url()),
+        }
     return {
         "provider": p,
         "model": "",
@@ -826,6 +892,7 @@ _OMNIRT = OMNIRT_TTS_PROVIDERS
 _INDEXTTS = INDEXTTS_TTS_PROVIDERS
 _OPENAI_COMPATIBLE = OPENAI_COMPATIBLE_TTS_PROVIDERS
 _XIAOMI_MIMO = XIAOMI_MIMO_TTS_PROVIDERS
+_MINIMAX = MINIMAX_TTS_PROVIDERS
 _CORE = CORE_TTS_PROVIDERS
 
 
@@ -844,6 +911,8 @@ def tts_provider_log_label() -> str:
         return "openai_compatible"
     if p in _XIAOMI_MIMO:
         return "xiaomi_mimo"
+    if p in _MINIMAX:
+        return "minimax"
     if p in _INDEXTTS:
         return _resolve_indextts_provider(p)
     if p in _LOCAL or p in _OMNIRT:
@@ -982,6 +1051,15 @@ def tts_log_profile(
             f"TTS_API=xiaomi_mimo | OPENTALKING_TTS_PROVIDER={raw_display} | "
             f"model={model!r} voice_effective={voice_display!r} base_url_set={bool(_xiaomi_tts_base_url())} "
             f"api_key_set={bool(_xiaomi_tts_api_key())} format={_xiaomi_tts_response_format()!r} | {req_part}"
+        )
+
+    if p in _MINIMAX:
+        model = (tts_model_override or "").strip() or _minimax_tts_model()
+        voice = req or _minimax_tts_voice()
+        return (
+            f"TTS_API=minimax | OPENTALKING_TTS_PROVIDER={raw_display} | "
+            f"model={model!r} voice_effective={voice!r} base_url_set={bool(_minimax_tts_base_url())} "
+            f"api_key_set={bool(_minimax_tts_api_key())} format={_minimax_tts_audio_format()!r} | {req_part}"
         )
 
     if p == "elevenlabs":
@@ -1215,6 +1293,18 @@ def create_tts_adapter(
             sample_rate=sample_rate,
             chunk_ms=chunk_ms,
         )
+    if p in _MINIMAX:
+        from opentalking.providers.tts.minimax.adapter import MiniMaxTTSAdapter
+
+        return MiniMaxTTSAdapter(
+            api_key=_minimax_tts_api_key(),
+            base_url=_minimax_tts_base_url(),
+            model=(tts_model or "").strip() or _minimax_tts_model(),
+            default_voice=(default_voice or "").strip() or _minimax_tts_voice(),
+            audio_format=_minimax_tts_audio_format(),
+            sample_rate=sample_rate,
+            chunk_ms=chunk_ms,
+        )
     if p == "elevenlabs":
         try:
             from opentalking.core.config import get_settings
@@ -1327,7 +1417,7 @@ def build_tts_adapter(
     request_tts_model = (tts_model or "").strip() or None
     effective_tts_model = request_tts_model or getattr(settings, "tts_model", "").strip() or None
 
-    if provider in _OPENAI_COMPATIBLE or provider in _XIAOMI_MIMO:
+    if provider in _OPENAI_COMPATIBLE or provider in _XIAOMI_MIMO or provider in _MINIMAX:
         return create_tts_adapter(
             sample_rate=sample_rate,
             chunk_ms=chunk_ms,
