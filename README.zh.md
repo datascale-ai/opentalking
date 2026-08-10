@@ -363,3 +363,19 @@ OpenTalking 参考并受益于实时数字人生态中的优秀项目：
 ## License
 
 [Apache License 2.0](LICENSE)
+
+## 支持 OpenTalking
+
+如果 OpenTalking 对你有帮助，欢迎扫码捐赠支持项目。你的捐赠将帮助我们持续维护项目、完善文档，并继续建设更多实时数字人能力。
+
+<table>
+  <tr>
+    <td valign="middle">
+      <b>感谢你对 OpenTalking 的支持！</b><br>
+      每一份捐赠都会帮助我们持续投入开源维护、模型适配和产品体验优化。
+    </td>
+    <td align="center">
+      <img src="docs/assets/images/donation_qrcode.jpg" alt="OpenTalking 捐赠二维码" width="220">
+    </td>
+  </tr>
+</table>

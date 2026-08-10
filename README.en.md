@@ -365,3 +365,19 @@ OpenTalking references and benefits from excellent projects in the real-time dig
 ## License
 
 [Apache License 2.0](LICENSE)
+
+## Support OpenTalking
+
+If OpenTalking has been useful to you, please consider supporting the project. Your donation helps us maintain the project, improve its documentation, and continue building more real-time digital-human capabilities.
+
+<table>
+  <tr>
+    <td valign="middle">
+      <b>Thank you for supporting OpenTalking!</b><br>
+      Every contribution helps sustain open-source maintenance, model integrations, and a better product experience.
+    </td>
+    <td align="center">
+      <img src="docs/assets/images/donation_qrcode.jpg" alt="OpenTalking donation QR code" width="220">
+    </td>
+  </tr>
+</table>
