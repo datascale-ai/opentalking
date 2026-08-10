@@ -138,15 +138,18 @@ export type SiteContent = {
     ledgerTitle: string;
     ledgerDescription: string;
     supporterLabel: string;
+    messageLabel: string;
+    emptyMessageLabel: string;
     donatedAtLabel: string;
     amountLabel: string;
+    pageSizeLabel: string;
+    previousPageLabel: string;
+    nextPageLabel: string;
     emptyTitle: string;
     emptyDescription: string;
     usageEyebrow: string;
     usageTitle: string;
     usageItems: string[];
-    thanksTitle: string;
-    thanksDescription: string;
     privacyNotice: string;
   };
   footer: {
@@ -822,11 +825,16 @@ export const siteContent: Record<Language, SiteContent> = {
       ledgerTitle: "捐赠记录",
       ledgerDescription: "我们会在获得支持者同意后，公开昵称、捐赠时间和金额以表达感谢。",
       supporterLabel: "支持者",
+      messageLabel: "捐赠人留言",
+      emptyMessageLabel: "暂无留言",
       donatedAtLabel: "捐赠时间",
       amountLabel: "捐赠金额",
+      pageSizeLabel: "每页显示",
+      previousPageLabel: "上一页",
+      nextPageLabel: "下一页",
       emptyTitle: "暂无公开捐赠记录",
       emptyDescription: "感谢每一位支持者；新的公开记录会在确认后展示在这里。",
-      usageEyebrow: "Your support",
+      usageEyebrow: "您的支持",
       usageTitle: "您的捐赠将用于",
       usageItems: [
         "开源项目维护、问题修复与长期迭代",
@@ -834,8 +842,6 @@ export const siteContent: Record<Language, SiteContent> = {
         "文档、示例、教程与开发者体验改进",
         "官网、社区和必要的基础设施支出",
       ],
-      thanksTitle: "感谢您支持 OpenTalking！",
-      thanksDescription: "每一份捐赠都会帮助我们持续投入开源维护、模型集成和产品体验优化。",
       privacyNotice: "捐赠记录仅展示支持者同意公开的昵称、时间和金额；如希望匿名，将显示为“匿名支持者”。",
     },
     footer: {
@@ -974,8 +980,13 @@ export const siteContent: Record<Language, SiteContent> = {
       ledgerTitle: "Donation records",
       ledgerDescription: "With each supporter's consent, we share their display name, donation time, and amount to say thank you.",
       supporterLabel: "Supporter",
+      messageLabel: "Message",
+      emptyMessageLabel: "No message",
       donatedAtLabel: "Donated at",
       amountLabel: "Amount",
+      pageSizeLabel: "Rows per page",
+      previousPageLabel: "Previous",
+      nextPageLabel: "Next",
       emptyTitle: "No public donation records yet",
       emptyDescription: "Thank you to every supporter. New public records will appear here after confirmation.",
       usageEyebrow: "Your support",
@@ -986,8 +997,6 @@ export const siteContent: Record<Language, SiteContent> = {
         "Documentation, examples, tutorials, and developer experience",
         "Website, community, and necessary infrastructure costs",
       ],
-      thanksTitle: "Thank you for supporting OpenTalking!",
-      thanksDescription: "Every contribution helps sustain open-source maintenance, model integrations, and a better product experience.",
       privacyNotice: "Only the display name, time, and amount approved by a supporter are shown. Anonymous donations appear as “Anonymous supporter”.",
     },
     footer: {
