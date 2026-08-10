@@ -126,6 +126,29 @@ export type SiteContent = {
     githubCta: string;
     docsCta: string;
   };
+  donation: {
+    eyebrow: string;
+    title: string;
+    intro: string;
+    qrEyebrow: string;
+    qrTitle: string;
+    qrDescription: string;
+    qrCaption: string;
+    ledgerEyebrow: string;
+    ledgerTitle: string;
+    ledgerDescription: string;
+    supporterLabel: string;
+    donatedAtLabel: string;
+    amountLabel: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    usageEyebrow: string;
+    usageTitle: string;
+    usageItems: string[];
+    thanksTitle: string;
+    thanksDescription: string;
+    privacyNotice: string;
+  };
   footer: {
     tagline: string;
     description: string;
@@ -143,6 +166,7 @@ const enNavItems: NavItem[] = [
   { key: "home", label: "Home" },
   { key: "docs", label: "Docs" },
   { key: "cases", label: "Cases" },
+  { key: "donate", label: "Donate" },
   { key: "about", label: "About" },
 ];
 
@@ -786,6 +810,34 @@ export const siteContent: Record<Language, SiteContent> = {
       githubCta: "GitHub 仓库",
       docsCta: "阅读文档",
     },
+    donation: {
+      eyebrow: "Open source, sustained together",
+      title: "支持 OpenTalking",
+      intro: "如果 OpenTalking 对你有帮助，欢迎支持这个项目。你的捐赠将帮助我们持续维护项目、完善文档，并继续建设更多实时数字人能力。",
+      qrEyebrow: "Support OpenTalking",
+      qrTitle: "扫码捐赠",
+      qrDescription: "使用微信扫描二维码即可支持 OpenTalking。",
+      qrCaption: "感谢每一位愿意支持开源项目的朋友。",
+      ledgerEyebrow: "Donation ledger",
+      ledgerTitle: "捐赠记录",
+      ledgerDescription: "我们会在获得支持者同意后，公开昵称、捐赠时间和金额以表达感谢。",
+      supporterLabel: "支持者",
+      donatedAtLabel: "捐赠时间",
+      amountLabel: "捐赠金额",
+      emptyTitle: "暂无公开捐赠记录",
+      emptyDescription: "感谢每一位支持者；新的公开记录会在确认后展示在这里。",
+      usageEyebrow: "Your support",
+      usageTitle: "您的捐赠将用于",
+      usageItems: [
+        "开源项目维护、问题修复与长期迭代",
+        "模型集成、适配测试与部署验证",
+        "文档、示例、教程与开发者体验改进",
+        "官网、社区和必要的基础设施支出",
+      ],
+      thanksTitle: "感谢您支持 OpenTalking！",
+      thanksDescription: "每一份捐赠都会帮助我们持续投入开源维护、模型集成和产品体验优化。",
+      privacyNotice: "捐赠记录仅展示支持者同意公开的昵称、时间和金额；如希望匿名，将显示为“匿名支持者”。",
+    },
     footer: {
       tagline: "开源实时数字人生成与对话框架",
       description: "从 Demo、素材生产到私有化部署，帮助团队更快构建可落地的数字人应用。",
@@ -909,6 +961,34 @@ export const siteContent: Record<Language, SiteContent> = {
       communityDescription: "Contribute model adapters, deployment guides, scenario demos, documentation improvements, or applications to OpenTalking!",
       githubCta: "GitHub repo",
       docsCta: "Read docs",
+    },
+    donation: {
+      eyebrow: "Open source, sustained together",
+      title: "Support OpenTalking",
+      intro: "If OpenTalking has been useful to you, please consider supporting the project. Your donation helps us maintain the project, improve its documentation, and continue building more real-time digital-human capabilities.",
+      qrEyebrow: "Support OpenTalking",
+      qrTitle: "Scan to donate",
+      qrDescription: "Scan the WeChat QR code to support OpenTalking.",
+      qrCaption: "Thank you for supporting open source.",
+      ledgerEyebrow: "Donation ledger",
+      ledgerTitle: "Donation records",
+      ledgerDescription: "With each supporter's consent, we share their display name, donation time, and amount to say thank you.",
+      supporterLabel: "Supporter",
+      donatedAtLabel: "Donated at",
+      amountLabel: "Amount",
+      emptyTitle: "No public donation records yet",
+      emptyDescription: "Thank you to every supporter. New public records will appear here after confirmation.",
+      usageEyebrow: "Your support",
+      usageTitle: "Your donation helps fund",
+      usageItems: [
+        "Open-source maintenance, fixes, and long-term iteration",
+        "Model integrations, compatibility testing, and deployment validation",
+        "Documentation, examples, tutorials, and developer experience",
+        "Website, community, and necessary infrastructure costs",
+      ],
+      thanksTitle: "Thank you for supporting OpenTalking!",
+      thanksDescription: "Every contribution helps sustain open-source maintenance, model integrations, and a better product experience.",
+      privacyNotice: "Only the display name, time, and amount approved by a supporter are shown. Anonymous donations appear as “Anonymous supporter”.",
     },
     footer: {
       tagline: "Real-time AI avatar platform",

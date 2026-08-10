@@ -1,4 +1,4 @@
-export type PageKey = "home" | "docs" | "cases" | "about" | "caseDetail";
+export type PageKey = "home" | "docs" | "cases" | "donate" | "about" | "caseDetail";
 
 export type NavItem = {
   key: PageKey;
@@ -71,6 +71,7 @@ export const navItems: NavItem[] = [
   { key: "home", label: "首页" },
   { key: "docs", label: "文档" },
   { key: "cases", label: "案例" },
+  { key: "donate", label: "捐赠" },
   { key: "about", label: "关于我们" },
 ];
 
