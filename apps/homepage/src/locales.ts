@@ -169,7 +169,6 @@ const enNavItems: NavItem[] = [
   { key: "home", label: "Home" },
   { key: "docs", label: "Docs" },
   { key: "cases", label: "Cases" },
-  { key: "donate", label: "Donate" },
   { key: "about", label: "About" },
 ];
 

@@ -104,6 +104,7 @@ You can override the path if needed:
 HOMEPAGE_ANALYTICS_DB="<CUSTOM_SQLITE_PATH>"
 ```
 
+<!--
 ## Donation Page And Public Records
 
 The homepage donation page is available at `/donate` (or `/en/donate`). Its QR image is stored at:
@@ -134,6 +135,7 @@ Add confirmed records in this format, then rebuild and redeploy the homepage:
 ```
 
 Only publish a display name, optional message, donation time, and amount with the supporter's consent. Use `匿名支持者` for anonymous donations.
+-->
 
 ## 5. Run As A systemd Service
 

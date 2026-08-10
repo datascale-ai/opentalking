@@ -6,7 +6,6 @@ import { siteContent, type Language } from "./locales";
 import { AboutPage } from "./pages/AboutPage";
 import { CaseDetailPage } from "./pages/CaseDetailPage";
 import { CasesPage } from "./pages/CasesPage";
-import { DonationPage } from "./pages/DonationPage";
 import { HomePage } from "./pages/HomePage";
 import { useEffect, useMemo, useState } from "react";
 
@@ -34,10 +33,6 @@ const readRouteFromLocation = (): RouteState => {
     return { language, page: "cases" };
   }
 
-  if (routePath === "/donate") {
-    return { language, page: "donate" };
-  }
-
   if (routePath === "/about") {
     return { language, page: "about" };
   }
@@ -59,7 +54,6 @@ const getRoutePath = (route: RouteState) => {
   const prefix = route.language === "en" ? "/en" : "";
 
   if (route.page === "cases") return `${prefix}/cases`;
-  if (route.page === "donate") return `${prefix}/donate`;
   if (route.page === "about") return `${prefix}/about`;
   if (route.page === "caseDetail" && route.caseSlug) {
     return `${prefix}/cases/${encodeURIComponent(route.caseSlug)}`;
@@ -169,7 +163,6 @@ function App() {
             onOpenCase={handleOpenCase}
           />
         ) : null}
-        {currentPage === "donate" ? <DonationPage language={language} copy={content.donation} /> : null}
         {currentPage === "caseDetail" ? (
           <CaseDetailPage
             copy={content.caseDetail}

@@ -364,6 +364,7 @@ OpenTalking 参考并受益于实时数字人生态中的优秀项目：
 
 [Apache License 2.0](LICENSE)
 
+<!--
 ## 支持 OpenTalking
 
 如果 OpenTalking 对你有帮助，欢迎扫码捐赠支持项目。你的捐赠将帮助我们持续维护项目、完善文档，并继续建设更多实时数字人能力。
@@ -379,3 +380,4 @@ OpenTalking 参考并受益于实时数字人生态中的优秀项目：
     </td>
   </tr>
 </table>
+-->

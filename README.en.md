@@ -366,6 +366,7 @@ OpenTalking references and benefits from excellent projects in the real-time dig
 
 [Apache License 2.0](LICENSE)
 
+<!--
 ## Support OpenTalking
 
 If OpenTalking has been useful to you, please consider supporting the project. Your donation helps us maintain the project, improve its documentation, and continue building more real-time digital-human capabilities.
@@ -381,3 +382,4 @@ If OpenTalking has been useful to you, please consider supporting the project. Y
     </td>
   </tr>
 </table>
+-->
