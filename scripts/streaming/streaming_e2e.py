@@ -23,6 +23,7 @@ def main() -> int:
     parser.add_argument("--rtmps-password", default=os.environ.get("OPENTALKING_HARNESS_RTMPS_PASSWORD", ""))
     parser.add_argument("--whip-endpoint", required=True)
     parser.add_argument("--whip-token", default=os.environ.get("OPENTALKING_HARNESS_WHIP_TOKEN", ""))
+    parser.add_argument("--ca-file", default="")
     args = parser.parse_args()
     headers = {"Authorization": f"Bearer {args.control_token}"} if args.control_token else {}
     with httpx.Client(base_url=args.api, timeout=30, trust_env=False) as client:

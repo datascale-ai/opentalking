@@ -77,6 +77,49 @@ async def test_output_controller_does_not_expose_secrets_and_enforces_idempotenc
     await controller.close()
 
 
+@pytest.mark.asyncio
+async def test_output_profile_cannot_silently_change_program_fps(monkeypatch) -> None:
+    class Publisher:
+        def __init__(self, settings) -> None:
+            self.state = "created"
+            self.health = "unknown"
+            self.last_error = None
+
+        async def start(self) -> None:
+            self.state = "connected"
+
+        async def stop(self) -> None:
+            self.state = "disconnected"
+
+        async def video(self, item) -> None:
+            del item
+
+        async def audio(self, item) -> None:
+            del item
+
+    monkeypatch.setattr("opentalking.streaming.outputs.RTMPSPublisher", Publisher)
+    settings = SimpleNamespace(
+        streaming_allow_local_targets=True,
+        streaming_test_auth_bypass=True,
+        streaming_rtmps_ca_file="",
+        streaming_video_fps=25,
+        streaming_max_outputs_per_session=4,
+        streaming_audio_sample_rate=48000,
+        streaming_audio_tick_ms=20,
+    )
+    program = _FakeProgram()
+    program.clock = SimpleNamespace(fps=25)
+    controller = SessionOutputController(session_id="sess", program=program, settings=settings)
+    with pytest.raises(ValueError, match="ProgramClock"):
+        await controller.create(
+            {
+                "type": "rtmps",
+                "transport": {"endpoint": "rtmps://localhost:1936/live", "stream_key": "key"},
+                "profile": {"fps": 30},
+            }
+        )
+
+
 def test_rtmps_structured_url_and_target_validation() -> None:
     settings = RTMPSSettings(
         endpoint="rtmps://localhost:1936/live",

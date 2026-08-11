@@ -1139,6 +1139,7 @@ cd /home/lyf/opentalking
 scripts/streaming/generate_test_pki.sh outputs/streaming/tls
 .venv/bin/python scripts/streaming/prepare_mediamtx_harness.py
 docker compose -f docker/docker-compose.streaming-test.yml up -d --wait
+set -a; . outputs/streaming/credentials.env; set +a
 .venv/bin/python scripts/streaming/streaming_e2e.py \
   --api http://127.0.0.1:8000 \
   --avatar anchor \

@@ -134,6 +134,9 @@ class SessionOutputController:
         if not isinstance(transport, Mapping):
             raise ValueError("transport must be an object")
         profile = self._profile(body)
+        program_fps = float(getattr(getattr(self.program, "clock", None), "fps", 25.0))
+        if abs(float(profile.get("fps", program_fps)) - program_fps) > 0.01:
+            raise ValueError("profile.fps must match the active ProgramClock fps")
         allow_local = bool(getattr(self.settings, "streaming_allow_local_targets", False))
         allowed_cidrs = tuple(
             item.strip()
