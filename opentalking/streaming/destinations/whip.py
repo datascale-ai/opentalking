@@ -124,6 +124,7 @@ class WHIPPublisher:
         self.sent_video = 0
         self.sent_audio = 0
         self.last_media_at: float | None = None
+        self._health_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
         if self.pc is not None:
@@ -136,6 +137,11 @@ class WHIPPublisher:
             allowed_cidrs=list(self.settings.allowed_cidrs),
         )
         endpoint_parts = urlparse(endpoint)
+        initial_origin = (
+            endpoint_parts.scheme.lower(),
+            (endpoint_parts.hostname or "").lower().rstrip("."),
+            endpoint_parts.port or 443,
+        )
         validate_resolved_target(
             endpoint_parts.hostname or "",
             endpoint_parts.port or 443,
@@ -194,11 +200,26 @@ class WHIPPublisher:
                 if not location or redirect_count >= max(0, self.settings.max_redirects):
                     raise RuntimeError("WHIP redirect policy rejected")
                 target = urljoin(target, location)
-                validate_target_url(
-                    target,
-                    schemes={"https"},
+                target_parts = urlparse(
+                    validate_target_url(
+                        target,
+                        schemes={"https"},
+                        allow_local=self.settings.allow_local,
+                        allowed_hosts=set(self.settings.allowed_hosts),
+                        allowed_cidrs=list(self.settings.allowed_cidrs),
+                    )
+                )
+                target_origin = (
+                    target_parts.scheme.lower(),
+                    (target_parts.hostname or "").lower().rstrip("."),
+                    target_parts.port or 443,
+                )
+                if target_origin != initial_origin and not self.settings.allowed_hosts:
+                    raise RuntimeError("WHIP redirect origin is not approved")
+                validate_resolved_target(
+                    target_parts.hostname or "",
+                    target_parts.port or 443,
                     allow_local=self.settings.allow_local,
-                    allowed_hosts=set(self.settings.allowed_hosts),
                     allowed_cidrs=list(self.settings.allowed_cidrs),
                 )
             else:  # pragma: no cover - loop always breaks or raises
@@ -216,32 +237,71 @@ class WHIPPublisher:
         if not location:
             raise RuntimeError("WHIP response is missing Location")
         resource = urljoin(target, location)
-        validate_target_url(
+        resource = validate_target_url(
             resource,
             schemes={"https"},
             allow_local=self.settings.allow_local,
             allowed_hosts=set(self.settings.allowed_hosts),
             allowed_cidrs=list(self.settings.allowed_cidrs),
         )
+        resource_parts = urlparse(resource)
+        resource_origin = (
+            resource_parts.scheme.lower(),
+            (resource_parts.hostname or "").lower().rstrip("."),
+            resource_parts.port or 443,
+        )
+        if resource_origin != initial_origin and not self.settings.allowed_hosts:
+            raise RuntimeError("WHIP resource origin is not approved")
+        validate_resolved_target(
+            resource_parts.hostname or "",
+            resource_parts.port or 443,
+            allow_local=self.settings.allow_local,
+            allowed_cidrs=list(self.settings.allowed_cidrs),
+        )
         self.resource_url = resource
         await self.pc.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
         self.state = "connected"
+        self._health_task = asyncio.create_task(self._monitor_connection(), name="whip-health")
 
     async def video(self, item: ProgramVideo) -> None:
         await self.video_track.put(item)
         self.sent_video += 1
         self.last_media_at = time.monotonic()
-        if self.sent_audio:
-            self.health = "healthy"
 
     async def audio(self, item: ProgramAudio) -> None:
         await self.audio_track.put(item)
         self.sent_audio += 1
         self.last_media_at = time.monotonic()
-        if self.sent_video:
-            self.health = "healthy"
+
+    async def _monitor_connection(self) -> None:
+        try:
+            while self.pc is not None:
+                await asyncio.sleep(0.5)
+                pc = self.pc
+                if pc is None:
+                    return
+                if pc.connectionState in {"failed", "closed", "disconnected"}:
+                    self.state = "failed" if pc.connectionState == "failed" else "disconnected"
+                    self.health = "failed" if pc.connectionState == "failed" else "degraded"
+                    return
+                try:
+                    report = await pc.getStats()
+                except Exception:
+                    continue
+                outbound = [
+                    stat for stat in report.values()
+                    if getattr(stat, "type", "") == "outbound-rtp"
+                    and int(getattr(stat, "packetsSent", 0) or 0) > 0
+                ]
+                if len(outbound) >= 2:
+                    self.health = "healthy"
+        except asyncio.CancelledError:
+            return
 
     async def stop(self) -> None:
+        if self._health_task is not None:
+            self._health_task.cancel()
+            self._health_task = None
         resource = self.resource_url
         token = self.settings.bearer_token
         self.resource_url = None
