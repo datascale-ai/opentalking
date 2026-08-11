@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import numpy as np
-from aiortc import RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
+from aiortc import RTCBundlePolicy, RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription
 from aiortc.mediastreams import MediaStreamTrack
 from aiortc.rtcrtpsender import RTCRtpSender
 from av import AudioFrame, VideoFrame
@@ -132,7 +132,9 @@ class WHIPPublisher:
             for url in self.settings.ice_servers.replace(";", ",").split(",")
             if url.strip()
         ]
-        self.pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers))
+        self.pc = RTCPeerConnection(
+            RTCConfiguration(iceServers=ice_servers, bundlePolicy=RTCBundlePolicy.MAX_BUNDLE)
+        )
         video_transceiver = self.pc.addTransceiver(self.video_track, direction="sendonly")
         audio_transceiver = self.pc.addTransceiver(self.audio_track, direction="sendonly")
         video_codecs = [
