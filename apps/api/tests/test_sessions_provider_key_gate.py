@@ -92,6 +92,22 @@ def test_create_session_rejects_xiaomi_mimo_tts_without_profile_key(monkeypatch,
     assert "OPENTALKING_TTS_DASHSCOPE_API_KEY" not in detail
 
 
+def test_create_session_rejects_minimax_tts_without_provider_key(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("OPENTALKING_TTS_MINIMAX_API_KEY", raising=False)
+    monkeypatch.setenv("OPENTALKING_STT_PROVIDER", "sensevoice")
+
+    with _client(monkeypatch, tmp_path) as client:
+        response = client.post(
+            "/sessions",
+            json={"avatar_id": "singer", "model": "flashtalk", "tts_provider": "minimax"},
+        )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert "OPENTALKING_TTS_MINIMAX_API_KEY" in detail
+    assert "OPENTALKING_TTS_DASHSCOPE_API_KEY" not in detail
+
+
 def test_create_session_rejects_xiaomi_mimo_stt_without_profile_key(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("OPENTALKING_STT_XIAOMI_API_KEY", raising=False)
     monkeypatch.delenv("OPENTALKING_STT_XIAOMI_BASE_URL", raising=False)

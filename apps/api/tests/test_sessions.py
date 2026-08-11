@@ -37,6 +37,18 @@ def test_normalize_voice_for_speak_accepts_elevenlabs_voice_id() -> None:
     assert model is None
 
 
+def test_normalize_voice_for_speak_accepts_minimax_voice_and_model() -> None:
+    voice, provider, model = sessions_routes._normalize_voice_for_speak(
+        voice="male-qn-qingse",
+        tts_provider="minimax",
+        tts_model="speech-2.8-hd",
+    )
+
+    assert voice == "male-qn-qingse"
+    assert provider == "minimax"
+    assert model == "speech-2.8-hd"
+
+
 @pytest.mark.parametrize("tts_provider", ["indextts", "local_indextts", "omnirt_indextts"])
 def test_normalize_voice_for_speak_keeps_indextts_voice_ids(tts_provider: str) -> None:
     voice, provider, model = sessions_routes._normalize_voice_for_speak(
