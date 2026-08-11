@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import inspect
 import json
 import time
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 
 import redis.asyncio as redis
 
-from opentalking.core.redis_keys import TASK_QUEUE, uploaded_pcm_key
+from opentalking.core.redis_keys import TASK_QUEUE, command_receipt_key, uploaded_pcm_key
 from opentalking.core.session_store import get_session_record, session_key, set_session_state
 
 if TYPE_CHECKING:
@@ -274,7 +275,38 @@ async def speak(
     voice: str | None = None,
     tts_provider: str | None = None,
     tts_model: str | None = None,
-) -> None:
+    command_id: str | None = None,
+) -> dict[str, str | bool]:
+    command_id = (command_id or "").strip() if command_id else ""
+    if not command_id:
+        command_id = f"cmd_{uuid.uuid4().hex[:20]}"
+    if len(command_id) > 128 or any(ch.isspace() for ch in command_id):
+        raise ValueError("command_id must be non-empty, <=128 chars, and contain no whitespace")
+    payload = {
+        "text": text,
+        "voice": voice or "",
+        "tts_provider": tts_provider or "",
+        "tts_model": tts_model or "",
+        "mode": "replace",
+    }
+    payload_hash = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    receipt_key = command_receipt_key(sid, command_id)
+    receipt = {"command_id": command_id, "payload_hash": payload_hash, "status": "dispatched"}
+    encoded_receipt = json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
+    reserved = await _await_result(r.set(receipt_key, encoded_receipt, ex=24 * 60 * 60, nx=True))
+    if not reserved:
+        raw = await _await_result(r.get(receipt_key))
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        try:
+            previous = json.loads(str(raw or "{}"))
+        except json.JSONDecodeError:
+            previous = {}
+        if previous.get("payload_hash") != payload_hash:
+            raise ValueError("command_id was already used with a different payload")
+        return {"command_id": command_id, "status": "duplicate"}
     # 新用户输入前先打断，避免上一条仍在推理/播报时排队等到结束才生效
     await interrupt(r, sid)
     task: dict[str, Any] = {
@@ -283,6 +315,7 @@ async def speak(
         "text": text,
         # Worker 用于测量「API 入队 speak → 首帧进 WebRTC」墙钟（与 Worker 同机时钟）
         "enqueue_unix": time.time(),
+        "command_id": command_id,
     }
     if voice:
         task["voice"] = voice
@@ -292,6 +325,7 @@ async def speak(
     if tts_model:
         task["tts_model"] = tts_model.strip()
     await _push_task(r, task)
+    return {"command_id": command_id, "status": "queued"}
 
 
 async def interrupt(r: redis.Redis, sid: str) -> None:

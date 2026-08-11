@@ -18,8 +18,11 @@ from opentalking.core.session_store import (
 from opentalking.pipeline.recording.recording import export_flashtalk_recording
 from opentalking.pipeline.session.runner import SessionRunner
 from opentalking.runtime.task_consumer import consume_task_queue
+from opentalking.core.config import get_settings
+from opentalking.streaming.outputs import SessionOutputController
 
 runners: dict[str, SessionRunner] = {}
+output_controllers: dict[str, SessionOutputController] = {}
 
 
 class OfferBody(BaseModel):
@@ -44,6 +47,9 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     for s in list(runners.values()):
+        controller = output_controllers.pop(getattr(s, "session_id", ""), None)
+        if controller is not None:
+            await controller.close()
         await s.close()
     runners.clear()
     await r.aclose()
@@ -58,6 +64,91 @@ def create_app() -> FastAPI:
         if not runner:
             raise HTTPException(status_code=404, detail="session not loaded on this worker")
         return await runner.handle_webrtc_offer(body.sdp, body.type)
+
+    def _require_internal(request: Request) -> None:
+        settings = get_settings()
+        expected = str(
+            getattr(settings, "streaming_internal_control_token", "")
+            or getattr(settings, "streaming_control_token", "")
+            or ""
+        )
+        provided = request.headers.get("authorization", "")
+        token = provided[7:].strip() if provided.lower().startswith("bearer ") else ""
+        if not expected or token != expected:
+            raise HTTPException(status_code=401, detail="invalid worker authorization")
+
+    async def _get_output_controller(session_id: str, request: Request) -> SessionOutputController:
+        runner = runners.get(session_id)
+        if runner is None:
+            raise HTTPException(status_code=404, detail="session not loaded on this worker")
+        existing = output_controllers.get(session_id)
+        if existing is not None:
+            return existing
+        program = getattr(runner, "program", None)
+        if program is None:
+            raise HTTPException(status_code=409, detail="streaming program is not ready")
+        controller = SessionOutputController(
+            session_id=session_id,
+            program=program,
+            settings=get_settings(),
+            redis=request.app.state.redis,
+        )
+        output_controllers[session_id] = controller
+        runner.output_controller = controller
+        return controller
+
+    @app.post("/sessions/{session_id}/outputs")
+    async def create_output(session_id: str, body: dict, request: Request) -> dict:
+        _require_internal(request)
+        controller = await _get_output_controller(session_id, request)
+        try:
+            record = await controller.create(body.get("body") or {}, idempotency_key=body.get("idempotency_key"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return record.public()
+
+    @app.get("/sessions/{session_id}/outputs")
+    async def list_outputs(session_id: str, request: Request) -> list[dict]:
+        _require_internal(request)
+        controller = await _get_output_controller(session_id, request)
+        return controller.public()
+
+    @app.get("/sessions/{session_id}/outputs/{output_id}")
+    async def get_output(session_id: str, output_id: str, request: Request) -> dict:
+        _require_internal(request)
+        controller = await _get_output_controller(session_id, request)
+        record = controller.get(output_id)
+        if record is None:
+            raise HTTPException(status_code=404, detail="output not found")
+        return record.public()
+
+    async def _mutate_output(session_id: str, output_id: str, request: Request, action: str) -> dict:
+        _require_internal(request)
+        controller = await _get_output_controller(session_id, request)
+        try:
+            record = await getattr(controller, action)(output_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="output not found") from exc
+        return record.public()
+
+    @app.post("/sessions/{session_id}/outputs/{output_id}/connect")
+    async def connect_output(session_id: str, output_id: str, request: Request) -> dict:
+        return await _mutate_output(session_id, output_id, request, "connect")
+
+    @app.post("/sessions/{session_id}/outputs/{output_id}/disconnect")
+    async def disconnect_output(session_id: str, output_id: str, request: Request) -> dict:
+        return await _mutate_output(session_id, output_id, request, "disconnect")
+
+    @app.post("/sessions/{session_id}/outputs/{output_id}/reconnect")
+    async def reconnect_output(session_id: str, output_id: str, request: Request) -> dict:
+        return await _mutate_output(session_id, output_id, request, "reconnect")
+
+    @app.delete("/sessions/{session_id}/outputs/{output_id}")
+    async def delete_output(session_id: str, output_id: str, request: Request) -> dict[str, str]:
+        _require_internal(request)
+        controller = await _get_output_controller(session_id, request)
+        await controller.delete(output_id)
+        return {"session_id": session_id, "output_id": output_id, "status": "deleted"}
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

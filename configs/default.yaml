@@ -28,6 +28,7 @@ streaming:
   rtmps_tls_verify: true
   rtmps_ca_file: ""
   whip_tls_verify: true
+  whip_ca_file: ""
   whip_max_redirects: 2
   whip_trickle_ice: false
   whip_ice_servers: ""

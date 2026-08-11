@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CreateSessionRequest(BaseModel):
@@ -63,6 +63,8 @@ class CreateSessionResponse(BaseModel):
 
 class SpeakRequest(BaseModel):
     text: str
+    mode: str = Field(default="replace", description="首版仅支持 replace")
+    command_id: str | None = Field(default=None, description="幂等命令 ID")
     voice: str | None = Field(
         default=None,
         description=(
@@ -81,6 +83,32 @@ class SpeakRequest(BaseModel):
         default=None,
         description="TTS 模型覆盖：如 qwen3-tts-flash-realtime、cosyvoice-v3-flash、mimo-v2.5-tts、mimo-v2.5-tts-voiceclone、eleven_flash_v2_5",
     )
+
+
+class SessionOutputRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["rtmps", "whip"]
+    name: str = ""
+    auto_connect: bool = False
+    transport: dict[str, Any]
+    profile: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_transport(self) -> "SessionOutputRequest":
+        allowed = {
+            "rtmps": {"endpoint", "stream_key", "username", "password", "tls_verify"},
+            "whip": {"endpoint", "bearer_token", "tls_verify"},
+        }[self.type]
+        if any(str(key) not in allowed for key in self.transport):
+            raise ValueError("unsupported transport field")
+        required = "stream_key" if self.type == "rtmps" else "bearer_token"
+        if not str(self.transport.get("endpoint") or "").strip() or not str(self.transport.get(required) or "").strip():
+            raise ValueError(f"{self.type} transport requires endpoint and {required}")
+        profile_allowed = {"width", "height", "fps", "video_bitrate_kbps", "gop_seconds"}
+        if any(str(key) not in profile_allowed for key in self.profile):
+            raise ValueError("unsupported profile field")
+        return self
 
 
 class WebRTCOfferRequest(BaseModel):

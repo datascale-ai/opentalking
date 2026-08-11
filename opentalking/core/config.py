@@ -45,6 +45,7 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "rtmps_tls_verify": "streaming_rtmps_tls_verify",
             "rtmps_ca_file": "streaming_rtmps_ca_file",
             "whip_tls_verify": "streaming_whip_tls_verify",
+            "whip_ca_file": "streaming_whip_ca_file",
             "whip_max_redirects": "streaming_whip_max_redirects",
             "whip_trickle_ice": "streaming_whip_trickle_ice",
             "whip_ice_servers": "streaming_whip_ice_servers",
@@ -404,6 +405,7 @@ class Settings(BaseSettings):
     streaming_rtmps_tls_verify: bool = True
     streaming_rtmps_ca_file: str = ""
     streaming_whip_tls_verify: bool = True
+    streaming_whip_ca_file: str = ""
     streaming_whip_max_redirects: int = 2
     streaming_whip_trickle_ice: bool = False
     streaming_whip_ice_servers: str = ""

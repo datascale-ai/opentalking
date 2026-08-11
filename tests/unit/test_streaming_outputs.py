@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from opentalking.streaming.outputs import SessionOutputController
+from opentalking.streaming.destinations.rtmps import RTMPSSettings, build_rtmps_url, validate_stream_key
+from opentalking.streaming.security import validate_target_url
+
+
+class _FakeProgram:
+    def __init__(self) -> None:
+        self.added: dict[str, object] = {}
+        self.removed: list[str] = []
+
+    def add_branch(self, name: str, **callbacks) -> None:
+        self.added[name] = callbacks
+
+    def remove_branch(self, name: str) -> None:
+        self.removed.append(name)
+        self.added.pop(name, None)
+
+
+@pytest.mark.asyncio
+async def test_output_controller_does_not_expose_secrets_and_enforces_idempotency(monkeypatch) -> None:
+    class Publisher:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+            self.state = "created"
+            self.health = "unknown"
+            self.last_error = None
+
+        async def start(self) -> None:
+            self.state = "connected"
+
+        async def stop(self) -> None:
+            self.state = "disconnected"
+
+        async def video(self, item) -> None:
+            del item
+
+        async def audio(self, item) -> None:
+            del item
+
+    monkeypatch.setattr("opentalking.streaming.outputs.RTMPSPublisher", Publisher)
+    settings = SimpleNamespace(
+        streaming_allow_local_targets=True,
+        streaming_test_auth_bypass=True,
+        streaming_rtmps_ca_file="",
+        streaming_video_fps=25,
+        streaming_max_outputs_per_session=4,
+        streaming_audio_sample_rate=48000,
+        streaming_audio_tick_ms=20,
+    )
+    controller = SessionOutputController(session_id="sess", program=_FakeProgram(), settings=settings)
+    body = {
+        "type": "rtmps",
+        "name": "local",
+        "auto_connect": True,
+        "transport": {
+            "endpoint": "rtmps://localhost:1936/live",
+            "stream_key": "secret-key",
+            "password": "do-not-return",
+        },
+    }
+    record = await controller.create(body, idempotency_key="k1")
+    again = await controller.create(body, idempotency_key="k1")
+    assert record.output_id == again.output_id
+    public = record.public()
+    assert public["secret_configured"] is True
+    assert "secret-key" not in str(public)
+    assert "do-not-return" not in str(public)
+
+    with pytest.raises(ValueError, match="different payload"):
+        await controller.create({**body, "name": "changed"}, idempotency_key="k1")
+    await controller.close()
+
+
+def test_rtmps_structured_url_and_target_validation() -> None:
+    settings = RTMPSSettings(
+        endpoint="rtmps://localhost:1936/live",
+        stream_key="demo-key",
+        username="publisher",
+        password="secret",
+        allow_local=True,
+    )
+    assert build_rtmps_url(settings) == "rtmps://localhost:1936/live/demo-key?user=publisher&pass=secret"
+    with pytest.raises(ValueError):
+        validate_stream_key("bad/key")
+    with pytest.raises(ValueError):
+        validate_target_url("http://127.0.0.1:1/x", schemes={"https"}, allow_local=True)

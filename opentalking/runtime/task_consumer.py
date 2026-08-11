@@ -561,6 +561,11 @@ async def handle_worker_task(
         tts_provider = str(tp).strip().lower() if tp else None
         tm = task.get("tts_model")
         tts_model = str(tm).strip() if tm else None
+        command_id = str(task.get("command_id") or "").strip() or None
+        if command_id:
+            # Event publishers read this ephemeral value; it is deliberately
+            # not persisted on the runner or written to media payloads.
+            setattr(runner, "_active_command_id", command_id)
         enqueue_unix = task.get("enqueue_unix")
         if isinstance(enqueue_unix, (int, float)):
             log.info(

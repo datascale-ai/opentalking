@@ -1,0 +1,21 @@
+# Template for the local streaming harness.  The harness renders the
+# certificate/key and runtime credentials into a temporary copy; this file
+# intentionally contains no secret or private key.
+logLevel: info
+rtmp: true
+rtmpEncryption: strict
+rtmpsAddress: :1936
+rtmpServerKey: /run/opentalking-test-pki/server.key
+rtmpServerCert: /run/opentalking-test-pki/server.crt
+
+webrtc: true
+webrtcAddress: :8889
+webrtcEncryption: true
+webrtcServerKey: /run/opentalking-test-pki/server.key
+webrtcServerCert: /run/opentalking-test-pki/server.crt
+
+authInternalUsers: []
+
+paths:
+  all:
+

@@ -45,6 +45,8 @@ from opentalking.providers.tts.factory import create_tts_adapter, tts_log_profil
 from opentalking.runtime.bus import publish_event
 from opentalking.pipeline.speak.audio2video_runner import Audio2VideoRunner
 from opentalking.pipeline.speak.text_sanitize import sanitize_tts_text, strip_emoji
+from opentalking.streaming import ProgramOutputManager
+from opentalking.streaming.types import ProgramAudio, ProgramVideo
 
 log = logging.getLogger(__name__)
 
@@ -381,6 +383,11 @@ class FlashTalkRunner:
 
         # WebRTC (created in prepare)
         self.webrtc: WebRTCSession | None = None
+        # External outputs share a transport-neutral program only when the
+        # opt-in streaming flag is enabled.  The legacy WebRTC path remains
+        # the default and is intentionally kept as a rollback path.
+        self.program: ProgramOutputManager | None = None
+        self._program_audio_resampler: Any | None = None
 
         # State
         self._speak_lock = asyncio.Lock()
@@ -964,6 +971,23 @@ class FlashTalkRunner:
             fps=float(self.flashtalk.fps),
             sample_rate=16000,
         )
+        if get_settings().streaming_enabled:
+            settings = get_settings()
+            self.program = ProgramOutputManager(
+                fps=float(settings.streaming_video_fps or self.flashtalk.fps),
+                sample_rate=int(settings.streaming_audio_sample_rate),
+                audio_tick_ms=int(settings.streaming_audio_tick_ms),
+                max_video_frames=int(settings.streaming_queue_max_frames),
+                max_audio_ticks=max(
+                    1,
+                    int(settings.streaming_queue_max_audio_ms // max(1, settings.streaming_audio_tick_ms)),
+                ),
+            )
+            self.program.add_branch(
+                "studio-webrtc",
+                video_callback=self._program_video_to_webrtc,
+                audio_callback=self._program_audio_to_webrtc,
+            )
 
         # Auto-close session when WebRTC peer disconnects (releases the slot lock)
         @self.webrtc.pc.on("connectionstatechange")
@@ -1162,13 +1186,13 @@ class FlashTalkRunner:
         fps = float(self.flashtalk.fps) if self.flashtalk.fps else 25.0
         interval = 1.0 / fps
         while not self._closed:
-            if self.model_type == "fasterliveportrait":
+            if self.model_type == "fasterliveportrait" and not self.program:
                 await asyncio.sleep(interval)
                 continue
             if (
                 (self._speaking and self._speech_media_active)
-                or not self.webrtc
-                or not self._webrtc_started.is_set()
+                or (not self.webrtc and not self.program)
+                or (not self.program and not self._webrtc_started.is_set())
             ):
                 await asyncio.sleep(interval)
                 continue
@@ -1183,9 +1207,9 @@ class FlashTalkRunner:
                 continue
 
     async def _idle_tick(self) -> None:
-        if not self.webrtc:
+        if not self.webrtc and not self.program:
             return
-        if self.webrtc.draining:   # block idle injection during queue drain
+        if self.webrtc and self.webrtc.draining:   # block idle injection during queue drain
             return
         from opentalking.core.types.frames import VideoFrameData
         idle_frame: np.ndarray | None = None
@@ -1219,6 +1243,45 @@ class FlashTalkRunner:
             timestamp_ms=0.0,
         )
         await self._video_put_safe(frame)
+        if self.program:
+            ticks = max(
+                1,
+                round((1000.0 / max(1.0, float(self.flashtalk.fps))) / self.program.clock.audio_tick_ms),
+            )
+            for _ in range(ticks):
+                await self.program.offer_silence()
+
+    async def _program_video_to_webrtc(self, item: ProgramVideo) -> None:
+        if not self.webrtc:
+            return
+        from opentalking.core.types.frames import VideoFrameData
+
+        await self.webrtc.video.put(
+            VideoFrameData(
+                data=item.data,
+                width=item.width,
+                height=item.height,
+                timestamp_ms=item.timestamp_ms,
+            )
+        )
+
+    async def _program_audio_to_webrtc(self, item: ProgramAudio) -> None:
+        if not self.webrtc:
+            return
+        arr = np.asarray(item.data, dtype=np.int16).reshape(-1)
+        if item.sample_rate != 16_000 and arr.size:
+            from av import AudioFrame
+            from av.audio.resampler import AudioResampler
+
+            if self._program_audio_resampler is None:
+                self._program_audio_resampler = AudioResampler(format="s16", layout="mono", rate=16_000)
+            source = AudioFrame(format="s16", layout="mono", samples=int(arr.size))
+            source.planes[0].update(arr.astype("<i2", copy=False).tobytes())
+            source.sample_rate = int(item.sample_rate)
+            chunks = [chunk.to_ndarray().reshape(-1).astype(np.int16, copy=False) for chunk in self._program_audio_resampler.resample(source)]
+            arr = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.int16)
+        if arr.size:
+            await self.webrtc.audio.put_pcm(arr)
 
     def _idle_cache_path(self, avatar_dir: Path) -> Path:
         return avatar_dir / f".flashtalk_idle_cache_v{_IDLE_CACHE_VERSION}.npz"
@@ -1927,6 +1990,9 @@ class FlashTalkRunner:
             return
         self._speech_started = False
         payload: dict[str, str] = {"session_id": self.session_id}
+        utterance_id = getattr(self, "_active_command_id", None)
+        if utterance_id:
+            payload["utterance_id"] = str(utterance_id)
         if reply_text is not None:
             payload["text"] = reply_text
         await publish_event(
@@ -1973,7 +2039,12 @@ class FlashTalkRunner:
             await publish_event(
                 self.redis, self.session_id,
                 "speech.started",
-                {"session_id": self.session_id, "text": text},
+                {
+                    "session_id": self.session_id,
+                    "text": text,
+                    **({"utterance_id": str(getattr(self, "_active_command_id"))}
+                       if getattr(self, "_active_command_id", None) else {}),
+                },
             )
             self._speech_started = True
 
@@ -2685,7 +2756,12 @@ class FlashTalkRunner:
                 self.redis,
                 self.session_id,
                 "speech.started",
-                {"session_id": self.session_id, "text": "[上传音频]"},
+                {
+                    "session_id": self.session_id,
+                    "text": "[上传音频]",
+                    **({"utterance_id": str(getattr(self, "_active_command_id"))}
+                       if getattr(self, "_active_command_id", None) else {}),
+                },
             )
             self._speech_started = True
 
@@ -2904,6 +2980,9 @@ class FlashTalkRunner:
         A/V backlog. Outside that path, keep the older drop-oldest behavior so
         idle preview never wedges on a stale peer.
         """
+        if self.program:
+            await self.program.offer_video(frame, source="speech")
+            return
         if not self.webrtc:
             return
         if self._speech_media_active and self._webrtc_started.is_set() and not self.webrtc.draining:
@@ -2924,6 +3003,13 @@ class FlashTalkRunner:
 
     async def _audio_put_safe(self, pcm: np.ndarray) -> None:
         """Queue audio samples in small chunks for smooth WebRTC playback."""
+        if self.program:
+            await self.program.offer_audio(
+                np.asarray(pcm, dtype=np.int16),
+                int(getattr(self.flashtalk, "sample_rate", 16_000) or 16_000),
+                source="speech",
+            )
+            return
         if not self.webrtc:
             return
         arr = np.asarray(pcm, dtype=np.int16)
@@ -3087,7 +3173,11 @@ class FlashTalkRunner:
                     self.redis,
                     self.session_id,
                     "speech.media_started",
-                    {"session_id": self.session_id},
+                    {
+                        "session_id": self.session_id,
+                        **({"utterance_id": str(getattr(self, "_active_command_id"))}
+                           if getattr(self, "_active_command_id", None) else {}),
+                    },
                 )
             except Exception:
                 log.exception("publish speech.media_started failed")
@@ -3270,7 +3360,17 @@ class FlashTalkRunner:
                 await self._idle_task
             except asyncio.CancelledError:
                 pass
+        controller = getattr(self, "output_controller", None)
+        if controller is not None:
+            try:
+                await controller.close()
+            except Exception:
+                log.warning("Failed to close session outputs: session=%s", self.session_id, exc_info=True)
+            self.output_controller = None
         await self.flashtalk.close()
+        if self.program:
+            await self.program.close()
+            self.program = None
         if self.webrtc:
             await self.webrtc.close()
         await set_session_state(self.redis, self.session_id, "closed")

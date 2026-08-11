@@ -16,7 +16,7 @@ from typing import Any, AsyncIterator
 
 import httpx
 import redis.asyncio as redis
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from opentalking.avatar import mouth_metadata
@@ -895,11 +895,25 @@ async def update_session_knowledge_bases(
 
 @router.post("/{session_id}/start")
 async def start_session(session_id: str, request: Request) -> dict[str, str]:
-    """Optional hook: worker loads on create; this marks ready when client connects."""
+    """Wait for the actual runner readiness before enabling auto-connect outputs."""
     r: redis.Redis = request.app.state.redis
     s = await session_service.get_session(r, session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
+    runners = getattr(request.app.state, "session_runners", None)
+    if isinstance(runners, dict):
+        runner = runners.get(session_id)
+        if runner is None:
+            raise HTTPException(status_code=409, detail="session runner is not ready")
+        ready = getattr(runner, "ready_event", None)
+        if ready is not None:
+            try:
+                await asyncio.wait_for(ready.wait(), timeout=120.0)
+            except asyncio.TimeoutError as exc:
+                raise HTTPException(status_code=503, detail="session runner readiness timed out") from exc
+    else:
+        if not await _wait_for_session_worker_ready(r, session_id, max_wait_sec=120.0):
+            raise HTTPException(status_code=503, detail="session worker readiness timed out")
     await session_service.update_session_state(r, session_id, "ready")
     return {"session_id": session_id, "status": "ready"}
 
@@ -944,25 +958,41 @@ async def update_fasterliveportrait_config(
 
 
 @router.post("/{session_id}/speak")
-async def speak(session_id: str, body: SpeakRequest, request: Request) -> dict[str, str]:
+async def speak(
+    session_id: str,
+    body: SpeakRequest,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict[str, str | bool]:
     r: redis.Redis = request.app.state.redis
     s = await session_service.get_session(r, session_id)
     if not s:
         raise HTTPException(status_code=404, detail="session not found")
+    if body.mode.strip().lower() != "replace":
+        raise HTTPException(status_code=400, detail="only mode=replace is supported")
+    header_command_id = (idempotency_key or "").strip() or None
+    body_command_id = (body.command_id or "").strip() or None
+    if header_command_id and body_command_id and header_command_id != body_command_id:
+        raise HTTPException(status_code=400, detail="command_id and Idempotency-Key must match")
+    command_id = body_command_id or header_command_id
     voice, eff_prov, tm = _normalize_voice_for_speak(
         voice=body.voice,
         tts_provider=body.tts_provider,
         tts_model=body.tts_model,
     )
-    await session_service.speak(
-        r,
-        session_id,
-        body.text,
-        voice=voice,
-        tts_provider=eff_prov,
-        tts_model=tm,
-    )
-    return {"session_id": session_id, "status": "queued"}
+    try:
+        result = await session_service.speak(
+            r,
+            session_id,
+            body.text,
+            voice=voice,
+            tts_provider=eff_prov,
+            tts_model=tm,
+            command_id=command_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"session_id": session_id, **result}
 
 
 def _normalize_requested_stt_provider(value: str | None) -> str | None:

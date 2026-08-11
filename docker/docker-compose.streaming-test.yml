@@ -1,0 +1,15 @@
+services:
+  mediamtx:
+    # Keep the harness on a fixed release.  A deployment may replace this
+    # with the digest recorded by its registry mirror; never use latest.
+    image: bluenviron/mediamtx:1.20.0
+    restart: "no"
+    command: ["/mediamtx", "/etc/mediamtx.yml"]
+    ports:
+      - "127.0.0.1:1936:1936"
+      - "127.0.0.1:8889:8889"
+      - "127.0.0.1:8554:8554"
+    volumes:
+      - ../configs/streaming/mediamtx.yml:/etc/mediamtx.yml:ro
+      - ../outputs/streaming/tls:/run/opentalking-test-pki:ro
+

@@ -42,6 +42,8 @@ from opentalking.pipeline.speak.render_pipeline import (
 )
 from opentalking.pipeline.speak.text_sanitize import sanitize_tts_text, strip_emoji
 from opentalking.runtime.timing import SpeechTiming
+from opentalking.streaming import ProgramOutputManager
+from opentalking.streaming.types import ProgramAudio, ProgramVideo
 
 log = logging.getLogger(__name__)
 _SETTINGS = get_settings()
@@ -285,6 +287,9 @@ class SessionRunner:
 
         self.avatar_state: Any = None
         self.webrtc: WebRTCSession | None = None
+        # Created only when external streaming is explicitly enabled.  When
+        # disabled, the legacy direct WebRTC sink below remains untouched.
+        self.program: ProgramOutputManager | None = None
         self.ready_event = asyncio.Event()
         self.speech_tasks: set[asyncio.Task[None]] = set()
         self._llm_base_url = llm_base_url
@@ -567,6 +572,23 @@ class SessionRunner:
             sample_rate=self._rtc_sample_rate,
             mode="buffered",
         )
+        if get_settings().streaming_enabled:
+            settings = get_settings()
+            self.program = ProgramOutputManager(
+                fps=float(settings.streaming_video_fps or fps),
+                sample_rate=int(settings.streaming_audio_sample_rate),
+                audio_tick_ms=int(settings.streaming_audio_tick_ms),
+                max_video_frames=int(settings.streaming_queue_max_frames),
+                max_audio_ticks=max(
+                    1,
+                    int(settings.streaming_queue_max_audio_ms // max(1, settings.streaming_audio_tick_ms)),
+                ),
+            )
+            self.program.add_branch(
+                "studio-webrtc",
+                video_callback=self._program_video_to_webrtc,
+                audio_callback=self._program_audio_to_webrtc,
+            )
         self._build_idle_frame_cache()
         if self._render_in_executor and self._render_executor is None:
             self._render_executor = ThreadPoolExecutor(
@@ -614,7 +636,7 @@ class SessionRunner:
             await asyncio.sleep(interval)
             if self._closed:
                 break
-            if self._speaking or not self.webrtc or not self.avatar_state:
+            if self._speaking or (not self.webrtc and not self.program) or not self.avatar_state:
                 continue
             try:
                 await self.idle_tick()
@@ -729,20 +751,37 @@ class SessionRunner:
         if not self._speech_started or self._speech_media_started or self._closed:
             return
         self._speech_media_started = True
+        payload = {"session_id": self.session_id}
+        utterance_id = getattr(self, "_active_command_id", None)
+        if utterance_id:
+            payload["utterance_id"] = str(utterance_id)
         await publish_event(
             self.redis,
             self.session_id,
             "speech.media_started",
-            {"session_id": self.session_id},
+            payload,
         )
 
     async def _video_sink(self, frame: VideoFrameData) -> None:
+        program = getattr(self, "program", None)
+        if program:
+            self._last_speech_frame = frame
+            await program.offer_video(frame, source="speech")
+            await self._publish_speech_media_started()
+            return
         if self.webrtc:
             self._last_speech_frame = frame
             await self.webrtc.video.put(frame)
             await self._publish_speech_media_started()
 
     async def _audio_sink(self, pcm: Any, sample_rate: int) -> None:
+        program = getattr(self, "program", None)
+        if program:
+            arr = np.asarray(pcm, dtype=np.int16).reshape(-1)
+            if arr.size:
+                await program.offer_audio(arr, int(sample_rate), source="speech")
+                await self._publish_speech_media_started()
+            return
         if not self.webrtc:
             return
         arr = np.asarray(pcm, dtype=np.int16).reshape(-1)
@@ -804,11 +843,15 @@ class SessionRunner:
             return
         self._speech_started = False
         self._speech_media_started = False
+        payload = {"session_id": self.session_id}
+        utterance_id = getattr(self, "_active_command_id", None)
+        if utterance_id:
+            payload["utterance_id"] = str(utterance_id)
         await publish_event(
             self.redis,
             self.session_id,
             "speech.ended",
-            {"session_id": self.session_id},
+            payload,
         )
 
     async def _render_chunk_frames(
@@ -1508,7 +1551,12 @@ class SessionRunner:
                     self.redis,
                     self.session_id,
                     "speech.started",
-                    {"session_id": self.session_id, "text": speech_text},
+                    {
+                        "session_id": self.session_id,
+                        "text": speech_text,
+                        **({"utterance_id": str(getattr(self, "_active_command_id"))}
+                           if getattr(self, "_active_command_id", None) else {}),
+                    },
                 )
                 self._speech_started = True
                 self._speech_media_started = False
@@ -1806,7 +1854,12 @@ class SessionRunner:
                     self.redis,
                     self.session_id,
                     "speech.started",
-                    {"session_id": self.session_id, "text": prompt_text},
+                    {
+                        "session_id": self.session_id,
+                        "text": prompt_text,
+                        **({"utterance_id": str(getattr(self, "_active_command_id"))}
+                           if getattr(self, "_active_command_id", None) else {}),
+                    },
                 )
                 self._speech_started = True
                 self._speech_media_started = False
@@ -2111,7 +2164,7 @@ class SessionRunner:
             await set_session_state(self.redis, self.session_id, "ready")
 
     async def idle_tick(self) -> None:
-        if not self.webrtc or not self.avatar_state:
+        if (not self.webrtc and not self.program) or not self.avatar_state:
             return
         if self._idle_frame_cache:
             entry = self._next_idle_cache_entry()
@@ -2124,7 +2177,41 @@ class SessionRunner:
         else:
             frame = self.adapter.idle_frame(self.avatar_state, self._frame_idx)
         self._frame_idx += 1
-        await self.webrtc.video.put(frame)
+        if self.program:
+            await self.program.offer_video(frame, source="idle")
+            ticks = max(
+                1,
+                round((1000.0 / max(1.0, float(self.avatar_state.manifest.fps))) / self.program.clock.audio_tick_ms),
+            )
+            for _ in range(ticks):
+                await self.program.offer_silence()
+        else:
+            await self.webrtc.video.put(frame)
+
+    async def _program_video_to_webrtc(self, item: ProgramVideo) -> None:
+        if not self.webrtc:
+            return
+        await self.webrtc.video.put(
+            VideoFrameData(
+                data=item.data,
+                width=item.width,
+                height=item.height,
+                timestamp_ms=item.timestamp_ms,
+            )
+        )
+
+    async def _program_audio_to_webrtc(self, item: ProgramAudio) -> None:
+        if not self.webrtc:
+            return
+        arr = np.asarray(item.data, dtype=np.int16).reshape(-1)
+        if item.sample_rate != self._rtc_sample_rate:
+            arr = self._audio_resampler.convert(
+                arr,
+                src_rate=item.sample_rate,
+                dst_rate=self._rtc_sample_rate,
+            )
+        if arr.size:
+            await self.webrtc.audio.put_pcm(arr)
 
     async def close(self) -> None:
         self._closed = True
@@ -2141,6 +2228,16 @@ class SessionRunner:
             except TypeError:
                 self._render_executor.shutdown(wait=False)
             self._render_executor = None
+        controller = getattr(self, "output_controller", None)
+        if controller is not None:
+            try:
+                await controller.close()
+            except Exception:
+                log.warning("Failed to close session outputs: session=%s", self.session_id, exc_info=True)
+            self.output_controller = None
+        if self.program:
+            await self.program.close()
+            self.program = None
         if self.webrtc:
             await self.webrtc.close()
         await set_session_state(self.redis, self.session_id, "closed")

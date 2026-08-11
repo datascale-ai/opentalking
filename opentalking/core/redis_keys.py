@@ -4,6 +4,10 @@ TASK_QUEUE = "opentalking:task_queue"
 FLASHTALK_QUEUE_STATUS = "opentalking:flashtalk_queue_status"
 
 
+def command_receipt_key(session_id: str, command_id: str) -> str:
+    return f"opentalking:command:{session_id}:{command_id}"
+
+
 def events_channel(session_id: str) -> str:
     return f"opentalking:events:{session_id}"
 

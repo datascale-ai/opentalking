@@ -1259,3 +1259,15 @@ av_drift_ms
 - 允许任意第三方 endpoint、关闭 TLS 校验、放宽 SSRF allowlist 或把 secret 写入持久化存储。
 
 在没有这些变更前，Coding Agent 应严格按 P0 → P1 → P2 → P3/P4 → P5 → P6 执行；RTMPS 与 WHIP 可以在 P3/P4 并行，但必须先完成 P1 的统一 Program 层。
+
+## 19. 实施记录（2026-08-12）
+
+本分支当前已落地的工作包：
+
+- P0：streaming 配置默认关闭、fail-closed token 校验、flat-layout Docker COPY 修复、Docker context 排除规则。
+- P1：`ProgramClock`、独立音频/视频 bounded fan-out、Studio WebRTC 独立 branch；`SessionRunner` 与 `FlashTalkRunner` 均已接入，关闭 flag 时保留旧 sink。
+- P2（进行中）：Session output API、结构化 RTMPS/WHIP transport 校验、统一/拆分 worker 控制路由、短期 speak command 幂等收据；output publisher 只在 worker 进程内持有 secret。
+- P3/P4（进行中）：已加入 PyAV RTMPS publisher 和 aiortc WHIP offerer 的基础实现，包含 H.264/AAC、H.264/Opus、full ICE、受控 redirect、resource DELETE、TLS/目标校验和有限 RTMPS 重连；仍需完成真实 MediaMTX 互通、故障注入、指标/SSE 和 soak 验收。
+- P5（脚本骨架）：已加入固定版本 MediaMTX compose/template、短期测试 PKI、RTMPS/WHEP 接收与媒体检查脚本；必须在可用 Docker/网络环境中完成真实 harness 验证后，才能勾选完成定义中的集成项。
+
+因此，本文第 17 节的未勾选项仍然是发布门禁；当前实现不能被描述为已完成 RTMPS/WHIP 生产验收。
