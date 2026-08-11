@@ -120,9 +120,9 @@ class SessionOutputController:
         fps = float(profile.get("fps", 25.0))
         if not 15 <= fps <= 30:
             raise ValueError("profile.fps must be between 15 and 30")
-        if "width" in profile and not 160 <= int(profile["width"]) <= 3840:
+        if "width" in profile and (not 160 <= int(profile["width"]) <= 3840 or int(profile["width"]) % 2):
             raise ValueError("profile.width is out of range")
-        if "height" in profile and not 120 <= int(profile["height"]) <= 2160:
+        if "height" in profile and (not 120 <= int(profile["height"]) <= 2160 or int(profile["height"]) % 2):
             raise ValueError("profile.height is out of range")
         return profile
 
