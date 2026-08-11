@@ -31,6 +31,7 @@ class WHIPSettings:
     allow_local: bool = False
     max_redirects: int = 2
     allowed_cidrs: tuple[str, ...] = ()
+    allowed_hosts: tuple[str, ...] = ()
 
 
 class _VideoTrack(MediaStreamTrack):
@@ -116,7 +117,13 @@ class WHIPPublisher:
     async def start(self) -> None:
         if self.pc is not None:
             return
-        endpoint = validate_target_url(self.settings.endpoint, schemes={"https"}, allow_local=self.settings.allow_local)
+        endpoint = validate_target_url(
+            self.settings.endpoint,
+            schemes={"https"},
+            allow_local=self.settings.allow_local,
+            allowed_hosts=set(self.settings.allowed_hosts),
+            allowed_cidrs=list(self.settings.allowed_cidrs),
+        )
         endpoint_parts = urlparse(endpoint)
         validate_resolved_target(
             endpoint_parts.hostname or "",
@@ -176,7 +183,13 @@ class WHIPPublisher:
                 if not location or redirect_count >= max(0, self.settings.max_redirects):
                     raise RuntimeError("WHIP redirect policy rejected")
                 target = urljoin(target, location)
-                validate_target_url(target, schemes={"https"}, allow_local=self.settings.allow_local)
+                validate_target_url(
+                    target,
+                    schemes={"https"},
+                    allow_local=self.settings.allow_local,
+                    allowed_hosts=set(self.settings.allowed_hosts),
+                    allowed_cidrs=list(self.settings.allowed_cidrs),
+                )
             else:  # pragma: no cover - loop always breaks or raises
                 raise RuntimeError("WHIP redirect policy rejected")
         if response.status_code != 201:
@@ -192,7 +205,13 @@ class WHIPPublisher:
         if not location:
             raise RuntimeError("WHIP response is missing Location")
         resource = urljoin(target, location)
-        validate_target_url(resource, schemes={"https"}, allow_local=self.settings.allow_local)
+        validate_target_url(
+            resource,
+            schemes={"https"},
+            allow_local=self.settings.allow_local,
+            allowed_hosts=set(self.settings.allowed_hosts),
+            allowed_cidrs=list(self.settings.allowed_cidrs),
+        )
         self.resource_url = resource
         await self.pc.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
         self.state = "connected"

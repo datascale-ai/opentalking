@@ -33,6 +33,7 @@ class RTMPSSettings:
     reconnect_max_attempts: int = 10
     reconnect_max_delay_sec: float = 30.0
     allowed_cidrs: tuple[str, ...] = ()
+    allowed_hosts: tuple[str, ...] = ()
 
     def url(self) -> str:
         return build_rtmps_url(self)
@@ -113,6 +114,12 @@ class RTMPSPublisher:
             return
         # Validate before task creation; this is a deterministic failure and
         # must not enter reconnect loops.
+        normalize_rtmps_endpoint(
+            self.settings.endpoint,
+            allow_local=self.settings.allow_local,
+            allowed_hosts=set(self.settings.allowed_hosts),
+            allowed_cidrs=list(self.settings.allowed_cidrs),
+        )
         build_rtmps_url(self.settings)
         self.state = "connecting"
         self.health = "unknown"
@@ -160,7 +167,7 @@ class RTMPSPublisher:
                         self.state = "failed"
                         self.health = "failed"
                         self.last_error = type(exc).__name__
-                        log.warning("RTMPS publisher stopped: %s", exc)
+                        log.warning("RTMPS publisher stopped: %s", type(exc).__name__)
                         break
                     attempts += 1
                     self.state = "reconnecting"

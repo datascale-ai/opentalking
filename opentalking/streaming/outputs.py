@@ -139,6 +139,11 @@ class SessionOutputController:
             for item in str(getattr(self.settings, "streaming_allowed_cidrs", "") or "").replace(";", ",").split(",")
             if item.strip()
         )
+        allowed_hosts = tuple(
+            item.strip()
+            for item in str(getattr(self.settings, "streaming_allowed_hosts", "") or "").replace(";", ",").split(",")
+            if item.strip()
+        )
         if kind == "rtmps":
             endpoint = str(transport.get("endpoint") or "").strip()
             stream_key = str(transport.get("stream_key") or "").strip()
@@ -162,6 +167,7 @@ class SessionOutputController:
                     reconnect_max_attempts=int(getattr(self.settings, "streaming_reconnect_max_attempts", 10)),
                     reconnect_max_delay_sec=float(getattr(self.settings, "streaming_reconnect_max_delay_sec", 30.0)),
                     allowed_cidrs=allowed_cidrs,
+                    allowed_hosts=allowed_hosts,
                 )
             )
             return kind, endpoint, publisher, bool(stream_key or transport.get("password"))
@@ -183,6 +189,7 @@ class SessionOutputController:
                 allow_local=allow_local,
                 max_redirects=int(getattr(self.settings, "streaming_whip_max_redirects", 2)),
                 allowed_cidrs=allowed_cidrs,
+                allowed_hosts=allowed_hosts,
             )
         )
         return kind, endpoint, publisher, True
