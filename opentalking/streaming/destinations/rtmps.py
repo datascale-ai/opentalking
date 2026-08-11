@@ -205,7 +205,9 @@ class RTMPSPublisher:
         if self.settings.ca_file:
             options["ca_file"] = self.settings.ca_file
         self._container = await asyncio.to_thread(av.open, url, mode="w", format="flv", options=options)
-        self._video_stream = self._container.add_stream("libx264", rate=self.settings.fps)
+        self._video_stream = self._container.add_stream(
+            "libx264", rate=Fraction(str(self.settings.fps)).limit_denominator(1000)
+        )
         self._video_stream.width = width
         self._video_stream.height = height
         self._video_stream.pix_fmt = "yuv420p"

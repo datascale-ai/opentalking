@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from opentalking.streaming.destinations.rtmps import RTMPSPublisher, RTMPSSettings, normalize_rtmps_endpoint
-from opentalking.streaming.types import ProgramVideo
+from opentalking.streaming.types import ProgramAudio, ProgramVideo
 import numpy as np
 
 
@@ -52,3 +52,31 @@ async def test_rtmps_runtime_error_has_bounded_reconnect() -> None:
 
     assert calls == 1
     assert publisher.state == "disconnected"
+
+
+@pytest.mark.asyncio
+async def test_rtmps_pyav_path_emits_h264_and_aac(tmp_path, monkeypatch) -> None:
+    import av
+
+    output = tmp_path / "capture.flv"
+    original_open = av.open
+    monkeypatch.setattr(
+        av,
+        "open",
+        lambda *args, **kwargs: original_open(output, mode="w", format="flv"),
+    )
+    publisher = RTMPSPublisher(
+        RTMPSSettings(endpoint="rtmps://localhost:1936/live", stream_key="key", allow_local=True)
+    )
+    await publisher.start()
+    await publisher.video(ProgramVideo(np.zeros((64, 64, 3), dtype=np.uint8), 64, 64, 0))
+    await publisher.audio(ProgramAudio(np.zeros(960, dtype=np.int16), 48_000, 0))
+    await publisher._queue.put(None)
+    await publisher._task
+
+    probe = original_open(output, mode="r")
+    try:
+        codecs = {stream.codec.name for stream in probe.streams}
+    finally:
+        probe.close()
+    assert {"h264", "aac"}.issubset(codecs)
