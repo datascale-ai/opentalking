@@ -27,6 +27,15 @@ async def test_rtmps_start_validates_before_creating_task() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rtmps_rejects_local_dns_without_test_allowlist() -> None:
+    publisher = RTMPSPublisher(
+        RTMPSSettings(endpoint="rtmps://localhost:1936/live", stream_key="key", allow_local=False)
+    )
+    with pytest.raises(ValueError, match="private/local"):
+        await publisher.start()
+
+
+@pytest.mark.asyncio
 async def test_rtmps_runtime_error_has_bounded_reconnect() -> None:
     publisher = RTMPSPublisher(
         RTMPSSettings(

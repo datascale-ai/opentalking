@@ -123,6 +123,13 @@ class RTMPSPublisher:
             allowed_cidrs=list(self.settings.allowed_cidrs),
         )
         build_rtmps_url(self.settings)
+        endpoint_parts = urlparse(self.settings.endpoint)
+        validate_resolved_target(
+            endpoint_parts.hostname or "",
+            endpoint_parts.port or 1935,
+            allow_local=self.settings.allow_local,
+            allowed_cidrs=list(self.settings.allowed_cidrs),
+        )
         self.state = "connecting"
         self.health = "unknown"
         self._task = asyncio.create_task(self._run(), name="rtmps-publisher")
