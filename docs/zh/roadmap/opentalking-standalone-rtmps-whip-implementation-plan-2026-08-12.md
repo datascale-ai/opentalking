@@ -1272,4 +1272,6 @@ av_drift_ms
 - P3/P4（进行中）：已加入 PyAV RTMPS publisher 和 aiortc WHIP offerer 的基础实现，包含 H.264/AAC、H.264/Opus、full ICE、受控 redirect、resource DELETE、TLS/目标校验和有限 RTMPS 重连；仍需完成真实 MediaMTX 互通、故障注入、指标/SSE 和 soak 验收。
 - P5（脚本骨架）：已加入固定版本 MediaMTX compose/template、短期测试 PKI、RTMPS/WHEP 接收与媒体检查脚本；必须在可用 Docker/网络环境中完成真实 harness 验证后，才能勾选完成定义中的集成项。
 
+本轮自动验证：streaming/API/RTC 相关新增与回归测试 48 passed；新增 streaming 模块 mypy 通过；根 compose 与 streaming-test compose 配置解析通过。全仓测试仍受工作机已有 `.env` 中 QuickTalk/OmniRT 路径配置影响，记录为 baseline（非本功能新增失败）；Docker 容器内 `apt-get update` 的构建验证仍受当前网络环境阻塞。
+
 因此，本文第 17 节的未勾选项仍然是发布门禁；当前实现不能被描述为已完成 RTMPS/WHIP 生产验收。
