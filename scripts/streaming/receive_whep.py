@@ -11,24 +11,43 @@ from pathlib import Path
 
 import httpx
 from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaRecorder
+from aiortc.mediastreams import MediaStreamTrack
+
+
+class _CountingTrack(MediaStreamTrack):
+    def __init__(self, source: MediaStreamTrack, stats: dict[str, object]) -> None:
+        super().__init__()
+        self.kind = source.kind
+        self._source = source
+        self._stats = stats
+
+    async def recv(self):
+        frame = await self._source.recv()
+        self._stats[self.kind] = int(self._stats.get(self.kind, 0)) + 1
+        return frame
 
 
 async def run(args: argparse.Namespace) -> int:
     pc = RTCPeerConnection()
     stats: dict[str, object] = {"video": 0, "audio": 0, "codecs": []}
+    recorder = MediaRecorder(args.output) if args.output else None
 
     @pc.on("track")
     def on_track(track) -> None:
-        async def consume() -> None:
-            deadline = asyncio.get_running_loop().time() + max(1, args.seconds)
-            while asyncio.get_running_loop().time() < deadline:
-                try:
-                    await asyncio.wait_for(track.recv(), timeout=2.0)
-                except Exception:
-                    break
-                stats[track.kind] = int(stats.get(track.kind, 0)) + 1
+        counted = _CountingTrack(track, stats)
+        if recorder is not None:
+            recorder.addTrack(counted)
+        else:
+            async def drain() -> None:
+                deadline = asyncio.get_running_loop().time() + max(1, args.seconds)
+                while asyncio.get_running_loop().time() < deadline:
+                    try:
+                        await asyncio.wait_for(counted.recv(), timeout=2.0)
+                    except Exception:
+                        return
 
-        asyncio.create_task(consume())
+            asyncio.create_task(drain())
 
     pc.addTransceiver("video", direction="recvonly")
     pc.addTransceiver("audio", direction="recvonly")
@@ -51,7 +70,11 @@ async def run(args: argparse.Namespace) -> int:
         )
         response.raise_for_status()
     await pc.setRemoteDescription(RTCSessionDescription(sdp=response.text, type="answer"))
+    if recorder is not None:
+        await recorder.start()
     await asyncio.sleep(max(1, args.seconds))
+    if recorder is not None:
+        await recorder.stop()
     if args.stats:
         Path(args.stats).write_text(json.dumps(stats, indent=2), encoding="utf-8")
     await pc.close()
