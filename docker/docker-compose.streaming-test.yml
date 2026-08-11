@@ -10,6 +10,5 @@ services:
       - "127.0.0.1:8889:8889"
       - "127.0.0.1:8554:8554"
     volumes:
-      - ../configs/streaming/mediamtx.yml:/etc/mediamtx.yml:ro
+      - ../outputs/streaming/mediamtx.generated.yml:/etc/mediamtx.yml:ro
       - ../outputs/streaming/tls:/run/opentalking-test-pki:ro
-
