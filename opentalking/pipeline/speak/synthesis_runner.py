@@ -1186,13 +1186,14 @@ class FlashTalkRunner:
         fps = float(self.flashtalk.fps) if self.flashtalk.fps else 25.0
         interval = 1.0 / fps
         while not self._closed:
-            if self.model_type == "fasterliveportrait" and not self.program:
+            program = getattr(self, "program", None)
+            if self.model_type == "fasterliveportrait" and not program:
                 await asyncio.sleep(interval)
                 continue
             if (
                 (self._speaking and self._speech_media_active)
-                or (not self.webrtc and not self.program)
-                or (not self.program and not self._webrtc_started.is_set())
+                or (not self.webrtc and not program)
+                or (not program and not self._webrtc_started.is_set())
             ):
                 await asyncio.sleep(interval)
                 continue
@@ -1207,7 +1208,8 @@ class FlashTalkRunner:
                 continue
 
     async def _idle_tick(self) -> None:
-        if not self.webrtc and not self.program:
+        program = getattr(self, "program", None)
+        if not self.webrtc and not program:
             return
         if self.webrtc and self.webrtc.draining:   # block idle injection during queue drain
             return
@@ -1243,13 +1245,13 @@ class FlashTalkRunner:
             timestamp_ms=0.0,
         )
         await self._video_put_safe(frame)
-        if self.program:
+        if program:
             ticks = max(
                 1,
-                round((1000.0 / max(1.0, float(self.flashtalk.fps))) / self.program.clock.audio_tick_ms),
+                round((1000.0 / max(1.0, float(self.flashtalk.fps))) / program.clock.audio_tick_ms),
             )
             for _ in range(ticks):
-                await self.program.offer_silence()
+                await program.offer_silence()
 
     async def _program_video_to_webrtc(self, item: ProgramVideo) -> None:
         if not self.webrtc:
@@ -2980,8 +2982,9 @@ class FlashTalkRunner:
         A/V backlog. Outside that path, keep the older drop-oldest behavior so
         idle preview never wedges on a stale peer.
         """
-        if self.program:
-            await self.program.offer_video(frame, source="speech")
+        program = getattr(self, "program", None)
+        if program:
+            await program.offer_video(frame, source="speech")
             return
         if not self.webrtc:
             return
@@ -3003,8 +3006,9 @@ class FlashTalkRunner:
 
     async def _audio_put_safe(self, pcm: np.ndarray) -> None:
         """Queue audio samples in small chunks for smooth WebRTC playback."""
-        if self.program:
-            await self.program.offer_audio(
+        program = getattr(self, "program", None)
+        if program:
+            await program.offer_audio(
                 np.asarray(pcm, dtype=np.int16),
                 int(getattr(self.flashtalk, "sample_rate", 16_000) or 16_000),
                 source="speech",

@@ -2164,7 +2164,8 @@ class SessionRunner:
             await set_session_state(self.redis, self.session_id, "ready")
 
     async def idle_tick(self) -> None:
-        if (not self.webrtc and not self.program) or not self.avatar_state:
+        program = getattr(self, "program", None)
+        if (not self.webrtc and not program) or not self.avatar_state:
             return
         if self._idle_frame_cache:
             entry = self._next_idle_cache_entry()
@@ -2177,14 +2178,14 @@ class SessionRunner:
         else:
             frame = self.adapter.idle_frame(self.avatar_state, self._frame_idx)
         self._frame_idx += 1
-        if self.program:
-            await self.program.offer_video(frame, source="idle")
+        if program:
+            await program.offer_video(frame, source="idle")
             ticks = max(
                 1,
-                round((1000.0 / max(1.0, float(self.avatar_state.manifest.fps))) / self.program.clock.audio_tick_ms),
+                round((1000.0 / max(1.0, float(self.avatar_state.manifest.fps))) / program.clock.audio_tick_ms),
             )
             for _ in range(ticks):
-                await self.program.offer_silence()
+                await program.offer_silence()
         else:
             await self.webrtc.video.put(frame)
 
