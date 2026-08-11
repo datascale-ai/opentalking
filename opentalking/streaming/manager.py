@@ -108,6 +108,9 @@ class ProgramOutputManager:
         branch = self._branches.pop(name, None)
         if branch is not None:
             branch.closed = True
+            for task in (branch.video_task, branch.audio_task):
+                if task is not None:
+                    task.cancel()
             self._put_sentinel(branch.video_queue)
             self._put_sentinel(branch.audio_queue)
 
@@ -295,6 +298,9 @@ class ProgramOutputManager:
         self._branches.clear()
         for branch in branches:
             branch.closed = True
+            for task in (branch.video_task, branch.audio_task):
+                if task is not None:
+                    task.cancel()
             self._put_sentinel(branch.video_queue)
             self._put_sentinel(branch.audio_queue)
         tasks = [

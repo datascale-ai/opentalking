@@ -74,3 +74,20 @@ def test_audio_source_is_resampled_to_program_clock() -> None:
         await manager.close()
 
     asyncio.run(run())
+
+
+def test_close_cancels_blocked_branch_callback() -> None:
+    async def run() -> None:
+        gate = asyncio.Event()
+
+        async def blocked(item) -> None:
+            del item
+            await gate.wait()
+
+        manager = ProgramOutputManager(max_video_frames=2)
+        manager.add_branch("blocked", video_callback=blocked)
+        await manager.offer_video(VideoFrameData(np.zeros((2, 2, 3), dtype=np.uint8), 2, 2, 0))
+        await asyncio.sleep(0)
+        await asyncio.wait_for(manager.close(), timeout=1.0)
+
+    asyncio.run(run())
