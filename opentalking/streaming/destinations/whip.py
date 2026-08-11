@@ -32,15 +32,18 @@ class WHIPSettings:
     max_redirects: int = 2
     allowed_cidrs: tuple[str, ...] = ()
     allowed_hosts: tuple[str, ...] = ()
+    width: int | None = None
+    height: int | None = None
 
 
 class _VideoTrack(MediaStreamTrack):
     kind = "video"
 
-    def __init__(self, fps: float) -> None:
+    def __init__(self, fps: float, width: int | None = None, height: int | None = None) -> None:
         super().__init__()
         self._queue: asyncio.Queue[ProgramVideo | None] = asyncio.Queue(maxsize=128)
         self._fps = fps
+        self._size = (width, height)
 
     async def put(self, item: ProgramVideo) -> None:
         try:
@@ -59,7 +62,13 @@ class _VideoTrack(MediaStreamTrack):
         item = await self._queue.get()
         if item is None:
             raise asyncio.CancelledError
-        frame = VideoFrame.from_ndarray(np.asarray(item.data, dtype=np.uint8), format="bgr24")
+        data = np.asarray(item.data, dtype=np.uint8)
+        width, height = self._size
+        if width and height and (data.shape[1], data.shape[0]) != (width, height):
+            import cv2
+
+            data = cv2.resize(data, (width, height), interpolation=cv2.INTER_AREA)
+        frame = VideoFrame.from_ndarray(data, format="bgr24")
         frame.pts = int(round(item.timestamp_ms * self._fps / 1000.0))
         frame.time_base = Fraction(1, max(1, int(round(self._fps))))
         return frame
@@ -108,7 +117,7 @@ class WHIPPublisher:
         self.last_error: str | None = None
         self.resource_url: str | None = None
         self.pc: RTCPeerConnection | None = None
-        self.video_track = _VideoTrack(settings.fps)
+        self.video_track = _VideoTrack(settings.fps, settings.width, settings.height)
         self.audio_track = _AudioTrack()
         self.sent_video = 0
         self.sent_audio = 0

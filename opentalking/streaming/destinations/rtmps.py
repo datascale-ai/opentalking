@@ -34,6 +34,8 @@ class RTMPSSettings:
     reconnect_max_delay_sec: float = 30.0
     allowed_cidrs: tuple[str, ...] = ()
     allowed_hosts: tuple[str, ...] = ()
+    width: int | None = None
+    height: int | None = None
 
     def url(self) -> str:
         return build_rtmps_url(self)
@@ -187,8 +189,8 @@ class RTMPSPublisher:
     async def _ensure_container(self, item: ProgramVideo) -> None:
         if self._container is not None:
             return
-        width = int(item.width)
-        height = int(item.height)
+        width = int(self.settings.width or item.width)
+        height = int(self.settings.height or item.height)
         url = build_rtmps_url(self.settings)
         parsed = urlparse(self.settings.endpoint)
         validate_resolved_target(
@@ -223,7 +225,12 @@ class RTMPSPublisher:
     async def _write_video(self, item: ProgramVideo) -> None:
         await self._ensure_container(item)
         assert self._container is not None and self._video_stream is not None
-        frame = VideoFrame.from_ndarray(np.asarray(item.data, dtype=np.uint8), format="bgr24")
+        data = np.asarray(item.data, dtype=np.uint8)
+        if self._video_size is not None and (data.shape[1], data.shape[0]) != self._video_size:
+            import cv2
+
+            data = cv2.resize(data, self._video_size, interpolation=cv2.INTER_AREA)
+        frame = VideoFrame.from_ndarray(data, format="bgr24")
         frame.pts = int(round(item.timestamp_ms * self.settings.fps / 1000.0))
         frame.time_base = Fraction(1, max(1, int(round(self.settings.fps))))
         for packet in self._video_stream.encode(frame):

@@ -89,6 +89,7 @@ class SessionOutputController:
         self.outputs: dict[str, OutputRecord] = {}
         self._idempotency: dict[str, tuple[str, str]] = {}
         self._monitors: dict[str, asyncio.Task[None]] = {}
+        self._media_announced: set[str] = set()
         self._lock = asyncio.Lock()
 
     async def _emit_state(self, record: OutputRecord, reason: str | None = None) -> None:
@@ -168,6 +169,8 @@ class SessionOutputController:
                     reconnect_max_delay_sec=float(getattr(self.settings, "streaming_reconnect_max_delay_sec", 30.0)),
                     allowed_cidrs=allowed_cidrs,
                     allowed_hosts=allowed_hosts,
+                    width=int(profile["width"]) if "width" in profile else None,
+                    height=int(profile["height"]) if "height" in profile else None,
                 )
             )
             return kind, endpoint, publisher, bool(stream_key or transport.get("password"))
@@ -190,6 +193,8 @@ class SessionOutputController:
                 max_redirects=int(getattr(self.settings, "streaming_whip_max_redirects", 2)),
                 allowed_cidrs=allowed_cidrs,
                 allowed_hosts=allowed_hosts,
+                width=int(profile["width"]) if "width" in profile else None,
+                height=int(profile["height"]) if "height" in profile else None,
             )
         )
         return kind, endpoint, publisher, True
@@ -271,6 +276,7 @@ class SessionOutputController:
         monitor = self._monitors.pop(output_id, None)
         if monitor is not None:
             monitor.cancel()
+        self._media_announced.discard(output_id)
         await record.publisher.stop()
         record.connection_state = OutputConnectionState.DISCONNECTED
         record.health = OutputHealth.UNKNOWN
@@ -304,12 +310,28 @@ class SessionOutputController:
                     record.connection_state = OutputConnectionState.FAILED
                     record.health = OutputHealth.FAILED
                     record.last_error = getattr(record.publisher, "last_error", None)
+                    self.program.remove_branch(record.output_id)
                     changed = True
                 if publisher_health == OutputHealth.HEALTHY.value and record.health != OutputHealth.HEALTHY:
                     record.health = OutputHealth.HEALTHY
                     changed = True
                 if changed:
                     await self._emit_state(record, reason=record.last_error)
+                if (
+                    publisher_health == OutputHealth.HEALTHY.value
+                    and record.output_id not in self._media_announced
+                ):
+                    self._media_announced.add(record.output_id)
+                    if self.redis is not None:
+                        try:
+                            await publish_event(
+                                self.redis,
+                                self.session_id,
+                                "output.media_started",
+                                {"session_id": self.session_id, "output_id": record.output_id},
+                            )
+                        except Exception:
+                            log.debug("failed to publish output media event", exc_info=True)
         except asyncio.CancelledError:
             return
 
