@@ -226,11 +226,12 @@ class RTMPSPublisher:
         await self._ensure_container(item)
         assert self._container is not None and self._video_stream is not None
         data = np.asarray(item.data, dtype=np.uint8)
+        frame_data: Any = data
         if self._video_size is not None and (data.shape[1], data.shape[0]) != self._video_size:
             import cv2
 
-            data = cv2.resize(data, self._video_size, interpolation=cv2.INTER_AREA)
-        frame = VideoFrame.from_ndarray(data, format="bgr24")
+            frame_data = cv2.resize(data, self._video_size, interpolation=cv2.INTER_AREA)
+        frame = VideoFrame.from_ndarray(frame_data, format="bgr24")
         frame.pts = int(round(item.timestamp_ms * self.settings.fps / 1000.0))
         frame.time_base = Fraction(1, max(1, int(round(self.settings.fps))))
         for packet in self._video_stream.encode(frame):

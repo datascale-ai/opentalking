@@ -77,7 +77,7 @@ def resolve_public_ips(host: str, port: int) -> list[str]:
     """Resolve a host for DNS pinning and reject empty/invalid answers."""
 
     results = {
-        item[4][0]
+        str(item[4][0])
         for item in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
         if item[4]
     }

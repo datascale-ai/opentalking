@@ -145,6 +145,7 @@ class SessionOutputController:
             for item in str(getattr(self.settings, "streaming_allowed_hosts", "") or "").replace(";", ",").split(",")
             if item.strip()
         )
+        publisher: RTMPSPublisher | WHIPPublisher
         if kind == "rtmps":
             endpoint = str(transport.get("endpoint") or "").strip()
             stream_key = str(transport.get("stream_key") or "").strip()

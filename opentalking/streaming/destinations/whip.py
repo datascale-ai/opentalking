@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass
 from fractions import Fraction
 from urllib.parse import urljoin, urlparse
+from typing import Any
 
 import httpx
 import numpy as np
@@ -63,12 +64,13 @@ class _VideoTrack(MediaStreamTrack):
         if item is None:
             raise asyncio.CancelledError
         data = np.asarray(item.data, dtype=np.uint8)
+        frame_data: Any = data
         width, height = self._size
         if width and height and (data.shape[1], data.shape[0]) != (width, height):
             import cv2
 
-            data = cv2.resize(data, (width, height), interpolation=cv2.INTER_AREA)
-        frame = VideoFrame.from_ndarray(data, format="bgr24")
+            frame_data = cv2.resize(data, (width, height), interpolation=cv2.INTER_AREA)
+        frame = VideoFrame.from_ndarray(frame_data, format="bgr24")
         frame.pts = int(round(item.timestamp_ms * self._fps / 1000.0))
         frame.time_base = Fraction(1, max(1, int(round(self._fps))))
         return frame
