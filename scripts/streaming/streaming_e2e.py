@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import time
 
 import httpx
@@ -18,8 +19,10 @@ def main() -> int:
     parser.add_argument("--control-token", default="")
     parser.add_argument("--rtmps-endpoint", required=True)
     parser.add_argument("--rtmps-stream-key", required=True)
+    parser.add_argument("--rtmps-username", default=os.environ.get("OPENTALKING_HARNESS_RTMPS_USERNAME", ""))
+    parser.add_argument("--rtmps-password", default=os.environ.get("OPENTALKING_HARNESS_RTMPS_PASSWORD", ""))
     parser.add_argument("--whip-endpoint", required=True)
-    parser.add_argument("--whip-token", default="publisher:test")
+    parser.add_argument("--whip-token", default=os.environ.get("OPENTALKING_HARNESS_WHIP_TOKEN", ""))
     args = parser.parse_args()
     headers = {"Authorization": f"Bearer {args.control_token}"} if args.control_token else {}
     with httpx.Client(base_url=args.api, timeout=30, trust_env=False) as client:
@@ -40,7 +43,12 @@ def main() -> int:
                 "type": "rtmps",
                 "name": "local-rtmps",
                 "auto_connect": True,
-                "transport": {"endpoint": args.rtmps_endpoint, "stream_key": args.rtmps_stream_key},
+                "transport": {
+                    "endpoint": args.rtmps_endpoint,
+                    "stream_key": args.rtmps_stream_key,
+                    **({"username": args.rtmps_username} if args.rtmps_username else {}),
+                    **({"password": args.rtmps_password} if args.rtmps_password else {}),
+                },
             },
             {
                 "type": "whip",

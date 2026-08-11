@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import httpx
@@ -61,7 +62,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--ca-file", default="")
-    parser.add_argument("--bearer-token", default="")
+    parser.add_argument("--bearer-token", default=os.environ.get("OPENTALKING_HARNESS_WHIP_TOKEN", ""))
     parser.add_argument("--output", default="")
     parser.add_argument("--stats", default="")
     parser.add_argument("--seconds", type=int, default=30)
