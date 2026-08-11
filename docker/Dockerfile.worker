@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md LICENSE ./
-COPY src ./src
+COPY opentalking ./opentalking
 COPY apps ./apps
 COPY configs ./configs
 COPY examples ./examples

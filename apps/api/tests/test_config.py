@@ -39,6 +39,41 @@ def test_wav2lip_preload_defaults_on() -> None:
     assert settings.wav2lip_preload is True
 
 
+def test_streaming_defaults_disabled_and_tls_verified() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.streaming_enabled is False
+    assert settings.streaming_control_token == ""
+    assert settings.streaming_rtmps_tls_verify is True
+    assert settings.streaming_whip_tls_verify is True
+
+
+def test_streaming_enabled_requires_control_token() -> None:
+    with pytest.raises(ValueError, match="STREAMING_CONTROL_TOKEN"):
+        Settings(streaming_enabled=True, _env_file=None)
+
+
+def test_streaming_test_auth_bypass_requires_local_targets() -> None:
+    with pytest.raises(ValueError, match="ALLOW_LOCAL_TARGETS"):
+        Settings(
+            streaming_enabled=True,
+            streaming_test_auth_bypass=True,
+            _env_file=None,
+        )
+
+
+def test_streaming_test_profile_can_bypass_control_token_for_local_targets() -> None:
+    settings = Settings(
+        streaming_enabled=True,
+        streaming_test_auth_bypass=True,
+        streaming_allow_local_targets=True,
+        _env_file=None,
+    )
+
+    assert settings.streaming_enabled is True
+    assert settings.streaming_allow_local_targets is True
+
+
 def test_unprefixed_omnirt_endpoint_is_read_from_dotenv(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

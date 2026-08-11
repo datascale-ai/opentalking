@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 from dotenv import dotenv_values
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from opentalking.core.model_paths import local_audio_model_root, model_root
@@ -25,6 +25,32 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "avatars_dir": "avatars_dir",
             "models_dir": "models_dir",
             "worker_url": "worker_url",
+        },
+        "streaming": {
+            "enabled": "streaming_enabled",
+            "control_token": "streaming_control_token",
+            "allow_local_targets": "streaming_allow_local_targets",
+            "allowed_hosts": "streaming_allowed_hosts",
+            "allowed_cidrs": "streaming_allowed_cidrs",
+            "max_outputs_per_session": "streaming_max_outputs_per_session",
+            "queue_max_frames": "streaming_queue_max_frames",
+            "queue_max_audio_ms": "streaming_queue_max_audio_ms",
+            "reconnect_max_attempts": "streaming_reconnect_max_attempts",
+            "reconnect_max_delay_sec": "streaming_reconnect_max_delay_sec",
+            "connect_timeout_sec": "streaming_connect_timeout_sec",
+            "write_timeout_sec": "streaming_write_timeout_sec",
+            "video_fps": "streaming_video_fps",
+            "audio_sample_rate": "streaming_audio_sample_rate",
+            "audio_tick_ms": "streaming_audio_tick_ms",
+            "rtmps_tls_verify": "streaming_rtmps_tls_verify",
+            "rtmps_ca_file": "streaming_rtmps_ca_file",
+            "whip_tls_verify": "streaming_whip_tls_verify",
+            "whip_max_redirects": "streaming_whip_max_redirects",
+            "whip_trickle_ice": "streaming_whip_trickle_ice",
+            "whip_ice_servers": "streaming_whip_ice_servers",
+            "whip_candidate_policy": "streaming_whip_candidate_policy",
+            "internal_control_token": "streaming_internal_control_token",
+            "test_auth_bypass": "streaming_test_auth_bypass",
         },
         "avatar": {
             "matting_provider": "avatar_matting_provider",
@@ -357,6 +383,33 @@ class Settings(BaseSettings):
     avatars_dir: str = "./examples/avatars"
     models_dir: str = Field(default_factory=lambda: str(model_root()))
     worker_url: str = "http://127.0.0.1:9001"
+    # External streaming is deliberately opt-in. When enabled, the control
+    # token is required unless the isolated local test profile explicitly
+    # enables the test-only auth bypass.
+    streaming_enabled: bool = False
+    streaming_control_token: str = ""
+    streaming_allow_local_targets: bool = False
+    streaming_allowed_hosts: str = ""
+    streaming_allowed_cidrs: str = ""
+    streaming_max_outputs_per_session: int = 4
+    streaming_queue_max_frames: int = 128
+    streaming_queue_max_audio_ms: int = 2000
+    streaming_reconnect_max_attempts: int = 10
+    streaming_reconnect_max_delay_sec: float = 30.0
+    streaming_connect_timeout_sec: float = 10.0
+    streaming_write_timeout_sec: float = 10.0
+    streaming_video_fps: int = 25
+    streaming_audio_sample_rate: int = 48000
+    streaming_audio_tick_ms: int = 20
+    streaming_rtmps_tls_verify: bool = True
+    streaming_rtmps_ca_file: str = ""
+    streaming_whip_tls_verify: bool = True
+    streaming_whip_max_redirects: int = 2
+    streaming_whip_trickle_ice: bool = False
+    streaming_whip_ice_servers: str = ""
+    streaming_whip_candidate_policy: str = "allowlist"
+    streaming_internal_control_token: str = ""
+    streaming_test_auth_bypass: bool = False
     exports_dir: str = "./data/exports"
     scene_assets_dir: str = "./data/scene-assets"
     scene_asset_max_bytes: int = 200 * 1024 * 1024
@@ -651,6 +704,28 @@ class Settings(BaseSettings):
     # When exceeded the session is force-closed and the slot is released.
     flashtalk_max_session_sec: int = 600
     benchmark_timing: bool = False
+
+    @model_validator(mode="after")
+    def validate_streaming_security(self) -> "Settings":
+        if not self.streaming_enabled:
+            return self
+        if self.streaming_test_auth_bypass:
+            if not self.streaming_allow_local_targets:
+                raise ValueError(
+                    "OPENTALKING_STREAMING_TEST_AUTH_BYPASS requires "
+                    "OPENTALKING_STREAMING_ALLOW_LOCAL_TARGETS=true"
+                )
+            return self
+        if not self.streaming_control_token.strip():
+            raise ValueError(
+                "OPENTALKING_STREAMING_CONTROL_TOKEN is required when "
+                "OPENTALKING_STREAMING_ENABLED=true"
+            )
+        if not self.streaming_rtmps_tls_verify or not self.streaming_whip_tls_verify:
+            raise ValueError(
+                "streaming TLS verification can only be disabled in the explicit local test profile"
+            )
+        return self
 
     @classmethod
     def settings_customise_sources(

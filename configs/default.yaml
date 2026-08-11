@@ -9,6 +9,31 @@ infrastructure:
   redis_url: redis://localhost:6379/0
   avatars_dir: ./examples/avatars
   worker_url: http://127.0.0.1:9001
+streaming:
+  enabled: false
+  control_token: ""
+  allow_local_targets: false
+  allowed_hosts: ""
+  allowed_cidrs: ""
+  max_outputs_per_session: 4
+  queue_max_frames: 128
+  queue_max_audio_ms: 2000
+  reconnect_max_attempts: 10
+  reconnect_max_delay_sec: 30
+  connect_timeout_sec: 10
+  write_timeout_sec: 10
+  video_fps: 25
+  audio_sample_rate: 48000
+  audio_tick_ms: 20
+  rtmps_tls_verify: true
+  rtmps_ca_file: ""
+  whip_tls_verify: true
+  whip_max_redirects: 2
+  whip_trickle_ice: false
+  whip_ice_servers: ""
+  whip_candidate_policy: allowlist
+  internal_control_token: ""
+  test_auth_bypass: false
 flashtalk:
   mode: off
   ws_url: ""

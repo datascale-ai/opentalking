@@ -44,6 +44,7 @@ services:
     env_file: .env
     environment:
       OPENTALKING_REDIS_URL: redis://redis:6379/0
+      OPENTALKING_WORKER_URL: http://worker:9001
       # OPENTALKING_INFERENCE_MOCK is set per-profile below via override files.
       # Default profile: mock=1; GPU profile: mock=0 + OMNIRT_ENDPOINT.
       OPENTALKING_INFERENCE_MOCK: ${OPENTALKING_INFERENCE_MOCK:-1}
