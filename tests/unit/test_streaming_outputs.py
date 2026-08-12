@@ -256,3 +256,55 @@ async def test_output_snapshot_is_failed_closed_after_worker_boot_changes(monkey
         await second.create(body, idempotency_key="create-1")
     await second.delete(record.output_id)
     assert second.get(record.output_id) is None
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_action_receipt_deduplicates_connect(monkeypatch) -> None:
+    class Publisher:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+            self.state = "created"
+            self.health = "unknown"
+            self.last_error = None
+            self.starts = 0
+
+        async def start(self) -> None:
+            self.starts += 1
+            self.state = "connected"
+
+        async def stop(self) -> None:
+            self.state = "disconnected"
+
+        async def video(self, item) -> None:
+            del item
+
+        async def audio(self, item) -> None:
+            del item
+
+    monkeypatch.setattr("opentalking.streaming.outputs.RTMPSPublisher", Publisher)
+    settings = SimpleNamespace(
+        streaming_allow_local_targets=True,
+        streaming_test_auth_bypass=True,
+        streaming_rtmps_ca_file="",
+        streaming_video_fps=25,
+        streaming_max_outputs_per_session=4,
+        streaming_snapshot_ttl_sec=3600,
+    )
+    controller = SessionOutputController(
+        session_id="sess-action",
+        program=_FakeProgram(),
+        settings=settings,
+        redis=InMemoryRedis(),
+    )
+    record = await controller.create(
+        {
+            "type": "rtmps",
+            "transport": {"endpoint": "rtmps://localhost:1936/live", "stream_key": "key"},
+        }
+    )
+    assert await controller.reserve_action_idempotency(record.output_id, "connect", "connect-1") is False
+    controller.request_connect(record.output_id)
+    await asyncio.sleep(0.02)
+    assert await controller.reserve_action_idempotency(record.output_id, "connect", "connect-1") is True
+    assert record.publisher.starts == 1
+    await controller.delete(record.output_id)
