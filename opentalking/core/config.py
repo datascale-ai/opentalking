@@ -52,6 +52,7 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "whip_candidate_policy": "streaming_whip_candidate_policy",
             "internal_control_token": "streaming_internal_control_token",
             "test_auth_bypass": "streaming_test_auth_bypass",
+            "snapshot_ttl_sec": "streaming_snapshot_ttl_sec",
         },
         "avatar": {
             "matting_provider": "avatar_matting_provider",
@@ -412,6 +413,7 @@ class Settings(BaseSettings):
     streaming_whip_candidate_policy: str = "allowlist"
     streaming_internal_control_token: str = ""
     streaming_test_auth_bypass: bool = False
+    streaming_snapshot_ttl_sec: int = 3600
     exports_dir: str = "./data/exports"
     scene_assets_dir: str = "./data/scene-assets"
     scene_asset_max_bytes: int = 200 * 1024 * 1024

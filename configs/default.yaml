@@ -35,6 +35,7 @@ streaming:
   whip_candidate_policy: allowlist
   internal_control_token: ""
   test_auth_bypass: false
+  snapshot_ttl_sec: 3600
 flashtalk:
   mode: off
   ws_url: ""

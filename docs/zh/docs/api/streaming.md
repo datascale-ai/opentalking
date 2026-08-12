@@ -28,7 +28,7 @@ set -a; . outputs/streaming/credentials.env; set +a
 | --- | --- |
 | RTMPS 发布 | `rtmps://127.0.0.1:1936/live`，stream key 为 `rtmps-test` |
 | WHIP 发布 | `https://127.0.0.1:8889/whip-test/whip` |
-| RTMPS 播放 | `rtsp://reader:<password>@127.0.0.1:8554/live/rtmps-test` |
+| RTMPS 播放 | `rtsp://127.0.0.1:8554/live/rtmps-test`（读取凭据由 harness 环境变量提供） |
 | WHIP 播放 | `https://127.0.0.1:8889/whip-test/whep` |
 
 MediaMTX 的本地证书由测试 CA 签发，OpenTalking publisher 使用 `OPENTALKING_STREAMING_RTMPS_CA_FILE` 和 `OPENTALKING_STREAMING_WHIP_CA_FILE` 验证，不能把关闭 TLS 校验当作正常测试路径。
@@ -95,13 +95,12 @@ curl --fail-with-body -sS -X POST "$BASE/sessions/$SID/speak" \
   --data '{"text":"欢迎来到 OpenTalking","mode":"replace","command_id":"demo-say-001","tts_provider":"mock"}'
 
 .venv/bin/python scripts/streaming/receive_rtmps.py \
-  --url "rtsp://reader:${OPENTALKING_HARNESS_READ_PASSWORD}@127.0.0.1:8554/live/rtmps-test" \
+  --url "rtsp://127.0.0.1:8554/live/rtmps-test" \
   --output outputs/streaming/rtmps-capture.mp4 --seconds 30
 
 .venv/bin/python scripts/streaming/receive_whep.py \
   --url https://127.0.0.1:8889/whip-test/whep \
   --ca-file outputs/streaming/tls/ca.crt \
-  --bearer-token "reader:${OPENTALKING_HARNESS_READ_PASSWORD}" \
   --output outputs/streaming/whip-capture.mkv \
   --stats outputs/streaming/whip-stats.json \
   --answer-sdp outputs/streaming/whip-answer.sdp --seconds 30
@@ -131,4 +130,4 @@ ffprobe -v error -show_streams -show_packets -show_frames -of json \
 docker compose -f docker/docker-compose.streaming-test.yml down -v
 ```
 
-测试账号、证书私钥、capture 和 `.env` 均不得提交到 Git。
+接收脚本从 `OPENTALKING_HARNESS_READ_USERNAME`、`OPENTALKING_HARNESS_READ_PASSWORD` 和 `OPENTALKING_HARNESS_WHEP_TOKEN` 读取临时凭据；不要把凭据拼进 URL 或命令行。测试账号、证书私钥、capture 和 `.env` 均不得提交到 Git。

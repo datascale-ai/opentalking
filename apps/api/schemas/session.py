@@ -85,26 +85,38 @@ class SpeakRequest(BaseModel):
     )
 
 
+class RTMPSOutputTransport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str = Field(min_length=1)
+    stream_key: str = Field(min_length=1)
+    username: str | None = None
+    password: str | None = None
+    tls_verify: bool | None = None
+
+
+class WHIPOutputTransport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str = Field(min_length=1)
+    bearer_token: str = Field(min_length=1)
+    tls_verify: bool | None = None
+
+
 class SessionOutputRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: Literal["rtmps", "whip"]
     name: str = ""
     auto_connect: bool = False
-    transport: dict[str, Any]
+    transport: RTMPSOutputTransport | WHIPOutputTransport
     profile: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_transport(self) -> "SessionOutputRequest":
-        allowed = {
-            "rtmps": {"endpoint", "stream_key", "username", "password", "tls_verify"},
-            "whip": {"endpoint", "bearer_token", "tls_verify"},
-        }[self.type]
-        if any(str(key) not in allowed for key in self.transport):
-            raise ValueError("unsupported transport field")
-        required = "stream_key" if self.type == "rtmps" else "bearer_token"
-        if not str(self.transport.get("endpoint") or "").strip() or not str(self.transport.get(required) or "").strip():
-            raise ValueError(f"{self.type} transport requires endpoint and {required}")
+        expected = RTMPSOutputTransport if self.type == "rtmps" else WHIPOutputTransport
+        if not isinstance(self.transport, expected):
+            raise ValueError(f"{self.type} transport fields do not match output type")
         profile_allowed = {"width", "height", "fps", "video_bitrate_kbps", "gop_seconds"}
         if any(str(key) not in profile_allowed for key in self.profile):
             raise ValueError("unsupported profile field")

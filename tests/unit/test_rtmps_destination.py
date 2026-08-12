@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from opentalking.streaming.destinations.rtmps import RTMPSPublisher, RTMPSSettings, normalize_rtmps_endpoint
+from opentalking.streaming.destinations.rtmps import (
+    RTMPSPublisher,
+    RTMPSSettings,
+    _pin_rtmps_url,
+    normalize_rtmps_endpoint,
+)
 from opentalking.streaming.types import ProgramAudio, ProgramVideo
 import numpy as np
 
@@ -71,7 +76,7 @@ async def test_rtmps_pyav_path_emits_h264_and_aac(tmp_path, monkeypatch) -> None
     original_open = av.open
     monkeypatch.setattr(
         "opentalking.streaming.destinations.rtmps._verify_tls_peer",
-        lambda endpoint, ca_file: None,
+        lambda *args: None,
     )
     monkeypatch.setattr(
         av,
@@ -93,3 +98,16 @@ async def test_rtmps_pyav_path_emits_h264_and_aac(tmp_path, monkeypatch) -> None
     finally:
         probe.close()
     assert {"h264", "aac"}.issubset(codecs)
+
+
+def test_rtmps_pinned_url_keeps_structured_credentials_and_path() -> None:
+    settings = RTMPSSettings(
+        endpoint="rtmps://stream.example/live",
+        stream_key="demo",
+        username="publisher",
+        password="secret",
+        allow_local=True,
+    )
+    assert _pin_rtmps_url(settings, "203.0.113.10") == (
+        "rtmps://203.0.113.10/live/demo?user=publisher&pass=secret"
+    )

@@ -19,3 +19,21 @@ def offline_bundle_job_key(job_id: str) -> str:
 
 def uploaded_pcm_key(session_id: str, upload_id: str) -> str:
     return f"opentalking:uploaded_pcm:{session_id}:{upload_id}"
+
+
+def streaming_output_index_key(session_id: str) -> str:
+    """Short-lived streaming output snapshot index for one Session."""
+    return f"opentalking:streaming:index:{session_id}"
+
+
+def streaming_output_key(session_id: str, output_id: str) -> str:
+    """Secret-free output snapshot key."""
+    return f"opentalking:streaming:output:{session_id}:{output_id}"
+
+
+def streaming_receipt_key(session_id: str, action: str, idempotency_key: str) -> str:
+    """Hashed streaming command receipt key; raw caller keys never enter Redis keys."""
+    import hashlib
+
+    digest = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()
+    return f"opentalking:streaming:receipt:{session_id}:{action}:{digest}"

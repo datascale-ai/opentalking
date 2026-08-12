@@ -290,6 +290,19 @@ class ProgramOutputManager:
     def branch_stats(self) -> dict[str, OutputBranchStats]:
         return {name: branch.stats for name, branch in self._branches.items()}
 
+    def branch_metrics(self, name: str) -> dict[str, int]:
+        """Return queue/counter metrics without exposing media payloads."""
+        branch = self._branches.get(name)
+        if branch is None:
+            return {}
+        return {
+            "video_queue_depth": branch.video_queue.qsize(),
+            "audio_queue_depth": branch.audio_queue.qsize(),
+            "dropped_video": branch.stats.dropped_video,
+            "dropped_audio": branch.stats.dropped_audio,
+            "callback_errors": branch.stats.callback_errors,
+        }
+
     async def close(self) -> None:
         if self._closed:
             return

@@ -22,6 +22,41 @@ from ..whip_sdp import WhipSdpError, validate_answer_sdp, validate_offer_sdp
 log = logging.getLogger(__name__)
 
 
+class _PinnedNetworkBackend:
+    """Delegate httpcore network I/O to one already-approved destination IP.
+
+    The HTTP request URL remains on the original hostname, so httpcore keeps
+    the hostname in the Host header and TLS SNI while the TCP connect cannot
+    silently resolve a different address after policy validation.
+    """
+
+    def __init__(self, delegate: Any, address: str) -> None:
+        self._delegate = delegate
+        self._address = address
+
+    async def connect_tcp(self, host: str, port: int, **kwargs: Any) -> Any:
+        del host
+        return await self._delegate.connect_tcp(self._address, port, **kwargs)
+
+    async def connect_unix_socket(self, *args: Any, **kwargs: Any) -> Any:
+        return await self._delegate.connect_unix_socket(*args, **kwargs)
+
+    async def sleep(self, seconds: float) -> None:
+        await self._delegate.sleep(seconds)
+
+
+def _pinned_transport(*, verify: bool | str, address: str) -> httpx.AsyncHTTPTransport:
+    transport = httpx.AsyncHTTPTransport(verify=verify, trust_env=False)
+    pool = getattr(transport, "_pool", None)
+    if pool is None:
+        raise RuntimeError("httpx transport does not expose a connection pool")
+    delegate = getattr(pool, "_network_backend", None)
+    if delegate is None:
+        raise RuntimeError("httpx transport does not expose a network backend")
+    pool._network_backend = _PinnedNetworkBackend(delegate, address)
+    return transport
+
+
 @dataclass(frozen=True)
 class WHIPSettings:
     endpoint: str
@@ -32,6 +67,7 @@ class WHIPSettings:
     ice_servers: str = ""
     allow_local: bool = False
     max_redirects: int = 2
+    candidate_policy: str = "allowlist"
     allowed_cidrs: tuple[str, ...] = ()
     allowed_hosts: tuple[str, ...] = ()
     width: int | None = None
@@ -126,7 +162,51 @@ class WHIPPublisher:
         self.sent_audio = 0
         self.bytes_sent = 0
         self.last_media_at: float | None = None
+        self.last_program_pts_ms: float | None = None
+        self.last_sent_pts_ms: float | None = None
+        self.last_video_pts_ms: float | None = None
+        self.last_audio_pts_ms: float | None = None
         self._health_task: asyncio.Task[None] | None = None
+
+    async def _request_pinned(
+        self,
+        method: str,
+        target: str,
+        *,
+        headers: dict[str, str],
+        content: bytes | None = None,
+        verify: bool | str,
+    ) -> httpx.Response:
+        parsed = urlparse(
+            validate_target_url(
+                target,
+                schemes={"https"},
+                allow_local=self.settings.allow_local,
+                allowed_hosts=set(self.settings.allowed_hosts),
+                allowed_cidrs=list(self.settings.allowed_cidrs),
+            )
+        )
+        resolved = validate_resolved_target(
+            parsed.hostname or "",
+            parsed.port or 443,
+            allow_local=self.settings.allow_local,
+            allowed_cidrs=list(self.settings.allowed_cidrs),
+        )
+        if not resolved:
+            raise RuntimeError("WHIP endpoint resolved to no approved address")
+        transport = _pinned_transport(verify=verify, address=resolved[0])
+        try:
+            async with httpx.AsyncClient(
+                transport=transport,
+                follow_redirects=False,
+                trust_env=False,
+                timeout=15.0,
+            ) as client:
+                response = await client.request(method, target, headers=headers, content=content)
+                await response.aread()
+                return response
+        finally:
+            await transport.aclose()
 
     async def start(self) -> None:
         if self.pc is not None:
@@ -158,6 +238,8 @@ class WHIPPublisher:
             for url in self.settings.ice_servers.replace(";", ",").split(",")
             if url.strip()
         ]
+        if self.settings.candidate_policy.strip().lower() == "relay" and not ice_servers:
+            raise ValueError("WHIP relay candidate policy requires a configured ICE relay")
         self.pc = RTCPeerConnection(
             RTCConfiguration(iceServers=ice_servers, bundlePolicy=RTCBundlePolicy.MAX_BUNDLE)
         )
@@ -190,6 +272,8 @@ class WHIPPublisher:
             validate_offer_sdp(
                 local.sdp,
                 allow_private_candidates=self.settings.allow_local,
+                candidate_policy=self.settings.candidate_policy,
+                allowed_cidrs=self.settings.allowed_cidrs,
             )
         except WhipSdpError as exc:
             raise RuntimeError(str(exc)) from exc
@@ -199,40 +283,39 @@ class WHIPPublisher:
             "Content-Type": "application/sdp",
             "Accept": "application/sdp",
         }
-        async with httpx.AsyncClient(verify=verify, follow_redirects=False, trust_env=False, timeout=15.0) as client:
-            target = endpoint
-            for redirect_count in range(max(0, self.settings.max_redirects) + 1):
-                response = await client.post(target, headers=headers, content=local.sdp.encode("utf-8"))
-                if response.status_code not in {307, 308}:
-                    break
-                location = response.headers.get("location")
-                if not location or redirect_count >= max(0, self.settings.max_redirects):
-                    raise RuntimeError("WHIP redirect policy rejected")
-                target = urljoin(target, location)
-                target_parts = urlparse(
-                    validate_target_url(
-                        target,
-                        schemes={"https"},
-                        allow_local=self.settings.allow_local,
-                        allowed_hosts=set(self.settings.allowed_hosts),
-                        allowed_cidrs=list(self.settings.allowed_cidrs),
-                    )
-                )
-                target_origin = (
-                    target_parts.scheme.lower(),
-                    (target_parts.hostname or "").lower().rstrip("."),
-                    target_parts.port or 443,
-                )
-                if target_origin != initial_origin and not self.settings.allowed_hosts:
-                    raise RuntimeError("WHIP redirect origin is not approved")
-                validate_resolved_target(
-                    target_parts.hostname or "",
-                    target_parts.port or 443,
+        target = endpoint
+        for redirect_count in range(max(0, self.settings.max_redirects) + 1):
+            response = await self._request_pinned(
+                "POST",
+                target,
+                headers=headers,
+                content=local.sdp.encode("utf-8"),
+                verify=verify,
+            )
+            if response.status_code not in {307, 308}:
+                break
+            location = response.headers.get("location")
+            if not location or redirect_count >= max(0, self.settings.max_redirects):
+                raise RuntimeError("WHIP redirect policy rejected")
+            target = urljoin(target, location)
+            target_parts = urlparse(
+                validate_target_url(
+                    target,
+                    schemes={"https"},
                     allow_local=self.settings.allow_local,
+                    allowed_hosts=set(self.settings.allowed_hosts),
                     allowed_cidrs=list(self.settings.allowed_cidrs),
                 )
-            else:  # pragma: no cover - loop always breaks or raises
-                raise RuntimeError("WHIP redirect policy rejected")
+            )
+            target_origin = (
+                target_parts.scheme.lower(),
+                (target_parts.hostname or "").lower().rstrip("."),
+                target_parts.port or 443,
+            )
+            if target_origin != initial_origin and not self.settings.allowed_hosts:
+                raise RuntimeError("WHIP redirect origin is not approved")
+        else:  # pragma: no cover - loop always breaks or raises
+            raise RuntimeError("WHIP redirect policy rejected")
         if response.status_code != 201:
             raise RuntimeError(f"WHIP publish rejected ({response.status_code})")
         if "sdp" not in response.headers.get("content-type", "").lower():
@@ -282,11 +365,17 @@ class WHIPPublisher:
         await self.video_track.put(item)
         self.sent_video += 1
         self.last_media_at = time.monotonic()
+        self.last_program_pts_ms = float(item.timestamp_ms)
+        self.last_sent_pts_ms = float(item.timestamp_ms)
+        self.last_video_pts_ms = float(item.timestamp_ms)
 
     async def audio(self, item: ProgramAudio) -> None:
         await self.audio_track.put(item)
         self.sent_audio += 1
         self.last_media_at = time.monotonic()
+        self.last_program_pts_ms = max(float(item.timestamp_ms), float(self.last_program_pts_ms or 0.0))
+        self.last_sent_pts_ms = float(item.timestamp_ms)
+        self.last_audio_pts_ms = float(item.timestamp_ms)
 
     async def _monitor_connection(self) -> None:
         try:
@@ -350,9 +439,13 @@ class WHIPPublisher:
             return
         try:
             verify: bool | str = self.settings.ca_file if self.settings.tls_verify and self.settings.ca_file else self.settings.tls_verify
-            async with httpx.AsyncClient(verify=verify, follow_redirects=False, trust_env=False, timeout=10.0) as client:
-                response = await client.delete(resource, headers={"Authorization": f"Bearer {token}"})
-                if response.status_code not in {200, 202, 204, 404}:
-                    log.warning("WHIP resource DELETE returned status=%s", response.status_code)
+            response = await self._request_pinned(
+                "DELETE",
+                resource,
+                headers={"Authorization": f"Bearer {token}"},
+                verify=verify,
+            )
+            if response.status_code not in {200, 202, 204, 404}:
+                log.warning("WHIP resource DELETE returned status=%s", response.status_code)
         except Exception:
             log.debug("WHIP resource DELETE failed", exc_info=True)

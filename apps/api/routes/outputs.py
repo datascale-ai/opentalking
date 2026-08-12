@@ -9,17 +9,14 @@ from apps.api.services import session_service
 from apps.api.services.worker_service import forward_worker_json
 from apps.api.schemas.session import SessionOutputRequest
 from opentalking.streaming.outputs import SessionOutputController
+from opentalking.core.redis_keys import streaming_output_index_key
 
 router = APIRouter(prefix="/sessions", tags=["session-outputs"])
 
 
 def _worker_token(request: Request) -> str:
     settings = request.app.state.settings
-    return str(
-        getattr(settings, "streaming_internal_control_token", "")
-        or getattr(settings, "streaming_control_token", "")
-        or ""
-    )
+    return str(getattr(settings, "streaming_internal_control_token", "") or "")
 
 
 def _authorized(request: Request) -> None:
@@ -40,6 +37,25 @@ async def _controller(request: Request, session_id: str) -> SessionOutputControl
     runners = getattr(request.app.state, "session_runners", None)
     runner = runners.get(session_id) if isinstance(runners, dict) else None
     if runner is None:
+        # A restarted worker may still have a short-lived, secret-free
+        # snapshot. Expose it as stale/failed for GET and DELETE; creation or
+        # reconnect remains rejected until a new ready runner receives the
+        # secret-bearing create request.
+        redis = getattr(request.app.state, "redis", None)
+        if redis is not None:
+            index = await redis.hgetall(streaming_output_index_key(session_id))
+            if index:
+                controller = SessionOutputController(
+                    session_id=session_id,
+                    program=None,
+                    settings=request.app.state.settings,
+                    redis=redis,
+                    worker_boot_id=getattr(request.app.state, "worker_boot_id", None),
+                    allow_snapshot_only=True,
+                )
+                await controller.load_stale_state()
+                if controller.public():
+                    return controller
         raise LookupError("runner")
     existing = getattr(runner, "output_controller", None)
     if existing is not None:
@@ -52,8 +68,10 @@ async def _controller(request: Request, session_id: str) -> SessionOutputControl
         program=program,
         settings=request.app.state.settings,
         redis=request.app.state.redis,
+        worker_boot_id=getattr(request.app.state, "worker_boot_id", None),
     )
     runner.output_controller = controller
+    await controller.load_stale_state()
     return controller
 
 
@@ -134,6 +152,8 @@ async def create_output(
     )
     if "_controller" not in result:
         return result
+    if getattr(result["_controller"], "program", None) is None:
+        raise HTTPException(status_code=409, detail="streaming program is not ready")
     try:
         record = await result["_controller"].create(body.model_dump(exclude_none=True), idempotency_key=idempotency_key)
     except (ValueError, RuntimeError) as exc:
@@ -207,13 +227,20 @@ async def _mutate_output(
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if getattr(controller, "program", None) is None and action != "delete":
+        raise HTTPException(status_code=409, detail="stale_worker_state")
     try:
+        if idempotency_key and await controller.reserve_action_idempotency(output_id, action, idempotency_key):
+            existing = controller.get(output_id)
+            if existing is None:
+                raise KeyError(output_id)
+            return _public(existing)
         if action == "connect":
-            record = controller.request_connect(output_id, idempotency_key=idempotency_key)
+            record = controller.request_connect(output_id)
         elif action == "disconnect":
-            record = controller.request_disconnect(output_id, idempotency_key=idempotency_key)
+            record = controller.request_disconnect(output_id)
         elif action == "reconnect":
-            record = controller.request_reconnect(output_id, idempotency_key=idempotency_key)
+            record = controller.request_reconnect(output_id)
         else:
             record = await getattr(controller, action)(output_id)
     except KeyError as exc:

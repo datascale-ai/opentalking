@@ -12,7 +12,7 @@ from typing import Any
 
 from opentalking.core.config import get_settings
 from opentalking.core.queue_status import set_flashtalk_queue_status
-from opentalking.core.redis_keys import TASK_QUEUE
+from opentalking.core.redis_keys import TASK_QUEUE, command_receipt_key
 from opentalking.core.session_store import get_session_record, set_session_state
 from opentalking.agent.context_builder import AgentSessionConfig
 from opentalking.runtime.bus import publish_event
@@ -28,6 +28,27 @@ from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClien
 from opentalking.providers.memory.runtime import normalize_memory_scope
 
 log = logging.getLogger(__name__)
+
+
+async def _finish_speak_receipt(r: Any, sid: str, command_id: str, task: asyncio.Task[Any]) -> None:
+    """Move a dispatched speak receipt to a terminal, redacted state."""
+    key = command_receipt_key(sid, command_id)
+    try:
+        raw = await r.get(key)
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        try:
+            receipt = json.loads(str(raw or "{}"))
+        except json.JSONDecodeError:
+            receipt = {}
+        receipt["status"] = "completed" if not task.cancelled() and task.exception() is None else "failed"
+        if receipt["status"] == "failed":
+            receipt["error"] = "speech_task_failed"
+        await r.set(key, json.dumps(receipt, separators=(",", ":")), ex=24 * 60 * 60)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.debug("failed to finalize speak receipt: session=%s", sid, exc_info=True)
 
 # Type alias: both SessionRunner and FlashTalkRunner share the same duck-typed interface
 AnyRunner = Any
@@ -578,7 +599,7 @@ async def handle_worker_task(
         )
         create_chat_task = getattr(runner, "create_chat_task", None)
         if callable(create_chat_task):
-            create_chat_task(
+            speech_task = create_chat_task(
                 text,
                 tts_voice=tts_voice or None,
                 tts_provider=tts_provider or None,
@@ -586,12 +607,18 @@ async def handle_worker_task(
                 enqueue_unix=enqueue_value,
             )
         else:
-            runner.create_speak_task(
+            speech_task = runner.create_speak_task(
                 text,
                 tts_voice=tts_voice or None,
                 tts_provider=tts_provider or None,
                 tts_model=tts_model or None,
                 enqueue_unix=enqueue_value,
+            )
+        if command_id and isinstance(speech_task, asyncio.Task):
+            speech_task.add_done_callback(
+                lambda done, _sid=str(sid), _command_id=command_id: asyncio.create_task(
+                    _finish_speak_receipt(r, _sid, _command_id, done)
+                )
             )
     elif cmd == "update_agent_knowledge_bases":
         _update_runner_agent_knowledge_bases(runner, _task_knowledge_base_ids(task))

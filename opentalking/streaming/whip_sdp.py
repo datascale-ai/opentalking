@@ -44,7 +44,13 @@ def _require_common(sdp: str, *, role: str) -> list[list[str]]:
     return sections
 
 
-def validate_offer_sdp(sdp: str, *, allow_private_candidates: bool = False) -> None:
+def validate_offer_sdp(
+    sdp: str,
+    *,
+    allow_private_candidates: bool = False,
+    candidate_policy: str = "allowlist",
+    allowed_cidrs: tuple[str, ...] | list[str] = (),
+) -> None:
     sections = _require_common(sdp, role="offer")
     for section in sections:
         if "a=sendonly" not in section:
@@ -57,18 +63,26 @@ def validate_offer_sdp(sdp: str, *, allow_private_candidates: bool = False) -> N
     candidates = [line for line in sdp.splitlines() if line.startswith("a=candidate:")]
     if not candidates:
         raise WhipSdpError("WHIP offer must use full ICE and include candidates")
-    if allow_private_candidates:
+    policy = candidate_policy.strip().lower() or "allowlist"
+    if policy not in {"allowlist", "relay"}:
+        raise WhipSdpError("unsupported WHIP candidate policy")
+    networks = [ipaddress.ip_network(item, strict=False) for item in allowed_cidrs]
+    if allow_private_candidates and policy == "allowlist":
         return
     for line in candidates:
         match = _CANDIDATE_ADDRESS.match(line)
         if not match:
             continue
+        candidate_type = match.group(2).lower()
+        if policy == "relay" and candidate_type != "relay":
+            raise WhipSdpError("WHIP relay candidate policy rejected non-relay candidate")
         try:
             address = ipaddress.ip_address(match.group(1))
         except ValueError:
             continue
         if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved:
-            raise WhipSdpError("WHIP offer contains a private host candidate; configure approved relay/egress")
+            if not any(address in network for network in networks):
+                raise WhipSdpError("WHIP offer contains a private host candidate; configure approved relay/egress")
 
 
 def validate_answer_sdp(offer_sdp: str, answer_sdp: str) -> None:

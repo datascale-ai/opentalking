@@ -775,7 +775,7 @@ tests/unit/test_rtmps_destination.py
 
 ```bash
 .venv/bin/pytest tests/unit/test_rtmps_destination.py -q
-python scripts/streaming/receive_rtmps.py \
+.venv/bin/python scripts/streaming/receive_rtmps.py \
   --url rtsp://127.0.0.1:8554/live/rtmps-test \
   --output outputs/streaming/rtmps-capture.mp4 --seconds 30
 ffprobe -v error -show_streams -show_packets -show_frames \
@@ -822,7 +822,7 @@ tests/unit/test_whip_sdp.py
 
 ```bash
 .venv/bin/pytest tests/unit/test_whip_publisher.py tests/unit/test_whip_sdp.py -q
-python scripts/streaming/receive_whep.py \
+.venv/bin/python scripts/streaming/receive_whep.py \
   --url https://localhost:8889/whip-test/whep \
   --ca-file outputs/streaming/tls/ca.crt \
   --output outputs/streaming/whip-capture.mkv --seconds 30
@@ -1275,3 +1275,12 @@ av_drift_ms
 本轮自动验证：streaming/API/RTC 相关新增与回归测试 48 passed；新增 streaming 模块 mypy 通过；根 compose 与 streaming-test compose 配置解析通过。全仓测试仍受工作机已有 `.env` 中 QuickTalk/OmniRT 路径配置影响，记录为 baseline（非本功能新增失败）；Docker 容器内 `apt-get update` 的构建验证仍受当前网络环境阻塞。
 
 因此，本文第 17 节的未勾选项仍然是发布门禁；当前实现不能被描述为已完成 RTMPS/WHIP 生产验收。
+
+### 19.1 增量加固记录（2026-08-13）
+
+- P2 加固：增加 secret-free output snapshot/index 与 TTL、`worker_boot_id`/owner epoch；worker 重启后旧 output 对外 fail-closed 为 `stale_worker_state`，不得带旧 secret 自动重连。split API 与 worker 使用独立的 `OPENTALKING_STREAMING_INTERNAL_CONTROL_TOKEN`，不再回退公开 control token；output transport 使用 `extra="forbid"` 的 typed Pydantic model。
+- P2 幂等：output create 使用 Redis `SET NX` receipt；connect/disconnect/reconnect/delete 使用独立 action receipt；speak receipt 在 worker speech task 完成或失败后写入 terminal 状态。Redis/InMemoryRedis 均保留 secret-free receipt/snapshot。
+- P3/P4 加固：RTMPS 连接前重新执行批准 IP 校验并使用 pinned-IP URL，同时保留 TLS hostname/SNI 语义；WHIP POST、受控 redirect 与 resource DELETE 均使用 pinned HTTP transport；增加 candidate policy、PTS/队列/丢帧/A/V drift 等非敏感状态指标。publisher 在首个 Program tick 前保持 `connecting`，不把“创建后台任务”伪装成已连接。
+- P5 接收端：RTMPS receiver 改为进程内 PyAV reader，读取临时环境凭据且不把密码放入 ffmpeg argv；增加 ingest 启动竞态重试、无 secret 错误信息和 WHEP reader token。真实本机 MediaMTX 链路已验证 RTMPS H.264/AAC、WHIP/WHEP H.264/Opus、timeline 与 wire SDP 检查。
+
+本次增量验证：相关 backend 单元/API 测试 28 passed；streaming 目标文件 Ruff 与 mypy 通过；Studio `npm run typecheck`、`npm run test`（15 passed）、`npm run build` 通过；根 compose 与 streaming-test compose 配置解析通过。Docker API 镜像构建已确认进入正确的 flat-layout COPY，但当前机器的 Debian `apt-get update` 网络源长时间无响应，未将该环境阻塞伪装为构建通过。2 小时/8 小时 soak、独立故障注入与第二 WHIP endpoint 仍未完成，不能勾选第 17 节对应门禁。

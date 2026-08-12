@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from contextlib import asynccontextmanager
 
 import redis.asyncio as redis
@@ -17,7 +18,16 @@ from opentalking.voice.store import init_voice_store
 async def lifespan(app: FastAPI):
     init_voice_store()
     settings = get_settings()
+    if (
+        settings.streaming_enabled
+        and not settings.streaming_test_auth_bypass
+        and not settings.streaming_internal_control_token.strip()
+    ):
+        raise RuntimeError(
+            "OPENTALKING_STREAMING_INTERNAL_CONTROL_TOKEN is required for split API/worker mode"
+        )
     app.state.settings = settings
+    app.state.worker_boot_id = uuid.uuid4().hex
     r = redis.from_url(settings.redis_url, decode_responses=True)
     app.state.redis = r
     yield

@@ -66,6 +66,7 @@ def main() -> int:
                 "OPENTALKING_HARNESS_WHIP_TOKEN=publisher:" + publish_password,
                 "OPENTALKING_HARNESS_READ_USERNAME=reader",
                 f"OPENTALKING_HARNESS_READ_PASSWORD={read_password}",
+                "OPENTALKING_HARNESS_WHEP_TOKEN=reader:" + read_password,
                 "",
             ]
         ),
@@ -77,4 +78,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

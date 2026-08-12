@@ -10,6 +10,7 @@ import argparse
 import asyncio
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -134,6 +135,7 @@ async def unified_lifespan(app: FastAPI):
     )
     mem = InMemoryRedis()
     app.state.redis = mem
+    app.state.worker_boot_id = uuid.uuid4().hex
     runners: dict[str, SessionRunner] = {}
     app.state.session_runners = runners
     avatars_root = Path(

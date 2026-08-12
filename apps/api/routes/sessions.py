@@ -989,6 +989,7 @@ async def speak(
             tts_provider=eff_prov,
             tts_model=tm,
             command_id=command_id,
+            owner_epoch=getattr(request.app.state, "worker_boot_id", None),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

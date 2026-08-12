@@ -28,7 +28,7 @@ Local endpoints:
 | --- | --- |
 | RTMPS publish | `rtmps://127.0.0.1:1936/live`, stream key `rtmps-test` |
 | WHIP publish | `https://127.0.0.1:8889/whip-test/whip` |
-| RTMPS playback | `rtsp://reader:<password>@127.0.0.1:8554/live/rtmps-test` |
+| RTMPS playback | `rtsp://127.0.0.1:8554/live/rtmps-test` (reader credentials come from harness environment variables) |
 | WHIP playback | `https://127.0.0.1:8889/whip-test/whep` |
 
 The local certificate is signed by the test CA. OpenTalking verifies it through `OPENTALKING_STREAMING_RTMPS_CA_FILE` and `OPENTALKING_STREAMING_WHIP_CA_FILE`; disabling TLS verification is not the normal test path.
@@ -90,13 +90,12 @@ curl --fail-with-body -sS -X POST "$BASE/sessions/$SID/speak" \
   --data '{"text":"Welcome to OpenTalking","mode":"replace","command_id":"demo-say-001","tts_provider":"mock"}'
 
 .venv/bin/python scripts/streaming/receive_rtmps.py \
-  --url "rtsp://reader:${OPENTALKING_HARNESS_READ_PASSWORD}@127.0.0.1:8554/live/rtmps-test" \
+  --url "rtsp://127.0.0.1:8554/live/rtmps-test" \
   --output outputs/streaming/rtmps-capture.mp4 --seconds 30
 
 .venv/bin/python scripts/streaming/receive_whep.py \
   --url https://127.0.0.1:8889/whip-test/whep \
   --ca-file outputs/streaming/tls/ca.crt \
-  --bearer-token "reader:${OPENTALKING_HARNESS_READ_PASSWORD}" \
   --output outputs/streaming/whip-capture.mkv \
   --stats outputs/streaming/whip-stats.json \
   --answer-sdp outputs/streaming/whip-answer.sdp --seconds 30
@@ -126,4 +125,4 @@ After starting `scripts/start_unified.sh`, open the “流媒体” (Streaming) 
 docker compose -f docker/docker-compose.streaming-test.yml down -v
 ```
 
-Test credentials, private keys, captures, and `.env` files must not be committed.
+The receiver scripts read temporary credentials from `OPENTALKING_HARNESS_READ_USERNAME`, `OPENTALKING_HARNESS_READ_PASSWORD`, and `OPENTALKING_HARNESS_WHEP_TOKEN`; do not embed credentials in URLs or command lines. Test credentials, private keys, captures, and `.env` files must not be committed.

@@ -22,7 +22,18 @@ from ..types import ProgramAudio, ProgramVideo
 log = logging.getLogger(__name__)
 
 
-def _verify_tls_peer(endpoint: str, ca_file: str) -> None:
+def _open_av_output(url: str, options: dict[str, str]) -> Any:
+    """Open an output container while suppressing libav URL diagnostics.
+
+    MediaMTX auth is assembled into ``url`` only inside the worker.  Some
+    libav builds print the full URL (including its query) to stderr on a
+    handshake failure, so never let that diagnostic reach service logs.
+    """
+    with contextlib.redirect_stderr(io.StringIO()):
+        return av.open(url, mode="w", format="flv", options=options)
+
+
+def _verify_tls_peer(endpoint: str, ca_file: str, resolved_ip: str | None = None) -> None:
     """Perform an explicit certificate/hostname check before PyAV opens RTMPS.
 
     PyAV's output path currently calls ``avio_open`` without forwarding the
@@ -37,9 +48,29 @@ def _verify_tls_peer(endpoint: str, ca_file: str) -> None:
     context = ssl.create_default_context(cafile=ca_file or None)
     host = parsed.hostname
     port = parsed.port or 443
-    with socket.create_connection((host, port), timeout=10.0) as raw:
+    with socket.create_connection((resolved_ip or host, port), timeout=10.0) as raw:
         with context.wrap_socket(raw, server_hostname=host):
             return
+
+
+def _pin_rtmps_url(settings: RTMPSSettings, resolved_ip: str) -> str:
+    """Build a URL using the approved address while retaining TLS SNI/verifyhost."""
+    endpoint = normalize_rtmps_endpoint(settings.endpoint, allow_local=settings.allow_local)
+    parsed = urlparse(endpoint)
+    host = resolved_ip
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = host
+    if parsed.port is not None:
+        netloc = f"{host}:{parsed.port}"
+    pinned = RTMPSSettings(
+        endpoint=urlunparse((parsed.scheme, netloc, parsed.path, "", "", "")),
+        stream_key=settings.stream_key,
+        username=settings.username,
+        password=settings.password,
+        allow_local=True,
+    )
+    return build_rtmps_url(pinned)
 
 
 @dataclass(frozen=True)
@@ -135,6 +166,10 @@ class RTMPSPublisher:
         self.sent_audio = 0
         self.bytes_sent = 0
         self.last_media_at: float | None = None
+        self.last_program_pts_ms: float | None = None
+        self.last_sent_pts_ms: float | None = None
+        self.last_video_pts_ms: float | None = None
+        self.last_audio_pts_ms: float | None = None
 
     async def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -223,22 +258,32 @@ class RTMPSPublisher:
             return
         width = int(self.settings.width or item.width)
         height = int(self.settings.height or item.height)
-        url = build_rtmps_url(self.settings)
-        parsed = urlparse(self.settings.endpoint)
-        validate_resolved_target(
-            parsed.hostname or "",
-            parsed.port or 1935,
+        endpoint_host = urlparse(self.settings.endpoint).hostname or ""
+        resolved = validate_resolved_target(
+            endpoint_host,
+            urlparse(self.settings.endpoint).port or 1935,
             allow_local=self.settings.allow_local,
             allowed_cidrs=list(self.settings.allowed_cidrs),
         )
+        if not resolved:
+            raise OSError("RTMPS endpoint resolved to no approved address")
+        resolved_ip = resolved[0]
+        url = _pin_rtmps_url(self.settings, resolved_ip)
+        parsed = urlparse(self.settings.endpoint)
         options: dict[str, str] = {
             "tls_verify": "1" if self.settings.tls_verify else "0",
         }
         if self.settings.ca_file:
             options["ca_file"] = self.settings.ca_file
+        if parsed.hostname:
+            # FFmpeg connects to the pinned IP but validates/SNI's the
+            # original hostname. This avoids a second uncontrolled DNS lookup
+            # in the publisher's normal connection path.
+            options["verifyhost"] = parsed.hostname
+            options["rtmp_tcurl"] = f"{parsed.scheme}://{parsed.hostname}:{parsed.port or 1935}{parsed.path}"
         if self.settings.tls_verify:
-            await asyncio.to_thread(_verify_tls_peer, self.settings.endpoint, self.settings.ca_file)
-        self._container = await asyncio.to_thread(av.open, url, mode="w", format="flv", options=options)
+            await asyncio.to_thread(_verify_tls_peer, self.settings.endpoint, self.settings.ca_file, resolved_ip)
+        self._container = await asyncio.to_thread(_open_av_output, url, options)
         self._video_stream = self._container.add_stream(
             "libx264", rate=Fraction(str(self.settings.fps)).limit_denominator(1000)
         )
@@ -259,6 +304,7 @@ class RTMPSPublisher:
             await self._write_audio(audio)
 
     async def _write_video(self, item: ProgramVideo) -> None:
+        self.last_program_pts_ms = float(item.timestamp_ms)
         await self._ensure_container(item)
         assert self._container is not None and self._video_stream is not None
         data = np.asarray(item.data, dtype=np.uint8)
@@ -275,10 +321,13 @@ class RTMPSPublisher:
             self.bytes_sent += int(getattr(packet, "size", 0) or 0)
         self.sent_video += 1
         self.last_media_at = time.monotonic()
+        self.last_sent_pts_ms = float(item.timestamp_ms)
+        self.last_video_pts_ms = float(item.timestamp_ms)
         if self.sent_audio and self.health != "healthy":
             self.health = "healthy"
 
     async def _write_audio(self, item: ProgramAudio) -> None:
+        self.last_program_pts_ms = max(float(item.timestamp_ms), float(self.last_program_pts_ms or 0.0))
         if self._container is None or self._audio_stream is None:
             # Wait for the first video to establish dimensions/streams.
             if len(self._pending_audio) < 256:
@@ -299,6 +348,8 @@ class RTMPSPublisher:
         self._audio_pts += arr.size
         self.sent_audio += 1
         self.last_media_at = time.monotonic()
+        self.last_sent_pts_ms = float(item.timestamp_ms)
+        self.last_audio_pts_ms = float(item.timestamp_ms)
         if self.sent_video and self.health != "healthy":
             self.health = "healthy"
 

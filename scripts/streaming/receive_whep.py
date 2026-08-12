@@ -89,7 +89,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--ca-file", default="")
-    parser.add_argument("--bearer-token", default=os.environ.get("OPENTALKING_HARNESS_WHIP_TOKEN", ""))
+    parser.add_argument(
+        "--bearer-token",
+        default=os.environ.get(
+            "OPENTALKING_HARNESS_WHEP_TOKEN",
+            os.environ.get("OPENTALKING_HARNESS_READ_TOKEN", ""),
+        ),
+    )
     parser.add_argument("--output", default="")
     parser.add_argument("--stats", default="")
     parser.add_argument("--answer-sdp", default="", help="Optional path for the received answer SDP")

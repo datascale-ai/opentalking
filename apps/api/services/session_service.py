@@ -276,6 +276,7 @@ async def speak(
     tts_provider: str | None = None,
     tts_model: str | None = None,
     command_id: str | None = None,
+    owner_epoch: str | None = None,
 ) -> dict[str, str | bool]:
     command_id = (command_id or "").strip() if command_id else ""
     if not command_id:
@@ -297,7 +298,12 @@ async def speak(
     # and implemented by InMemoryRedis as the same single-loop critical
     # operation.  A crash between reservation and RPUSH remains visible as
     # ``pending`` instead of being silently replayed on a retry.
-    receipt = {"command_id": command_id, "payload_hash": payload_hash, "status": "pending"}
+    receipt = {
+        "command_id": command_id,
+        "payload_hash": payload_hash,
+        "status": "pending",
+        "owner_epoch": str(owner_epoch or ""),
+    }
     encoded_receipt = json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
     reserved = await _await_result(r.set(receipt_key, encoded_receipt, ex=24 * 60 * 60, nx=True))
     if not reserved:
@@ -315,7 +321,7 @@ async def speak(
             "command_id": command_id,
             "status": (
                 "duplicate"
-                if status == "dispatched"
+                if status in {"dispatched", "completed"}
                 else "failed" if status == "failed" else "command_in_progress"
             ),
         }
@@ -343,10 +349,20 @@ async def speak(
         # Keep the receipt short and non-sensitive.  A caller can inspect the
         # command-in-progress/failed state instead of causing an unbounded
         # duplicate speech task by retrying blindly.
-        failed = {"command_id": command_id, "payload_hash": payload_hash, "status": "failed"}
+        failed = {
+            "command_id": command_id,
+            "payload_hash": payload_hash,
+            "status": "failed",
+            "owner_epoch": str(owner_epoch or ""),
+        }
         await _await_result(r.set(receipt_key, json.dumps(failed, separators=(",", ":")), ex=24 * 60 * 60))
         raise
-    dispatched = {"command_id": command_id, "payload_hash": payload_hash, "status": "dispatched"}
+    dispatched = {
+        "command_id": command_id,
+        "payload_hash": payload_hash,
+        "status": "dispatched",
+        "owner_epoch": str(owner_epoch or ""),
+    }
     await _await_result(r.set(receipt_key, json.dumps(dispatched, separators=(",", ":")), ex=24 * 60 * 60))
     return {"command_id": command_id, "status": "queued"}
 

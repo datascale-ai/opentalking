@@ -54,3 +54,10 @@ def test_whip_sdp_rejects_private_candidate_without_local_test_mode() -> None:
     with pytest.raises(WhipSdpError, match="private host candidate"):
         validate_offer_sdp(private_offer)
     validate_offer_sdp(private_offer, allow_private_candidates=True)
+
+
+def test_whip_sdp_relay_policy_requires_relay_candidates() -> None:
+    with pytest.raises(WhipSdpError, match="relay candidate policy"):
+        validate_offer_sdp(OFFER, candidate_policy="relay")
+    relay_offer = OFFER.replace("typ host", "typ relay")
+    validate_offer_sdp(relay_offer, candidate_policy="relay")

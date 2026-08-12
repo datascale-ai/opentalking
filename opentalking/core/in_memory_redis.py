@@ -82,6 +82,21 @@ class InMemoryRedis:
         self._purge_if_expired(name)
         return self._hash.get(name, {}).get(str(key))
 
+    async def hdel(self, name: str, *keys: str) -> int:
+        self._purge_if_expired(name)
+        mapping = self._hash.get(name)
+        if not mapping:
+            return 0
+        removed = 0
+        for key in keys:
+            if str(key) in mapping:
+                mapping.pop(str(key), None)
+                removed += 1
+        if not mapping:
+            self._hash.pop(name, None)
+            self._expiry.pop(name, None)
+        return removed
+
     async def delete(self, *names: str) -> int:
         n = 0
         for name in names:
