@@ -12,6 +12,7 @@ import {
 } from "./components/SettingsPanel";
 import { RuntimeConfigWorkspace } from "./components/RuntimeConfigWorkspace";
 import { SceneStage } from "./components/SceneStage";
+import { StreamingWorkspace } from "./components/StreamingWorkspace";
 import { TopBar, type ConversationViewMode, type StudioWorkflow } from "./components/TopBar";
 import { ToastStack, type ToastMessage, type ToastTone } from "./components/ToastStack";
 import { AssetLibraryWorkspace, type AssetLibraryTab } from "./components/AssetLibraryWorkspace";
@@ -3014,6 +3015,16 @@ export default function App() {
             onConfigChange={handleFasterLivePortraitConfigChange}
             onExportCreated={() => setAssetLibraryRefreshKey((value) => value + 1)}
             onNotify={notify}
+          />
+        </div>
+      ) : workflow === "streaming" ? (
+        <div className="flex min-h-0 lg:h-[calc(100vh-3.5rem)]">
+          <StreamingWorkspace
+            sessionId={sessionId}
+            sessionLive={connection === "live" || connection === "expiring"}
+            onNotify={notify}
+            onSendText={handleSend}
+            onGoRealtime={() => setWorkflow("realtime")}
           />
         </div>
       ) : workflow === "runtimeConfig" ? (

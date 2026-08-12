@@ -3,7 +3,7 @@ from __future__ import annotations
 import hmac
 from typing import Any
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 
 from apps.api.services import session_service
 from apps.api.services.worker_service import forward_worker_json
@@ -70,6 +70,7 @@ async def _split_or_unified(
     path: str,
     payload: dict[str, Any] | None = None,
     method: str = "POST",
+    idempotency_key: str | None = None,
 ) -> dict[str, Any]:
     try:
         controller = await _controller(request, session_id)
@@ -82,6 +83,7 @@ async def _split_or_unified(
                 payload or {},
                 internal_token=_worker_token(request),
                 method=method,
+                idempotency_key=idempotency_key,
             )
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=f"worker output control failed: {type(exc).__name__}") from exc
@@ -90,11 +92,30 @@ async def _split_or_unified(
     return {"_controller": controller}  # internal sentinel; callers handle it
 
 
+async def _ensure_session_runner_ready(request: Request, session_id: str) -> None:
+    """Reject output creation before the Program is ready.
+
+    `auto_connect` is a lifecycle preference, not permission to attach a
+    publisher to a half-created runner.  Unified can inspect the in-memory
+    runner directly; split mode relies on the worker route to return the same
+    409 until its runner has a Program.
+    """
+    runners = getattr(request.app.state, "session_runners", None)
+    runner = runners.get(session_id) if isinstance(runners, dict) else None
+    if runner is None:
+        return
+    ready = getattr(runner, "ready_event", None)
+    if ready is not None and not ready.is_set():
+        raise HTTPException(status_code=409, detail="session runner is not ready")
+    if getattr(runner, "program", None) is None:
+        raise HTTPException(status_code=409, detail="streaming program is not ready")
+
+
 def _public(record: Any) -> dict[str, Any]:
     return record.public()
 
 
-@router.post("/{session_id}/outputs")
+@router.post("/{session_id}/outputs", status_code=201)
 async def create_output(
     session_id: str,
     body: SessionOutputRequest,
@@ -103,18 +124,21 @@ async def create_output(
 ) -> dict[str, Any]:
     _authorized(request)
     await _session_exists(request, session_id)
+    await _ensure_session_runner_ready(request, session_id)
     result = await _split_or_unified(
         request,
         session_id,
         path=f"/sessions/{session_id}/outputs",
-        payload={"body": body.model_dump(exclude_none=True), "idempotency_key": idempotency_key},
+        payload={"body": body.model_dump(exclude_none=True)},
+        idempotency_key=idempotency_key,
     )
     if "_controller" not in result:
         return result
     try:
         record = await result["_controller"].create(body.model_dump(exclude_none=True), idempotency_key=idempotency_key)
     except (ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        status = 409 if "Idempotency-Key" in str(exc) else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
     return _public(record)
 
 
@@ -161,7 +185,13 @@ async def get_output(session_id: str, output_id: str, request: Request) -> dict[
     return _public(record)
 
 
-async def _mutate_output(session_id: str, output_id: str, request: Request, action: str) -> dict[str, Any]:
+async def _mutate_output(
+    session_id: str,
+    output_id: str,
+    request: Request,
+    action: str,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
     _authorized(request)
     await _session_exists(request, session_id)
     try:
@@ -173,49 +203,85 @@ async def _mutate_output(session_id: str, output_id: str, request: Request, acti
             f"/sessions/{session_id}/outputs/{output_id}/{action}",
             {},
             internal_token=_worker_token(request),
+            idempotency_key=idempotency_key,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
-        record = await getattr(controller, action)(output_id)
+        if action == "connect":
+            record = controller.request_connect(output_id, idempotency_key=idempotency_key)
+        elif action == "disconnect":
+            record = controller.request_disconnect(output_id, idempotency_key=idempotency_key)
+        elif action == "reconnect":
+            record = controller.request_reconnect(output_id, idempotency_key=idempotency_key)
+        else:
+            record = await getattr(controller, action)(output_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="output not found") from exc
+    except ValueError as exc:
+        status = 409 if "Idempotency-Key" in str(exc) else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"output {action} failed: {type(exc).__name__}") from exc
     return _public(record)
 
 
-@router.post("/{session_id}/outputs/{output_id}/connect")
-async def connect_output(session_id: str, output_id: str, request: Request) -> dict[str, Any]:
-    return await _mutate_output(session_id, output_id, request, "connect")
+@router.post("/{session_id}/outputs/{output_id}/connect", status_code=202)
+async def connect_output(
+    session_id: str,
+    output_id: str,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    return await _mutate_output(session_id, output_id, request, "connect", idempotency_key)
 
 
-@router.post("/{session_id}/outputs/{output_id}/disconnect")
-async def disconnect_output(session_id: str, output_id: str, request: Request) -> dict[str, Any]:
-    return await _mutate_output(session_id, output_id, request, "disconnect")
+@router.post("/{session_id}/outputs/{output_id}/disconnect", status_code=202)
+async def disconnect_output(
+    session_id: str,
+    output_id: str,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    return await _mutate_output(session_id, output_id, request, "disconnect", idempotency_key)
 
 
-@router.post("/{session_id}/outputs/{output_id}/reconnect")
-async def reconnect_output(session_id: str, output_id: str, request: Request) -> dict[str, Any]:
-    return await _mutate_output(session_id, output_id, request, "reconnect")
+@router.post("/{session_id}/outputs/{output_id}/reconnect", status_code=202)
+async def reconnect_output(
+    session_id: str,
+    output_id: str,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    return await _mutate_output(session_id, output_id, request, "reconnect", idempotency_key)
 
 
-@router.delete("/{session_id}/outputs/{output_id}")
-async def delete_output(session_id: str, output_id: str, request: Request) -> dict[str, str]:
+@router.delete("/{session_id}/outputs/{output_id}", status_code=204, response_model=None)
+async def delete_output(
+    session_id: str,
+    output_id: str,
+    request: Request,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> Response:
     _authorized(request)
     await _session_exists(request, session_id)
     try:
         controller = await _controller(request, session_id)
     except LookupError:
         settings = request.app.state.settings
-        return await forward_worker_json(
+        await forward_worker_json(
             settings.worker_url,
             f"/sessions/{session_id}/outputs/{output_id}",
             {},
             internal_token=_worker_token(request),
             method="DELETE",
-        )  # type: ignore[return-value]
+            idempotency_key=idempotency_key,
+        )
+        return Response(status_code=204)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await controller.delete(output_id)
-    return {"session_id": session_id, "output_id": output_id, "status": "deleted"}
+    try:
+        await controller.delete(output_id, idempotency_key=idempotency_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(status_code=204)

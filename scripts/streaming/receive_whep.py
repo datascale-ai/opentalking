@@ -53,6 +53,7 @@ async def run(args: argparse.Namespace) -> int:
     pc.addTransceiver("audio", direction="recvonly")
     offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
+    answer_sdp_path = Path(args.answer_sdp) if args.answer_sdp else None
     async with httpx.AsyncClient(
         verify=args.ca_file or True,
         follow_redirects=False,
@@ -69,6 +70,9 @@ async def run(args: argparse.Namespace) -> int:
             content=pc.localDescription.sdp.encode("utf-8"),
         )
         response.raise_for_status()
+    if answer_sdp_path is not None:
+        answer_sdp_path.parent.mkdir(parents=True, exist_ok=True)
+        answer_sdp_path.write_text(response.text, encoding="utf-8")
     await pc.setRemoteDescription(RTCSessionDescription(sdp=response.text, type="answer"))
     if recorder is not None:
         await recorder.start()
@@ -88,6 +92,7 @@ def main() -> int:
     parser.add_argument("--bearer-token", default=os.environ.get("OPENTALKING_HARNESS_WHIP_TOKEN", ""))
     parser.add_argument("--output", default="")
     parser.add_argument("--stats", default="")
+    parser.add_argument("--answer-sdp", default="", help="Optional path for the received answer SDP")
     parser.add_argument("--seconds", type=int, default=30)
     args = parser.parse_args()
     return asyncio.run(run(args))

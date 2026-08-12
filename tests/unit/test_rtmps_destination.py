@@ -70,6 +70,10 @@ async def test_rtmps_pyav_path_emits_h264_and_aac(tmp_path, monkeypatch) -> None
     output = tmp_path / "capture.flv"
     original_open = av.open
     monkeypatch.setattr(
+        "opentalking.streaming.destinations.rtmps._verify_tls_peer",
+        lambda endpoint, ca_file: None,
+    )
+    monkeypatch.setattr(
         av,
         "open",
         lambda *args, **kwargs: original_open(output, mode="w", format="flv"),

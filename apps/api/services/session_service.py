@@ -293,7 +293,11 @@ async def speak(
         json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     receipt_key = command_receipt_key(sid, command_id)
-    receipt = {"command_id": command_id, "payload_hash": payload_hash, "status": "dispatched"}
+    # Reserve before interrupting/enqueuing.  ``SET NX`` is atomic in Redis
+    # and implemented by InMemoryRedis as the same single-loop critical
+    # operation.  A crash between reservation and RPUSH remains visible as
+    # ``pending`` instead of being silently replayed on a retry.
+    receipt = {"command_id": command_id, "payload_hash": payload_hash, "status": "pending"}
     encoded_receipt = json.dumps(receipt, ensure_ascii=False, separators=(",", ":"))
     reserved = await _await_result(r.set(receipt_key, encoded_receipt, ex=24 * 60 * 60, nx=True))
     if not reserved:
@@ -306,25 +310,44 @@ async def speak(
             previous = {}
         if previous.get("payload_hash") != payload_hash:
             raise ValueError("command_id was already used with a different payload")
-        return {"command_id": command_id, "status": "duplicate"}
+        status = str(previous.get("status") or "pending")
+        return {
+            "command_id": command_id,
+            "status": (
+                "duplicate"
+                if status == "dispatched"
+                else "failed" if status == "failed" else "command_in_progress"
+            ),
+        }
     # 新用户输入前先打断，避免上一条仍在推理/播报时排队等到结束才生效
-    await interrupt(r, sid)
-    task: dict[str, Any] = {
-        "cmd": "speak",
-        "session_id": sid,
-        "text": text,
-        # Worker 用于测量「API 入队 speak → 首帧进 WebRTC」墙钟（与 Worker 同机时钟）
-        "enqueue_unix": time.time(),
-        "command_id": command_id,
-    }
-    if voice:
-        task["voice"] = voice
-        task["tts_voice"] = voice
-    if tts_provider:
-        task["tts_provider"] = tts_provider.strip().lower()
-    if tts_model:
-        task["tts_model"] = tts_model.strip()
-    await _push_task(r, task)
+    try:
+        # 新用户输入前先打断，避免上一条仍在推理/播报时排队等到结束才生效
+        await interrupt(r, sid)
+        task: dict[str, Any] = {
+            "cmd": "speak",
+            "session_id": sid,
+            "text": text,
+            # Worker 用于测量「API 入队 speak → 首帧进 WebRTC」墙钟（与 Worker 同机时钟）
+            "enqueue_unix": time.time(),
+            "command_id": command_id,
+        }
+        if voice:
+            task["voice"] = voice
+            task["tts_voice"] = voice
+        if tts_provider:
+            task["tts_provider"] = tts_provider.strip().lower()
+        if tts_model:
+            task["tts_model"] = tts_model.strip()
+        await _push_task(r, task)
+    except Exception:
+        # Keep the receipt short and non-sensitive.  A caller can inspect the
+        # command-in-progress/failed state instead of causing an unbounded
+        # duplicate speech task by retrying blindly.
+        failed = {"command_id": command_id, "payload_hash": payload_hash, "status": "failed"}
+        await _await_result(r.set(receipt_key, json.dumps(failed, separators=(",", ":")), ex=24 * 60 * 60))
+        raise
+    dispatched = {"command_id": command_id, "payload_hash": payload_hash, "status": "dispatched"}
+    await _await_result(r.set(receipt_key, json.dumps(dispatched, separators=(",", ":")), ex=24 * 60 * 60))
     return {"command_id": command_id, "status": "queued"}
 
 

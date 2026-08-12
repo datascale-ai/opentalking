@@ -99,7 +99,7 @@ def test_output_api_requires_control_token_and_does_not_return_secrets(monkeypat
             headers={"Authorization": "Bearer control-token", "Idempotency-Key": "output-1"},
             json=body,
         )
-        assert response.status_code == 200
+        assert response.status_code == 201
         output = response.json()
         assert output["secret_configured"] is True
         assert "secret-key" not in response.text
@@ -110,6 +110,7 @@ def test_output_api_requires_control_token_and_does_not_return_secrets(monkeypat
             headers={"Authorization": "Bearer control-token", "Idempotency-Key": "output-1"},
             json=body,
         )
+        assert duplicate.status_code == 201
         assert duplicate.json()["output_id"] == output["output_id"]
 
 
@@ -129,3 +130,46 @@ def test_output_api_rejects_unknown_transport_fields(monkeypatch) -> None:
         )
         assert response.status_code == 422
 
+
+def test_output_api_rejects_malformed_stream_key_before_async_connect(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        response = client.post(
+            "/sessions/sess_test/outputs",
+            headers={"Authorization": "Bearer control-token"},
+            json={
+                "type": "rtmps",
+                "transport": {
+                    "endpoint": "rtmps://localhost:1936/live",
+                    "stream_key": "bad/key",
+                },
+            },
+        )
+        assert response.status_code == 400
+        assert "stream_key" in response.json()["detail"]
+
+
+def test_output_api_mutations_use_async_status_codes_and_delete_204(monkeypatch) -> None:
+    with _client(monkeypatch) as client:
+        body = {
+            "type": "rtmps",
+            "transport": {
+                "endpoint": "rtmps://localhost:1936/live",
+                "stream_key": "key",
+            },
+        }
+        headers = {"Authorization": "Bearer control-token"}
+        created = client.post("/sessions/sess_test/outputs", headers=headers, json=body)
+        assert created.status_code == 201
+        output_id = created.json()["output_id"]
+        for action in ("disconnect", "connect", "reconnect"):
+            response = client.post(
+                f"/sessions/sess_test/outputs/{output_id}/{action}",
+                headers=headers,
+            )
+            assert response.status_code == 202
+        delete_headers = {**headers, "Idempotency-Key": "delete-1"}
+        deleted = client.delete(f"/sessions/sess_test/outputs/{output_id}", headers=delete_headers)
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+        duplicate = client.delete(f"/sessions/sess_test/outputs/{output_id}", headers=delete_headers)
+        assert duplicate.status_code == 204

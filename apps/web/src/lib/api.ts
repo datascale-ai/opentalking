@@ -80,11 +80,37 @@ export async function apiGet<T>(path: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+/**
+ * API helpers for endpoints that carry a short-lived bearer token.
+ * Most Studio calls use the default no-auth path; streaming control can
+ * optionally attach a token without duplicating response/error handling in
+ * the workspace component.
+ */
+export async function apiGetWithHeaders<T>(path: string, headers: Record<string, string>): Promise<T> {
+  const r = await fetch(buildApiUrl(path), { headers });
+  await throwIfNotOk(r);
+  return r.json() as Promise<T>;
+}
+
 export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(buildApiUrl(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  await throwIfNotOk(r);
+  return r.json() as Promise<T>;
+}
+
+export async function apiPostWithHeaders<T>(
+  path: string,
+  body: unknown,
+  headers: Record<string, string>,
+): Promise<T> {
+  const r = await fetch(buildApiUrl(path), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
   });
   await throwIfNotOk(r);
   return r.json() as Promise<T>;
@@ -441,6 +467,13 @@ export async function createVideoCreationJob(input: CreateVideoCreationJobInput)
 export async function apiDelete<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(buildApiUrl(path), { ...init, method: "DELETE" });
   await throwIfNotOk(r);
+  return r.json() as Promise<T>;
+}
+
+export async function apiDeleteWithHeaders<T>(path: string, headers: Record<string, string>): Promise<T> {
+  const r = await fetch(buildApiUrl(path), { method: "DELETE", headers });
+  await throwIfNotOk(r);
+  if (r.status === 204) return undefined as T;
   return r.json() as Promise<T>;
 }
 

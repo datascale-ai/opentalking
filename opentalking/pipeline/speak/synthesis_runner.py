@@ -994,6 +994,20 @@ class FlashTalkRunner:
         async def _on_connection_state_change() -> None:
             state = self.webrtc.pc.connectionState if self.webrtc else None
             if state in ("failed", "closed", "disconnected"):
+                controller = getattr(self, "output_controller", None)
+                active_outputs = getattr(controller, "outputs", None) or {}
+                if active_outputs:
+                    # The browser preview is optional once an external
+                    # RTMPS/WHIP publisher is attached. Keep the program
+                    # clock and external branches alive when Studio closes
+                    # its own WebRTC peer.
+                    log.info(
+                        "WebRTC connection %s for session %s closed; keeping session alive for %d external output(s)",
+                        state,
+                        self.session_id,
+                        len(active_outputs),
+                    )
+                    return
                 log.info(
                     "WebRTC connection %s for session %s, auto-closing",
                     state, self.session_id,

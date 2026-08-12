@@ -19,6 +19,8 @@ def main() -> int:
         "-loglevel",
         "warning",
         "-y",
+        "-rtsp_transport",
+        "tcp",
         "-i",
         args.url,
         "-t",
@@ -32,4 +34,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

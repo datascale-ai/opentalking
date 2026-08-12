@@ -8,6 +8,7 @@ OpenTalking exposes a REST, Server-Sent Events, and WebSocket interface defined 
 | Health and Models | Liveness probes, queue introspection, and capability discovery. | [Health and Models](health.md) |
 | Avatars | Avatar bundle catalog and custom avatar upload. | [Avatars](avatars.md) |
 | Sessions | Session lifecycle, conversational interaction, WebRTC signaling. | [Sessions](sessions.md) |
+| Streaming outputs | RTMPS/WHIP publishing, WHEP playback, and the local test harness. | [Streaming outputs](streaming.md) |
 | TTS and Voices | One-off TTS preview and cloned voice management. | [TTS and Voices](tts-and-voices.md) |
 | Events and Streaming | Server-Sent Events stream and audio WebSocket protocol. | [Events and Streaming](events.md) |
 

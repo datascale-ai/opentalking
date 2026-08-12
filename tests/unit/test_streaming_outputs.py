@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -133,3 +134,60 @@ def test_rtmps_structured_url_and_target_validation() -> None:
         validate_stream_key("bad/key")
     with pytest.raises(ValueError):
         validate_target_url("http://127.0.0.1:1/x", schemes={"https"}, allow_local=True)
+
+
+@pytest.mark.asyncio
+async def test_output_lifecycle_detaches_branch_and_reconnects(monkeypatch) -> None:
+    class Publisher:
+        def __init__(self, settings) -> None:
+            self.settings = settings
+            self.state = "created"
+            self.health = "unknown"
+            self.last_error = None
+            self.starts = 0
+
+        async def start(self) -> None:
+            self.starts += 1
+            self.state = "connected"
+
+        async def stop(self) -> None:
+            self.state = "disconnected"
+
+        async def video(self, item) -> None:
+            del item
+
+        async def audio(self, item) -> None:
+            del item
+
+    monkeypatch.setattr("opentalking.streaming.outputs.RTMPSPublisher", Publisher)
+    settings = SimpleNamespace(
+        streaming_allow_local_targets=True,
+        streaming_test_auth_bypass=True,
+        streaming_rtmps_ca_file="",
+        streaming_video_fps=25,
+        streaming_max_outputs_per_session=4,
+        streaming_audio_sample_rate=48000,
+        streaming_audio_tick_ms=20,
+    )
+    program = _FakeProgram()
+    program.clock = SimpleNamespace(fps=25)
+    controller = SessionOutputController(session_id="sess", program=program, settings=settings)
+    record = await controller.create(
+        {
+            "type": "rtmps",
+            "transport": {"endpoint": "rtmps://localhost:1936/live", "stream_key": "key"},
+            "auto_connect": True,
+        }
+    )
+    await asyncio.sleep(0.01)
+    assert record.output_id in program.added
+    assert record.connection_state.value == "connected"
+    await controller.disconnect(record.output_id)
+    assert record.output_id not in program.added
+    assert record.connection_state.value == "disconnected"
+    await controller.reconnect(record.output_id)
+    await asyncio.sleep(0.01)
+    assert record.output_id in program.added
+    assert record.attempts == 2
+    await controller.delete(record.output_id)
+    assert record.output_id not in controller.outputs

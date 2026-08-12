@@ -17,6 +17,7 @@ from av import AudioFrame, VideoFrame
 
 from ..security import validate_resolved_target, validate_target_url
 from ..types import ProgramAudio, ProgramVideo
+from ..whip_sdp import WhipSdpError, validate_answer_sdp, validate_offer_sdp
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +124,7 @@ class WHIPPublisher:
         self.audio_track = _AudioTrack()
         self.sent_video = 0
         self.sent_audio = 0
+        self.bytes_sent = 0
         self.last_media_at: float | None = None
         self._health_task: asyncio.Task[None] | None = None
 
@@ -184,6 +186,13 @@ class WHIPPublisher:
         local = self.pc.localDescription
         if local is None or not local.sdp:
             raise RuntimeError("WHIP offer is empty")
+        try:
+            validate_offer_sdp(
+                local.sdp,
+                allow_private_candidates=self.settings.allow_local,
+            )
+        except WhipSdpError as exc:
+            raise RuntimeError(str(exc)) from exc
         verify: bool | str = self.settings.ca_file if self.settings.tls_verify and self.settings.ca_file else self.settings.tls_verify
         headers = {
             "Authorization": f"Bearer {self.settings.bearer_token}",
@@ -229,10 +238,6 @@ class WHIPPublisher:
         if "sdp" not in response.headers.get("content-type", "").lower():
             raise RuntimeError("WHIP response is not application/sdp")
         answer_sdp = response.text
-        if not answer_sdp.strip() or answer_sdp.count("m=") != local.sdp.count("m="):
-            raise RuntimeError("WHIP answer media sections do not match offer")
-        if "a=sendonly" in answer_sdp and "a=recvonly" not in answer_sdp:
-            raise RuntimeError("WHIP answer has incompatible direction")
         location = response.headers.get("location")
         if not location:
             raise RuntimeError("WHIP response is missing Location")
@@ -259,7 +264,17 @@ class WHIPPublisher:
             allowed_cidrs=list(self.settings.allowed_cidrs),
         )
         self.resource_url = resource
-        await self.pc.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
+        try:
+            validate_answer_sdp(local.sdp, answer_sdp)
+            await self.pc.setRemoteDescription(RTCSessionDescription(sdp=answer_sdp, type="answer"))
+        except Exception as exc:
+            # A 201 may have created a server-side resource already. Delete
+            # only after Location passed the same egress/origin validation.
+            await self._delete_resource(resource)
+            self.resource_url = None
+            await self.pc.close()
+            self.pc = None
+            raise RuntimeError(str(exc)) from exc
         self.state = "connected"
         self._health_task = asyncio.create_task(self._monitor_connection(), name="whip-health")
 
@@ -293,6 +308,11 @@ class WHIPPublisher:
                     if getattr(stat, "type", "") == "outbound-rtp"
                     and int(getattr(stat, "packetsSent", 0) or 0) > 0
                 ]
+                self.bytes_sent = sum(
+                    int(getattr(stat, "bytesSent", 0) or 0)
+                    for stat in report.values()
+                    if getattr(stat, "type", "") == "outbound-rtp"
+                )
                 if len(outbound) >= 2:
                     self.health = "healthy"
         except asyncio.CancelledError:
@@ -306,12 +326,7 @@ class WHIPPublisher:
         token = self.settings.bearer_token
         self.resource_url = None
         if resource and token:
-            try:
-                verify: bool | str = self.settings.ca_file if self.settings.tls_verify and self.settings.ca_file else self.settings.tls_verify
-                async with httpx.AsyncClient(verify=verify, follow_redirects=False, trust_env=False, timeout=10.0) as client:
-                    await client.delete(resource, headers={"Authorization": f"Bearer {token}"})
-            except Exception:
-                log.debug("WHIP resource DELETE failed", exc_info=True)
+            await self._delete_resource(resource)
         if self.pc is not None:
             await self.pc.close()
             self.pc = None
@@ -328,3 +343,16 @@ class WHIPPublisher:
                     queue.put_nowait(None)
                 except asyncio.QueueFull:
                     pass
+
+    async def _delete_resource(self, resource: str) -> None:
+        token = self.settings.bearer_token
+        if not token:
+            return
+        try:
+            verify: bool | str = self.settings.ca_file if self.settings.tls_verify and self.settings.ca_file else self.settings.tls_verify
+            async with httpx.AsyncClient(verify=verify, follow_redirects=False, trust_env=False, timeout=10.0) as client:
+                response = await client.delete(resource, headers={"Authorization": f"Bearer {token}"})
+                if response.status_code not in {200, 202, 204, 404}:
+                    log.warning("WHIP resource DELETE returned status=%s", response.status_code)
+        except Exception:
+            log.debug("WHIP resource DELETE failed", exc_info=True)

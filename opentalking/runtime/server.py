@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 # legacy registry import removed
 import redis.asyncio as redis
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from opentalking.core.session_store import (
@@ -74,7 +75,7 @@ def create_app() -> FastAPI:
         )
         provided = request.headers.get("authorization", "")
         token = provided[7:].strip() if provided.lower().startswith("bearer ") else ""
-        if not expected or token != expected:
+        if not expected or not hmac.compare_digest(expected, token):
             raise HTTPException(status_code=401, detail="invalid worker authorization")
 
     async def _get_output_controller(session_id: str, request: Request) -> SessionOutputController:
@@ -97,14 +98,23 @@ def create_app() -> FastAPI:
         runner.output_controller = controller
         return controller
 
-    @app.post("/sessions/{session_id}/outputs")
-    async def create_output(session_id: str, body: dict, request: Request) -> dict:
+    @app.post("/sessions/{session_id}/outputs", status_code=201)
+    async def create_output(
+        session_id: str,
+        body: dict,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict:
         _require_internal(request)
         controller = await _get_output_controller(session_id, request)
         try:
-            record = await controller.create(body.get("body") or {}, idempotency_key=body.get("idempotency_key"))
+            record = await controller.create(
+                body.get("body") or {},
+                idempotency_key=idempotency_key or body.get("idempotency_key"),
+            )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            status = 409 if "Idempotency-Key" in str(exc) else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
         return record.public()
 
     @app.get("/sessions/{session_id}/outputs")
@@ -122,33 +132,72 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="output not found")
         return record.public()
 
-    async def _mutate_output(session_id: str, output_id: str, request: Request, action: str) -> dict:
+    async def _mutate_output(
+        session_id: str,
+        output_id: str,
+        request: Request,
+        action: str,
+        idempotency_key: str | None = None,
+    ) -> dict:
         _require_internal(request)
         controller = await _get_output_controller(session_id, request)
         try:
-            record = await getattr(controller, action)(output_id)
+            if action == "connect":
+                record = controller.request_connect(output_id, idempotency_key=idempotency_key)
+            elif action == "disconnect":
+                record = controller.request_disconnect(output_id, idempotency_key=idempotency_key)
+            elif action == "reconnect":
+                record = controller.request_reconnect(output_id, idempotency_key=idempotency_key)
+            else:
+                record = await getattr(controller, action)(output_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="output not found") from exc
+        except ValueError as exc:
+            status = 409 if "Idempotency-Key" in str(exc) else 400
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
         return record.public()
 
-    @app.post("/sessions/{session_id}/outputs/{output_id}/connect")
-    async def connect_output(session_id: str, output_id: str, request: Request) -> dict:
-        return await _mutate_output(session_id, output_id, request, "connect")
+    @app.post("/sessions/{session_id}/outputs/{output_id}/connect", status_code=202)
+    async def connect_output(
+        session_id: str,
+        output_id: str,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict:
+        return await _mutate_output(session_id, output_id, request, "connect", idempotency_key)
 
-    @app.post("/sessions/{session_id}/outputs/{output_id}/disconnect")
-    async def disconnect_output(session_id: str, output_id: str, request: Request) -> dict:
-        return await _mutate_output(session_id, output_id, request, "disconnect")
+    @app.post("/sessions/{session_id}/outputs/{output_id}/disconnect", status_code=202)
+    async def disconnect_output(
+        session_id: str,
+        output_id: str,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict:
+        return await _mutate_output(session_id, output_id, request, "disconnect", idempotency_key)
 
-    @app.post("/sessions/{session_id}/outputs/{output_id}/reconnect")
-    async def reconnect_output(session_id: str, output_id: str, request: Request) -> dict:
-        return await _mutate_output(session_id, output_id, request, "reconnect")
+    @app.post("/sessions/{session_id}/outputs/{output_id}/reconnect", status_code=202)
+    async def reconnect_output(
+        session_id: str,
+        output_id: str,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict:
+        return await _mutate_output(session_id, output_id, request, "reconnect", idempotency_key)
 
-    @app.delete("/sessions/{session_id}/outputs/{output_id}")
-    async def delete_output(session_id: str, output_id: str, request: Request) -> dict[str, str]:
+    @app.delete("/sessions/{session_id}/outputs/{output_id}", status_code=204, response_model=None)
+    async def delete_output(
+        session_id: str,
+        output_id: str,
+        request: Request,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> Response:
         _require_internal(request)
         controller = await _get_output_controller(session_id, request)
-        await controller.delete(output_id)
-        return {"session_id": session_id, "output_id": output_id, "status": "deleted"}
+        try:
+            await controller.delete(output_id, idempotency_key=idempotency_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return Response(status_code=204)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

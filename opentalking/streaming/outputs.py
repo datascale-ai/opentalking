@@ -9,8 +9,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
-from .destinations.rtmps import RTMPSPublisher, RTMPSSettings
+from .destinations.rtmps import (
+    RTMPSPublisher,
+    RTMPSSettings,
+    normalize_rtmps_endpoint,
+    validate_stream_key,
+)
 from .destinations.whip import WHIPPublisher, WHIPSettings
+from .security import validate_target_url
 from .state import OutputConnectionState, OutputHealth
 from opentalking.runtime.bus import publish_event
 
@@ -61,7 +67,7 @@ class OutputRecord:
             self.health = OutputHealth(publisher_health)
         self.last_error = getattr(self.publisher, "last_error", None) or self.last_error
         self.updated_at = _now()
-        return {
+        public = {
             "output_id": self.output_id,
             "session_id": self.session_id,
             "type": self.type,
@@ -74,6 +80,14 @@ class OutputRecord:
             "attempts": self.attempts,
             **({"last_error": self.last_error} if self.last_error else {}),
         }
+        # Non-sensitive media progress helps the UI distinguish a completed
+        # handshake from an output that is actually carrying A/V. Never expose
+        # endpoint, credentials, SDP, or third-party response bodies here.
+        for key in ("sent_video", "sent_audio", "bytes_sent"):
+            value = getattr(self.publisher, key, None)
+            if isinstance(value, (int, float)):
+                public[key] = int(value)
+        return public
 
 
 class SessionOutputController:
@@ -88,7 +102,9 @@ class SessionOutputController:
         self.redis = redis
         self.outputs: dict[str, OutputRecord] = {}
         self._idempotency: dict[str, tuple[str, str]] = {}
+        self._action_idempotency: dict[str, tuple[str, str]] = {}
         self._monitors: dict[str, asyncio.Task[None]] = {}
+        self._connect_tasks: dict[str, asyncio.Task[Any]] = {}
         self._media_announced: set[str] = set()
         self._lock = asyncio.Lock()
 
@@ -154,6 +170,16 @@ class SessionOutputController:
             stream_key = str(transport.get("stream_key") or "").strip()
             if not endpoint or not stream_key:
                 raise ValueError("rtmps transport requires endpoint and stream_key")
+            # Reject deterministic transport errors during the API request;
+            # an async publisher task must not be the first place a caller
+            # learns that its endpoint or stream name is malformed.
+            normalize_rtmps_endpoint(
+                endpoint,
+                allow_local=allow_local,
+                allowed_hosts=set(allowed_hosts),
+                allowed_cidrs=list(allowed_cidrs),
+            )
+            validate_stream_key(stream_key)
             tls_verify = bool(transport.get("tls_verify", getattr(self.settings, "streaming_rtmps_tls_verify", True)))
             if not tls_verify and not bool(getattr(self.settings, "streaming_test_auth_bypass", False)):
                 raise ValueError("RTMPS TLS verification cannot be disabled")
@@ -182,6 +208,13 @@ class SessionOutputController:
         token = str(transport.get("bearer_token") or "").strip()
         if not endpoint or not token:
             raise ValueError("whip transport requires endpoint and bearer_token")
+        validate_target_url(
+            endpoint,
+            schemes={"https"},
+            allow_local=allow_local,
+            allowed_hosts=set(allowed_hosts),
+            allowed_cidrs=list(allowed_cidrs),
+        )
         tls_verify = bool(transport.get("tls_verify", getattr(self.settings, "streaming_whip_tls_verify", True)))
         if not tls_verify and not bool(getattr(self.settings, "streaming_test_auth_bypass", False)):
             raise ValueError("WHIP TLS verification cannot be disabled")
@@ -205,8 +238,6 @@ class SessionOutputController:
 
     async def create(self, body: Mapping[str, Any], *, idempotency_key: str | None = None) -> OutputRecord:
         async with self._lock:
-            if len(self.outputs) >= int(getattr(self.settings, "streaming_max_outputs_per_session", 4)):
-                raise ValueError("maximum outputs per session reached")
             body_hash = _hash_payload(body)
             # A caller may retry with the same key; do not create a second
             # publisher.  The key is kept only in this process, never Redis.
@@ -220,6 +251,8 @@ class SessionOutputController:
                     existing = self.outputs.get(previous_id)
                     if existing is not None:
                         return existing
+            if len(self.outputs) >= int(getattr(self.settings, "streaming_max_outputs_per_session", 4)):
+                raise ValueError("maximum outputs per session reached")
             kind, _endpoint, publisher, secret_configured = self._publisher(body)
             record = OutputRecord(
                 output_id=f"out_{uuid.uuid4().hex[:12]}",
@@ -235,8 +268,105 @@ class SessionOutputController:
             if idempotency_key:
                 self._idempotency[idempotency_key.strip()] = (body_hash, record.output_id)
         if record.auto_connect:
-            await self.connect(record.output_id)
+            self.request_connect(record.output_id)
         return record
+
+    def _reserve_action_idempotency(
+        self,
+        output_id: str,
+        action: str,
+        idempotency_key: str | None,
+    ) -> OutputRecord | None:
+        if not idempotency_key:
+            return None
+        key = idempotency_key.strip()
+        if not key:
+            return None
+        scoped = f"{action}:{output_id}:{key}"
+        payload_hash = hashlib.sha256(f"{action}:{output_id}".encode("utf-8")).hexdigest()
+        previous = self._action_idempotency.get(scoped)
+        if previous is not None:
+            previous_hash, previous_id = previous
+            if previous_hash != payload_hash:
+                raise ValueError("Idempotency-Key was already used with a different payload")
+            existing = self.outputs.get(previous_id)
+            if existing is not None:
+                return existing
+        self._action_idempotency[scoped] = (payload_hash, output_id)
+        return None
+
+    def request_connect(self, output_id: str, *, idempotency_key: str | None = None) -> OutputRecord:
+        """Queue a publisher handshake without blocking the HTTP request."""
+        record = self.outputs.get(output_id)
+        if record is None:
+            raise KeyError(output_id)
+        duplicate = self._reserve_action_idempotency(output_id, "connect", idempotency_key)
+        if duplicate is not None:
+            return duplicate
+        current = self._connect_tasks.get(output_id)
+        if current is not None and not current.done():
+            return record
+        if record.connection_state == OutputConnectionState.CONNECTED:
+            return record
+        task = asyncio.create_task(self.connect(output_id), name=f"output-connect-{output_id}")
+        self._connect_tasks[output_id] = task
+
+        def _done(done: asyncio.Task[OutputRecord], key: str = output_id) -> None:
+            if self._connect_tasks.get(key) is done:
+                self._connect_tasks.pop(key, None)
+            if not done.cancelled():
+                try:
+                    done.exception()
+                except Exception:
+                    log.debug("output connect task failed", exc_info=True)
+
+        task.add_done_callback(_done)
+        return record
+
+    def _request_lifecycle(
+        self,
+        output_id: str,
+        action: str,
+        *,
+        idempotency_key: str | None = None,
+    ) -> OutputRecord:
+        record = self.outputs.get(output_id)
+        if record is None:
+            raise KeyError(output_id)
+        duplicate = self._reserve_action_idempotency(output_id, action, idempotency_key)
+        if duplicate is not None:
+            return duplicate
+        current = self._connect_tasks.get(output_id)
+        if current is not None and not current.done():
+            return record
+        if action == "disconnect" and record.connection_state in {
+            OutputConnectionState.DISCONNECTED,
+            OutputConnectionState.CREATED,
+        }:
+            return record
+        task = asyncio.create_task(
+            self.disconnect(output_id) if action == "disconnect" else self.reconnect(output_id),
+            name=f"output-{action}-{output_id}",
+        )
+        self._connect_tasks[output_id] = task
+
+        def _done(done: asyncio.Task[Any], key: str = output_id) -> None:
+            if self._connect_tasks.get(key) is done:
+                self._connect_tasks.pop(key, None)
+            if not done.cancelled():
+                try:
+                    done.exception()
+                except Exception:
+                    log.debug("output lifecycle task failed", exc_info=True)
+
+        task.add_done_callback(_done)
+        return record
+
+    def request_disconnect(self, output_id: str, *, idempotency_key: str | None = None) -> OutputRecord:
+        return self._request_lifecycle(output_id, "disconnect", idempotency_key=idempotency_key)
+
+    def request_reconnect(self, output_id: str, *, idempotency_key: str | None = None) -> OutputRecord:
+        return self._request_lifecycle(output_id, "reconnect", idempotency_key=idempotency_key)
 
     async def connect(self, output_id: str) -> OutputRecord:
         record = self.outputs.get(output_id)
@@ -249,6 +379,9 @@ class SessionOutputController:
         await self._emit_state(record)
         try:
             await record.publisher.start()
+            # Attach the branch only after the protocol publisher has
+            # completed its handshake.  A failed WHIP/RTMPS connect must not
+            # leave a silent branch consuming Program frames.
             self.program.add_branch(
                 output_id,
                 video_callback=record.publisher.video,
@@ -276,6 +409,12 @@ class SessionOutputController:
         record = self.outputs.get(output_id)
         if record is None:
             raise KeyError(output_id)
+        pending = self._connect_tasks.pop(output_id, None)
+        if pending is not None and not pending.done() and pending is not asyncio.current_task():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        record.connection_state = OutputConnectionState.DISCONNECTING
+        await self._emit_state(record)
         self.program.remove_branch(output_id)
         monitor = self._monitors.pop(output_id, None)
         if monitor is not None:
@@ -289,14 +428,42 @@ class SessionOutputController:
 
     async def reconnect(self, output_id: str) -> OutputRecord:
         await self.disconnect(output_id)
-        return await self.connect(output_id)
+        # `reconnect()` may itself be running from `_connect_tasks`; release
+        # that marker before scheduling the fresh handshake, otherwise
+        # request_connect() would mistake this task for an existing connect.
+        current = asyncio.current_task()
+        if self._connect_tasks.get(output_id) is current:
+            self._connect_tasks.pop(output_id, None)
+        return self.request_connect(output_id)
 
-    async def delete(self, output_id: str) -> None:
+    async def delete(self, output_id: str, *, idempotency_key: str | None = None) -> None:
+        if idempotency_key:
+            key = idempotency_key.strip()
+            if key:
+                scoped = f"delete:{output_id}:{key}"
+                payload_hash = hashlib.sha256(f"delete:{output_id}".encode("utf-8")).hexdigest()
+                previous = self._action_idempotency.get(scoped)
+                if previous is not None:
+                    previous_hash, _previous_id = previous
+                    if previous_hash != payload_hash:
+                        raise ValueError("Idempotency-Key was already used with a different payload")
+                    # A successful delete is terminal. Treat retries as a
+                    # successful no-op even though the record is gone.
+                    if output_id not in self.outputs:
+                        return
+                self._action_idempotency[scoped] = (payload_hash, output_id)
         if output_id in self.outputs:
             await self.disconnect(output_id)
             self.outputs.pop(output_id, None)
 
     async def close(self) -> None:
+        pending = list(self._connect_tasks.values())
+        self._connect_tasks.clear()
+        for task in pending:
+            if not task.done():
+                task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         for output_id in list(self.outputs):
             try:
                 await self.delete(output_id)

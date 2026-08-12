@@ -28,7 +28,7 @@ const DOT_LABELS: Record<ConnectionStatus, string> = {
 };
 
 export type FlashtalkRecordPhase = "idle" | "recording" | "stopped";
-export type StudioWorkflow = "realtime" | "videoCreation" | "videoClone" | "assetLibrary" | "runtimeConfig";
+export type StudioWorkflow = "realtime" | "videoCreation" | "videoClone" | "assetLibrary" | "streaming" | "runtimeConfig";
 export type ConversationViewMode = "studio" | "immersive";
 
 interface TopBarProps {
@@ -111,6 +111,7 @@ export function TopBar({
           ["videoCreation", "视频创作"],
           ["videoClone", "视频克隆"],
           ["assetLibrary", "资产库"],
+          ["streaming", "流媒体"],
         ].map(([id, label]) => {
           const active = workflow === id;
           return (
@@ -139,6 +140,18 @@ export function TopBar({
       </nav>
 
       <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+        <button
+          type="button"
+          onClick={() => onWorkflowChange?.("streaming")}
+          className={`rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition md:hidden ${
+            workflow === "streaming"
+              ? "border-cyan-200 bg-cyan-50 text-cyan-700"
+              : "border-slate-200 bg-white text-slate-600 hover:border-cyan-200 hover:text-cyan-700"
+          }`}
+          aria-label="打开流媒体工作流"
+        >
+          流媒体
+        </button>
         {workflow === "realtime" ? (
           <div className="hidden rounded-lg bg-slate-100 p-1 sm:flex" aria-label="实时对话视图">
             {[

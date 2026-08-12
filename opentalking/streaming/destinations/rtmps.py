@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import logging
+import socket
+import ssl
 import time
 from dataclasses import dataclass
 from fractions import Fraction
@@ -16,6 +20,26 @@ from ..security import validate_resolved_target, validate_target_url
 from ..types import ProgramAudio, ProgramVideo
 
 log = logging.getLogger(__name__)
+
+
+def _verify_tls_peer(endpoint: str, ca_file: str) -> None:
+    """Perform an explicit certificate/hostname check before PyAV opens RTMPS.
+
+    PyAV's output path currently calls ``avio_open`` without forwarding the
+    protocol dictionary, so ``tls_verify``/``ca_file`` may be reported as
+    unused by FFmpeg.  The preflight keeps the safety property at the
+    application boundary; the same options are still passed to FFmpeg for
+    versions that do forward them.
+    """
+    parsed = urlparse(endpoint)
+    if parsed.scheme.lower() != "rtmps" or not parsed.hostname:
+        return
+    context = ssl.create_default_context(cafile=ca_file or None)
+    host = parsed.hostname
+    port = parsed.port or 443
+    with socket.create_connection((host, port), timeout=10.0) as raw:
+        with context.wrap_socket(raw, server_hostname=host):
+            return
 
 
 @dataclass(frozen=True)
@@ -109,6 +133,7 @@ class RTMPSPublisher:
         self.last_error: str | None = None
         self.sent_video = 0
         self.sent_audio = 0
+        self.bytes_sent = 0
         self.last_media_at: float | None = None
 
     async def start(self) -> None:
@@ -211,6 +236,8 @@ class RTMPSPublisher:
         }
         if self.settings.ca_file:
             options["ca_file"] = self.settings.ca_file
+        if self.settings.tls_verify:
+            await asyncio.to_thread(_verify_tls_peer, self.settings.endpoint, self.settings.ca_file)
         self._container = await asyncio.to_thread(av.open, url, mode="w", format="flv", options=options)
         self._video_stream = self._container.add_stream(
             "libx264", rate=Fraction(str(self.settings.fps)).limit_denominator(1000)
@@ -245,6 +272,7 @@ class RTMPSPublisher:
         frame.time_base = Fraction(1, max(1, int(round(self.settings.fps))))
         for packet in self._video_stream.encode(frame):
             self._container.mux(packet)
+            self.bytes_sent += int(getattr(packet, "size", 0) or 0)
         self.sent_video += 1
         self.last_media_at = time.monotonic()
         if self.sent_audio and self.health != "healthy":
@@ -267,6 +295,7 @@ class RTMPSPublisher:
         frame.time_base = Fraction(1, 48_000)
         for packet in self._audio_stream.encode(frame):
             self._container.mux(packet)
+            self.bytes_sent += int(getattr(packet, "size", 0) or 0)
         self._audio_pts += arr.size
         self.sent_audio += 1
         self.last_media_at = time.monotonic()
@@ -278,16 +307,26 @@ class RTMPSPublisher:
         self._container = None
         if container is None:
             return
-        try:
-            if self._video_stream is not None:
-                for packet in self._video_stream.encode(None):
-                    container.mux(packet)
-            if self._audio_stream is not None:
-                for packet in self._audio_stream.encode(None):
-                    container.mux(packet)
-            container.close()
-        except Exception:
-            log.debug("RTMPS container close failed", exc_info=True)
+        # PyAV's OutputContainer destructor writes an unraisable exception to
+        # stderr and includes ``container.name``.  That name is the assembled
+        # RTMPS URL (including MediaMTX auth query credentials), so force the
+        # object and its streams to destruct while stderr is redirected.  The
+        # application log only records the type below and never the URL.
+        with contextlib.redirect_stderr(io.StringIO()):
+            try:
+                if self._video_stream is not None:
+                    for packet in self._video_stream.encode(None):
+                        container.mux(packet)
+                if self._audio_stream is not None:
+                    for packet in self._audio_stream.encode(None):
+                        container.mux(packet)
+                container.close()
+            except Exception:
+                log.debug("RTMPS container close failed", exc_info=True)
+            finally:
+                self._video_stream = None
+                self._audio_stream = None
+                del container
 
     async def stop(self) -> None:
         task = self._task

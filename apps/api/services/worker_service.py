@@ -31,10 +31,15 @@ async def forward_worker_json(
     *,
     internal_token: str = "",
     method: str = "POST",
+    idempotency_key: str | None = None,
 ) -> dict:
     url = f"{worker_base.rstrip('/')}/{path.lstrip('/')}"
     headers = {"Authorization": f"Bearer {internal_token}"} if internal_token else {}
+    if idempotency_key:
+        headers["Idempotency-Key"] = idempotency_key
     async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
         response = await client.request(method, url, json=payload, headers=headers)
         response.raise_for_status()
+        if response.status_code == 204:
+            return {}
         return response.json()
