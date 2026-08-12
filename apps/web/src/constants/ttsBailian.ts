@@ -39,6 +39,13 @@ export const XIAOMI_MIMO_MODEL_OPTIONS: { id: string; label: string }[] = [
   { id: "mimo-v2.5-tts-voiceclone", label: "MiMo v2.5 TTS VoiceClone" },
 ];
 
+export const MINIMAX_VOICE_CLONE_MODEL_OPTIONS: { id: string; label: string }[] = [
+  { id: "speech-2.8-hd", label: "MiniMax Speech 2.8 HD" },
+  { id: "speech-2.6-hd", label: "MiniMax Speech 2.6 HD" },
+  { id: "speech-02-hd", label: "MiniMax Speech 02 HD" },
+  { id: "speech-01-hd", label: "MiniMax Speech 01 HD" },
+];
+
 export const XIAOMI_MIMO_VOICE_OPTIONS: { id: string; label: string }[] = [
   { id: "mimo_default", label: "MiMo 默认" },
   { id: "冰糖", label: "冰糖（中文女声）" },

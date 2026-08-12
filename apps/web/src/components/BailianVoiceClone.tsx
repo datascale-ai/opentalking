@@ -6,6 +6,7 @@ import {
   LOCAL_COSYVOICE_MODEL_OPTIONS,
   LOCAL_INDEXTTS_MODEL_OPTIONS,
   LOCAL_F5_TTS_MODEL_OPTIONS,
+  MINIMAX_VOICE_CLONE_MODEL_OPTIONS,
   XIAOMI_MIMO_MODEL_OPTIONS,
 } from "../constants/ttsBailian";
 import { QWEN_VOICE_CLONE_TARGET_OPTIONS } from "../constants/ttsQwen";
@@ -53,11 +54,13 @@ type CloneProvider =
   | "local_cosyvoice"
   | "indextts"
   | "local_f5_tts"
+  | "minimax"
   | "xiaomi_mimo";
 type RecorderPhase = "idle" | "recording" | "paused" | "recorded";
 
 function defaultTargetModelForProvider(provider: CloneProvider): string {
   if (provider === "dashscope") return QWEN_VOICE_CLONE_TARGET_OPTIONS[0]?.id ?? "";
+  if (provider === "minimax") return MINIMAX_VOICE_CLONE_MODEL_OPTIONS[0]?.id ?? "";
   if (provider === "xiaomi_mimo") return "mimo-v2.5-tts-voiceclone";
   if (provider === "local_cosyvoice") return LOCAL_COSYVOICE_MODEL_OPTIONS[0]?.id ?? "";
   if (provider === "indextts") {
@@ -86,6 +89,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
   const [displayLabel, setDisplayLabel] = useState("我的复刻音色");
   const [prefix, setPrefix] = useState("");
   const [preferredName, setPreferredName] = useState("");
+  const [minimaxRegion, setMinimaxRegion] = useState("global");
   const [recorderPhase, setRecorderPhase] = useState<RecorderPhase>("idle");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -309,6 +313,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
       fd.append("prefix", prefix.trim());
       fd.append("preferred_name", preferredName.trim());
       fd.append("prompt_text", promptText.trim() || BAILIAN_CLONE_SAMPLE_TEXT);
+      if (provider === "minimax") fd.append("region", minimaxRegion);
       const res = await apiPostForm<{
         ok?: boolean;
         message?: string;
@@ -333,7 +338,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
     } finally {
       setBusy(false);
     }
-  }, [blob, displayLabel, onSuccess, preferredName, prefix, promptText, provider, targetModel]);
+  }, [blob, displayLabel, minimaxRegion, onSuccess, preferredName, prefix, promptText, provider, targetModel]);
 
   return (
     <div className="mx-auto max-w-xl rounded-lg border border-slate-200 bg-white text-sm text-slate-800 shadow-sm shadow-slate-200/70">
@@ -392,6 +397,7 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
               disabled={busy}
             >
               <option value="dashscope">千问（百炼复刻）</option>
+              <option value="minimax">MiniMax Voice Clone</option>
               <option value="xiaomi_mimo">小米 MiMo VoiceClone</option>
               <option value="local_cosyvoice">本地 CosyVoice</option>
               <option value="indextts">Local IndexTTS</option>
@@ -409,6 +415,8 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
             >
               {(provider === "dashscope"
                 ? QWEN_VOICE_CLONE_TARGET_OPTIONS
+                : provider === "minimax"
+                  ? MINIMAX_VOICE_CLONE_MODEL_OPTIONS
                 : provider === "xiaomi_mimo"
                   ? XIAOMI_MIMO_MODEL_OPTIONS.filter((option) => option.id === "mimo-v2.5-tts-voiceclone")
                 : provider === "local_cosyvoice"
@@ -450,7 +458,9 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
             </label>
           ) : (
             <label className="block">
-              <span className="mb-1.5 block text-slate-500">preferred_name（可选，小写）</span>
+              <span className="mb-1.5 block text-slate-500">
+                {provider === "minimax" ? "MiniMax voice ID (optional)" : "preferred_name（可选，小写）"}
+              </span>
               <input
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-cyan-300 focus:bg-white"
                 value={preferredName}
@@ -461,6 +471,24 @@ export function BailianVoiceClone({ onSuccess, onClose }: BailianVoiceCloneProps
             </label>
           )}
         </div>
+
+        {provider === "minimax" ? (
+          <label className="block text-xs">
+            <span className="mb-1.5 block text-slate-500">MiniMax API region</span>
+            <select
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-800 outline-none transition focus:border-cyan-300 focus:bg-white"
+              value={minimaxRegion}
+              onChange={(event) => setMinimaxRegion(event.target.value)}
+              disabled={busy}
+            >
+              <option value="global">Global</option>
+              <option value="cn">China</option>
+            </select>
+            <span className="mt-1 block text-[11px] text-slate-500">
+              Use a clear sample between 10 seconds and 5 minutes.
+            </span>
+          </label>
+        ) : null}
 
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
