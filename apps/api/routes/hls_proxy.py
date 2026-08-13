@@ -103,7 +103,7 @@ def _rewrite_playlist(content: bytes, session: str) -> bytes:
 
 
 @router.get("/hls/{hls_path:path}", response_model=None)
-async def proxy_hls(hls_path: str, request: Request) -> StreamingResponse:
+async def proxy_hls(hls_path: str, request: Request) -> Response:
     upstream_url = _hls_upstream_url(request, hls_path)
     request_headers = {
         name: value
@@ -130,7 +130,7 @@ async def proxy_hls(hls_path: str, request: Request) -> StreamingResponse:
             client.build_request(
                 "GET",
                 upstream_url,
-                params=upstream_params,
+                params=httpx.QueryParams(tuple(upstream_params)),
                 headers=request_headers,
             ),
             stream=True,

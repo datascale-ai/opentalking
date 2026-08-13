@@ -488,7 +488,7 @@ class _IncrementalVideoWriter:
                 raise RuntimeError(f"cannot open video writer: {self.path}")
         assert self._size is not None
         if (arr.shape[1], arr.shape[0]) != self._size:
-            arr = cv2.resize(arr, self._size, interpolation=cv2.INTER_AREA)
+            arr = cv2.resize(arr, self._size, interpolation=cv2.INTER_AREA).astype(np.uint8, copy=False)
         if arr.shape[2] >= 4:
             arr = arr[:, :, :3]
         self._writer.write(np.ascontiguousarray(arr))
@@ -1833,8 +1833,8 @@ class VideoCreationService:
                         config=normalized_composition_config,
                     )
                 else:
-                    archive_writer = _IncrementalVideoWriter(video_only, fps=light2d_renderer.fps)
-                    emitter = _VideoChunkEmitter(
+                    light2d_archive_writer = _IncrementalVideoWriter(video_only, fps=light2d_renderer.fps)
+                    light2d_emitter = _VideoChunkEmitter(
                         pcm=pcm,
                         fps=light2d_renderer.fps,
                         sink=chunk_sink,
@@ -1846,17 +1846,17 @@ class VideoCreationService:
                             pcm,
                             config=normalized_composition_config,
                         ):
-                            archive_writer.write(composed)
-                            await emitter.add_frame(composed)
+                            light2d_archive_writer.write(composed)
+                            await light2d_emitter.add_frame(composed)
                             # Light2D's renderer is synchronous; yield after
                             # each frame so API polling and RTMPS subscribers
                             # can run while the job is generating.
                             await asyncio.sleep(0)
-                        await emitter.flush()
-                        archive_writer.close()
+                        await light2d_emitter.flush()
+                        light2d_archive_writer.close()
                     except Exception:
                         try:
-                            archive_writer.close()
+                            light2d_archive_writer.close()
                         except Exception:
                             pass
                         await _fail_video_chunks(chunk_sink, "video_generation_failed")

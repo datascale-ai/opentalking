@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
-from opentalking.video_creation_jobs import VideoCreationJobManager
+from opentalking.video_creation_jobs import VideoCreationJob, VideoCreationJobManager
 
 from .chunks import ChunkHub, ChunkQueue
 from .destinations.rtmps import RTMPSSettings, normalize_rtmps_endpoint, validate_stream_key
@@ -36,7 +36,7 @@ class ChunkedRTMPSJob:
     status: str = "waiting_source"
     task: asyncio.Task[None] | None = field(default=None, repr=False)
 
-    def public(self, source_job: object | None = None) -> dict[str, Any]:
+    def public(self, source_job: VideoCreationJob | None = None) -> dict[str, Any]:
         publisher = self.publisher
         source_public = source_job.public() if source_job is not None else {}
         source_status = str(source_public.get("status") or "")
