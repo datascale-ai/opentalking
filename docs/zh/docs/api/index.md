@@ -9,6 +9,7 @@ OpenTalking 暴露由 `apps/api/routes/` 定义的 REST、Server-Sent Events 与
 | 数字人形象 | Avatar bundle 目录与自定义形象上传。 | [数字人形象](avatars.md) |
 | 会话 | 会话生命周期、对话交互、WebRTC 信令。 | [会话](sessions.md) |
 | 流媒体输出 | RTMPS/WHIP 推送、WHEP 接收与本地测试 harness。 | [流媒体输出](streaming.md) |
+| 视频创作分片 RTMPS | 视频生成过程中分片发布 RTMPS 的架构、实施步骤与验收。 | [视频创作分片 RTMPS](video-creation-rtmps-execution.md) |
 | TTS 与音色 | 一次性 TTS 预览与复刻音色管理。 | [TTS 与音色](tts-and-voices.md) |
 | 事件与流式接口 | Server-Sent Events 流与音频 WebSocket 协议。 | [事件与流式接口](events.md) |
 

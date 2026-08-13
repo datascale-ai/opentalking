@@ -394,9 +394,18 @@ export type DuoDialogCapability = {
 
 export type VideoCreationJobResponse = {
   job_id: string;
-  status: "done" | "error" | string;
+  status: "queued" | "generating" | "finalizing" | "completed" | "done" | "error" | "failed" | string;
   source?: VideoCreationAudioSource | string;
-  export_video: ExportVideoItem;
+  export_video?: ExportVideoItem;
+  generated_duration_ms?: number;
+  published_duration_ms?: number;
+  buffer_duration_ms?: number;
+  first_media_at?: number | null;
+  first_sequence?: number | null;
+  first_pts_ms?: number | null;
+  finalized_at?: number | null;
+  final_export_id?: string | null;
+  error_code?: string | null;
 };
 
 export type VideoCreationCompositionConfig = {
@@ -428,6 +437,8 @@ export type CreateVideoCreationJobInput = {
   indexttsEmotionAudioFile?: File | null;
   duoDialog?: DuoDialogRequest;
   compositionConfig?: VideoCreationCompositionConfig | null;
+  executionMode?: "sync" | "async";
+  waitForRTMPS?: boolean;
 };
 
 export async function createVideoCreationJob(input: CreateVideoCreationJobInput): Promise<VideoCreationJobResponse> {
@@ -461,7 +472,103 @@ export async function createVideoCreationJob(input: CreateVideoCreationJobInput)
   if (input.compositionConfig) {
     form.set("composition_config", JSON.stringify(input.compositionConfig));
   }
+  if (input.executionMode) form.set("execution_mode", input.executionMode);
+  if (input.waitForRTMPS) form.set("wait_for_rtmps", "true");
   return apiPostForm<VideoCreationJobResponse>("/video-creation/jobs", form);
+}
+
+export type VideoCreationRTMPSJob = {
+  rtmps_job_id: string;
+  video_creation_job_id: string;
+  status: string;
+  transport: "rtmps";
+  secret_configured: boolean;
+  generated_duration_ms: number;
+  published_duration_ms: number;
+  buffer_duration_ms: number;
+  first_media_at?: number | null;
+  finalized_at?: number | null;
+  sent_video: number;
+  sent_audio: number;
+  bytes_sent: number;
+  dropped_chunks: number;
+  queue_depth: number;
+  blocked_ms: number;
+  last_error?: string | null;
+  error_code?: string | null;
+  final_export_id?: string | null;
+  first_input_sequence?: number | null;
+  first_input_pts_ms?: number | null;
+};
+
+export type CreateVideoCreationRTMPSJobInput = {
+  videoCreationJobId: string;
+  endpoint: string;
+  streamKey: string;
+  username?: string;
+  password: string;
+  controlHeaders?: Record<string, string>;
+  profile?: {
+    width?: number;
+    height?: number;
+    fps?: number;
+    video_bitrate_kbps?: number;
+    gop_seconds?: number;
+  };
+};
+
+export async function createVideoCreationRTMPSJob(
+  input: CreateVideoCreationRTMPSJobInput,
+): Promise<VideoCreationRTMPSJob> {
+  return apiPostWithHeaders<VideoCreationRTMPSJob>(
+    "/streaming/rtmps-jobs",
+    {
+      source: { type: "video_creation_job", job_id: input.videoCreationJobId },
+      transport: {
+        endpoint: input.endpoint,
+        stream_key: input.streamKey,
+        username: input.username || undefined,
+        password: input.password,
+      },
+      playback: { mode: "once", pace: "realtime", chunk_duration_ms: 500 },
+      profile: input.profile ?? {},
+      auto_connect: true,
+    },
+    input.controlHeaders ?? {},
+  );
+}
+
+export async function getVideoCreationJob(jobId: string): Promise<VideoCreationJobResponse> {
+  return apiGet<VideoCreationJobResponse>(`/video-creation/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function getVideoCreationRTMPSJob(
+  jobId: string,
+  headers: Record<string, string> = {},
+): Promise<VideoCreationRTMPSJob> {
+  return apiGetWithHeaders<VideoCreationRTMPSJob>(
+    `/streaming/rtmps-jobs/${encodeURIComponent(jobId)}`,
+    headers,
+  );
+}
+
+export async function stopVideoCreationJob(jobId: string): Promise<VideoCreationJobResponse> {
+  return apiPostWithHeaders<VideoCreationJobResponse>(
+    `/video-creation/jobs/${encodeURIComponent(jobId)}/stop`,
+    {},
+    {},
+  );
+}
+
+export async function stopVideoCreationRTMPSJob(
+  jobId: string,
+  headers: Record<string, string> = {},
+): Promise<VideoCreationRTMPSJob> {
+  return apiPostWithHeaders<VideoCreationRTMPSJob>(
+    `/streaming/rtmps-jobs/${encodeURIComponent(jobId)}/stop`,
+    {},
+    headers,
+  );
 }
 
 export async function apiDelete<T>(path: string, init?: RequestInit): Promise<T> {

@@ -22,6 +22,10 @@ const apiProxy = {
     });
   },
 };
+const streamingProxy = {
+  ...apiProxy,
+  rewrite: (p: string) => p,
+};
 
 export default defineConfig({
   base: "./",
@@ -34,6 +38,7 @@ export default defineConfig({
     },
     proxy: {
       "/api": apiProxy,
+      "/streaming": streamingProxy,
     },
   },
   preview: {
@@ -41,6 +46,7 @@ export default defineConfig({
     allowedHosts,
     proxy: {
       "/api": apiProxy,
+      "/streaming": streamingProxy,
     },
   },
 });

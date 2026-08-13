@@ -20,11 +20,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apps.api.core.config import get_settings
 from apps.api.routes.avatars import _call_adapter_warmup
-from apps.api.routes import agent, avatars, events, exports, health, memory, models, outputs, personas, runtime_config, scene_assets, sessions, tts_preview, video_clone, video_creation, voices
+from apps.api.routes import agent, avatars, events, exports, health, hls_proxy, memory, models, outputs, personas, rtmps_jobs, runtime_config, scene_assets, sessions, tts_preview, video_clone, video_creation, voices
 from opentalking.voice.store import init_voice_store
 from opentalking.core.in_memory_redis import InMemoryRedis
 from opentalking.pipeline.session.runner import SessionRunner
 from opentalking.runtime.task_consumer import consume_task_queue
+from opentalking.video_creation_jobs import VideoCreationJobManager
+from opentalking.streaming.rtmps_jobs import ChunkedRTMPSJobManager
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +131,8 @@ async def unified_lifespan(app: FastAPI):
     init_voice_store()
     settings = get_settings()
     app.state.settings = settings
+    app.state.video_creation_jobs = VideoCreationJobManager(settings)
+    app.state.rtmps_video_jobs = ChunkedRTMPSJobManager(settings, app.state.video_creation_jobs)
     log.info(
         "Unified: single HTTP worker required (in-memory session + task queue + runners). "
         "Do not use gunicorn/uvicorn --workers>1; do not load-balance multiple unified instances without sticky routing."
@@ -205,6 +209,8 @@ async def unified_lifespan(app: FastAPI):
     for s in list(runners.values()):
         await s.close()
     runners.clear()
+    await app.state.rtmps_video_jobs.close()
+    await app.state.video_creation_jobs.close()
     await mem.aclose()
 
 
@@ -238,6 +244,8 @@ def create_app() -> FastAPI:
     app.include_router(tts_preview.router)
     app.include_router(video_clone.router)
     app.include_router(video_creation.router)
+    app.include_router(rtmps_jobs.router)
+    app.include_router(hls_proxy.router)
     app.include_router(voices.router)
     _verify_offline_bundle_route_registered(app)
     return app

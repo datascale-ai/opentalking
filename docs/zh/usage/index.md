@@ -28,7 +28,7 @@
 
 WebUI 更适合交互式验证。它提供 Avatar 选择、模型选择、TTS Provider 和音色配置、文字/语音会话、视频克隆、状态提示等能力。产品、算法、解决方案同学也可以通过 WebUI 快速确认一个 Avatar、音色或视频驱动效果是否符合预期。
 
-推荐先看[WebUI 基础使用](./webui/basic.md)，再按需求查看[自定义 Avatar](./webui/custom-avatar.md)、[音色与 TTS](./webui/voice-and-tts.md)和[视频克隆](./webui/video-clone.md)。
+推荐先看[WebUI 基础使用](./webui/basic.md)，再按需求查看[视频创作](./webui/video-creation.md)、[视频创作边生成边发布 RTMPS](./webui/video-creation-rtmps.md)、[自定义 Avatar](./webui/custom-avatar.md)、[音色与 TTS](./webui/voice-and-tts.md)和[视频克隆](./webui/video-clone.md)。
 
 ## 推荐路径
 
@@ -84,5 +84,6 @@ Mock 模式不依赖模型权重，适合确认前后端流程、页面交互和
 - 想通过脚本启动和调试服务：继续阅读[命令行工具](./cli.md)。
 - 想配置页面交互流程：继续阅读[WebUI 基础使用](./webui/basic.md)。
 - 想使用摄像头或上传视频驱动数字人：继续阅读[视频克隆](./webui/video-clone.md)。
+- 想边生成视频边发布 RTMPS 并在浏览器中播放：继续阅读[视频创作边生成边发布 RTMPS](./webui/video-creation-rtmps.md)。
 - 想补充自己的形象：继续阅读[自定义 Avatar](./webui/custom-avatar.md)。
 - 想调整声音效果：继续阅读[音色与 TTS](./webui/voice-and-tts.md)。

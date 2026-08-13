@@ -10,8 +10,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.core.config import get_settings
-from apps.api.routes import agent, avatars, events, exports, health, memory, models, outputs, personas, runtime_config, scene_assets, sessions, tts_preview, video_clone, video_creation, voices
+from apps.api.routes import agent, avatars, events, exports, health, hls_proxy, memory, models, outputs, personas, rtmps_jobs, runtime_config, scene_assets, sessions, tts_preview, video_clone, video_creation, voices
 from opentalking.voice.store import init_voice_store
+from opentalking.video_creation_jobs import VideoCreationJobManager
+from opentalking.streaming.rtmps_jobs import ChunkedRTMPSJobManager
 
 
 @asynccontextmanager
@@ -27,10 +29,14 @@ async def lifespan(app: FastAPI):
             "OPENTALKING_STREAMING_INTERNAL_CONTROL_TOKEN is required for split API/worker mode"
         )
     app.state.settings = settings
+    app.state.video_creation_jobs = VideoCreationJobManager(settings)
+    app.state.rtmps_video_jobs = ChunkedRTMPSJobManager(settings, app.state.video_creation_jobs)
     app.state.worker_boot_id = uuid.uuid4().hex
     r = redis.from_url(settings.redis_url, decode_responses=True)
     app.state.redis = r
     yield
+    await app.state.rtmps_video_jobs.close()
+    await app.state.video_creation_jobs.close()
     await r.aclose()
 
 
@@ -60,6 +66,8 @@ def create_app() -> FastAPI:
     app.include_router(tts_preview.router)
     app.include_router(video_clone.router)
     app.include_router(video_creation.router)
+    app.include_router(rtmps_jobs.router)
+    app.include_router(hls_proxy.router)
     app.include_router(voices.router)
     return app
 

@@ -411,6 +411,9 @@ class Settings(BaseSettings):
     streaming_whip_trickle_ice: bool = False
     streaming_whip_ice_servers: str = ""
     streaming_whip_candidate_policy: str = "allowlist"
+    # Browser HLS is served through the same-origin API proxy so MediaMTX's
+    # cookie-check redirect does not require cross-origin credentials.
+    streaming_hls_proxy_url: str = "http://127.0.0.1:8888"
     streaming_internal_control_token: str = ""
     streaming_test_auth_bypass: bool = False
     streaming_snapshot_ttl_sec: int = 3600
@@ -422,6 +425,15 @@ class Settings(BaseSettings):
     video_creation_fasterliveportrait_preroll_ms: int = 400
     video_creation_light2d_max_duration_sec: int = 300
     video_creation_light2d_max_text_chars: int = 1000
+    # Half-second chunks let the RTMPS/HLS path become playable before the
+    # first one-second live window has already advanced past the beginning.
+    video_creation_chunk_duration_ms: int = 500
+    # Keep enough half-second chunks to cover the initial RTMPS handshake
+    # without applying backpressure to the source renderer.
+    video_creation_chunk_queue_max_chunks: int = 16
+    # Maximum time an RTMPS subscriber may block a source chunk publish. Once
+    # exceeded, that subscriber fails closed and MP4 generation continues.
+    video_creation_chunk_publish_timeout_sec: float = 5.0
     avatar_matting_provider: str = "rembg"
     avatar_matting_device: str = "cpu"
     avatar_matting_model_path: str = ""

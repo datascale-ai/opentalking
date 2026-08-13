@@ -22,6 +22,10 @@ docker compose -f docker/docker-compose.streaming-test.yml up -d
 set -a; . outputs/streaming/credentials.env; set +a
 ```
 
+If you are reusing the current harness credentials, do not run `prepare_mediamtx_harness.py` again; it rotates the credentials. Run it only when you intentionally rotate them, then reload the generated `credentials.env`.
+
+The local harness uses Linux `network_mode: host` and binds every enabled listener to `127.0.0.1`. This lets an ordinary Chromium browser reach the local ICE candidate directly; it is intended for a browser running on the same Linux host as MediaMTX. A remote browser cannot use the `127.0.0.1` endpoints below.
+
 Local endpoints:
 
 | Purpose | Endpoint |
@@ -30,6 +34,10 @@ Local endpoints:
 | WHIP publish | `https://127.0.0.1:8889/whip-test/whip` |
 | RTMPS playback | `rtsp://127.0.0.1:8554/live/rtmps-test` (reader credentials come from harness environment variables) |
 | WHIP playback | `https://127.0.0.1:8889/whip-test/whep` |
+
+For local WHEP, port `8889` carries signaling only; browser media also needs the harness-mapped `8189/udp` and `8190/tcp` ICE ports. The harness advertises only `127.0.0.1` to avoid Docker-internal candidates. Use `reader:<OPENTALKING_HARNESS_READ_PASSWORD>` as the receiver Bearer token, not the publishing `OPENTALKING_HARNESS_WHIP_TOKEN`.
+
+MediaMTX 1.20 does not transcode AAC from an RTMPS input into WebRTC audio; use `/live/rtmps-test/whep` to verify video and the RTSP playback URL above for complete RTMPS A/V. The WHIP `/whip-test/whep` path verifies H.264 + Opus audio/video.
 
 The local certificate is signed by the test CA. OpenTalking verifies it through `OPENTALKING_STREAMING_RTMPS_CA_FILE` and `OPENTALKING_STREAMING_WHIP_CA_FILE`; disabling TLS verification is not the normal test path.
 

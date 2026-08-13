@@ -21,6 +21,13 @@ from ..whip_sdp import WhipSdpError, validate_answer_sdp, validate_offer_sdp
 
 log = logging.getLogger(__name__)
 
+# A WHEP reader can join an already-running WHIP publisher.  aiortc's H.264
+# encoder emits SPS/PPS with a forced keyframe, but MediaMTX does not need to
+# forward every reader's PLI back to every publisher.  Requesting a keyframe
+# periodically keeps late readers decodable without relying on that relay
+# detail.
+VIDEO_KEYFRAME_INTERVAL_SEC = 2.0
+
 
 class _PinnedNetworkBackend:
     """Delegate httpcore network I/O to one already-approved destination IP.
@@ -167,6 +174,7 @@ class WHIPPublisher:
         self.last_video_pts_ms: float | None = None
         self.last_audio_pts_ms: float | None = None
         self._health_task: asyncio.Task[None] | None = None
+        self._last_keyframe_request_at = 0.0
 
     async def _request_pinned(
         self,
@@ -358,8 +366,27 @@ class WHIPPublisher:
             await self.pc.close()
             self.pc = None
             raise RuntimeError(str(exc)) from exc
+        self._request_video_keyframe()
         self.state = "connected"
         self._health_task = asyncio.create_task(self._monitor_connection(), name="whip-health")
+
+    def _request_video_keyframe(self) -> None:
+        """Ask the aiortc video sender for an IDR carrying SPS/PPS.
+
+        aiortc does not expose this as a public sender API.  Keep the small
+        compatibility guard here so a future aiortc release without the
+        private helper degrades to its normal encoder behavior.
+        """
+        pc = self.pc
+        if pc is None:
+            return
+        for sender in pc.getSenders():
+            if getattr(sender, "kind", "") != "video":
+                continue
+            request = getattr(sender, "_send_keyframe", None)
+            if callable(request):
+                request()
+            break
 
     async def video(self, item: ProgramVideo) -> None:
         await self.video_track.put(item)
@@ -384,6 +411,10 @@ class WHIPPublisher:
                 pc = self.pc
                 if pc is None:
                     return
+                now = time.monotonic()
+                if now - self._last_keyframe_request_at >= VIDEO_KEYFRAME_INTERVAL_SEC:
+                    self._request_video_keyframe()
+                    self._last_keyframe_request_at = now
                 if pc.connectionState in {"failed", "closed", "disconnected"}:
                     self.state = "failed" if pc.connectionState == "failed" else "disconnected"
                     self.health = "failed" if pc.connectionState == "failed" else "degraded"

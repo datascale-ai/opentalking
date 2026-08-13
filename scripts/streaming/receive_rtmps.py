@@ -81,6 +81,13 @@ def _capture(url: str, output: Path, seconds: int) -> int:
             **({video_input.index: output_video} if video_input is not None and output_video is not None else {}),
             **({audio_input.index: output_audio} if audio_input is not None and output_audio is not None else {}),
         }
+        # RTSP readers can join between a video GOP and an audio packet.  The
+        # demuxed frame timestamps are then not guaranteed to be a usable
+        # encoder clock for a newly created output container.  Keep an
+        # independent next-PTS clock for each media type so a late join or
+        # cross-stream interleave cannot make the output muxer reject a
+        # backwards timestamp.
+        next_pts = {"video": 0, "audio": 0}
         for packet in input_container.demux(selected):
             if time.monotonic() >= deadline:
                 break
@@ -92,13 +99,21 @@ def _capture(url: str, output: Path, seconds: int) -> int:
                 if source.type == "video":
                     fps = float(source.average_rate or 25.0)
                     timestamp = float(frame.time or 0.0)
-                    frame.pts = int(round(timestamp * fps))
-                    frame.time_base = Fraction(1, max(1, int(round(fps))))
+                    time_base = Fraction(1, max(1, int(round(fps))))
+                    proposed_pts = max(0, int(round(timestamp * fps)))
+                    frame_pts = max(proposed_pts, next_pts["video"])
+                    frame.pts = frame_pts
+                    frame.time_base = time_base
+                    next_pts["video"] = frame_pts + 1
                 else:
                     sample_rate = int(source.codec_context.sample_rate or 48_000)
                     timestamp = float(frame.time or 0.0)
-                    frame.pts = int(round(timestamp * sample_rate))
-                    frame.time_base = Fraction(1, sample_rate)
+                    time_base = Fraction(1, sample_rate)
+                    proposed_pts = max(0, int(round(timestamp * sample_rate)))
+                    frame_pts = max(proposed_pts, next_pts["audio"])
+                    frame.pts = frame_pts
+                    frame.time_base = time_base
+                    next_pts["audio"] = frame_pts + max(1, int(frame.samples or 1))
                 for encoded in destination.encode(frame):
                     output_container.mux(encoded)
         for destination in (output_video, output_audio):

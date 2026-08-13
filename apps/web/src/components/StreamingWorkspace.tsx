@@ -6,6 +6,7 @@ import {
   apiPostWithHeaders,
 } from "../lib/api";
 import type { ToastTone } from "./ToastStack";
+import { HlsVideoPlayer, type HlsPlayerState } from "./HlsVideoPlayer";
 
 type StreamingOutput = {
   output_id: string;
@@ -36,21 +37,47 @@ type EndpointPreferences = {
   rtmpsEndpoint: string;
   whipEndpoint: string;
   whepEndpoint: string;
+  hlsEndpoint: string;
 };
 
-const DEFAULT_ENDPOINTS: EndpointPreferences = {
-  rtmpsEndpoint: "rtmps://127.0.0.1:1936/live",
-  whipEndpoint: "https://127.0.0.1:8889/whip-test/whip",
-  whepEndpoint: "https://127.0.0.1:8889/whip-test/whep",
-};
+function browserHost(): string {
+  if (typeof window === "undefined") return "127.0.0.1";
+  return window.location.hostname || "127.0.0.1";
+}
+
+function defaultEndpoints(): EndpointPreferences {
+  return {
+    // Publishing is performed by the API process on the server, so its local
+    // endpoint remains loopback. WHEP is called by the browser itself and
+    // must use the host that served the page when the browser is remote.
+    rtmpsEndpoint: "rtmps://127.0.0.1:1936/live",
+    whipEndpoint: "https://127.0.0.1:8889/whip-test/whip",
+    whepEndpoint: `https://${browserHost()}:8889/whip-test/whep`,
+    hlsEndpoint: "/streaming/hls/live/rtmps-test/index.m3u8",
+  };
+}
+
+function normalizeHlsEndpoint(value: string): string {
+  const trimmed = value.trim();
+  try {
+    const parsed = new URL(trimmed, window.location.href);
+    if (parsed.port === "8888" && parsed.pathname.startsWith("/live/")) {
+      return `/streaming/hls${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    /* keep user-entered value for validation/error display */
+  }
+  return trimmed;
+}
 
 function readEndpointPreferences(): EndpointPreferences {
+  const defaults = defaultEndpoints();
   try {
     const raw = window.localStorage.getItem(ENDPOINTS_STORAGE_KEY);
-    if (!raw) return DEFAULT_ENDPOINTS;
+    if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<EndpointPreferences>;
-    return {
-      ...DEFAULT_ENDPOINTS,
+    const preferences = {
+      ...defaults,
       ...Object.fromEntries(
         Object.entries(parsed).filter(
           ([key, value]) =>
@@ -58,8 +85,16 @@ function readEndpointPreferences(): EndpointPreferences {
         ),
       ),
     } as EndpointPreferences;
+    preferences.hlsEndpoint = normalizeHlsEndpoint(preferences.hlsEndpoint);
+    if (
+      !["127.0.0.1", "localhost"].includes(browserHost()) &&
+      /^https:\/\/(127\.0\.0\.1|localhost):8889\//.test(preferences.whepEndpoint)
+    ) {
+      preferences.whepEndpoint = defaults.whepEndpoint;
+    }
+    return preferences;
   } catch {
-    return DEFAULT_ENDPOINTS;
+    return defaults;
   }
 }
 
@@ -175,6 +210,10 @@ export function StreamingWorkspace({
   const [whipToken, setWhipToken] = useState("");
   const [whepEndpoint, setWhepEndpoint] = useState(initialEndpoints.whepEndpoint);
   const [whepToken, setWhepToken] = useState("");
+  const [hlsEndpoint, setHlsEndpoint] = useState(initialEndpoints.hlsEndpoint);
+  const [hlsToken, setHlsToken] = useState("");
+  const [hlsReceiverActive, setHlsReceiverActive] = useState(false);
+  const [hlsPlayerState, setHlsPlayerState] = useState<HlsPlayerState>("idle");
   const [controlToken, setControlToken] = useState("");
   const [readerUrl, setReaderUrl] = useState(
     "rtsp://reader:<reader-password>@127.0.0.1:8554/live/rtmps-test",
@@ -223,8 +262,8 @@ export function StreamingWorkspace({
   }, [authHeaders, sessionId]);
 
   useEffect(() => {
-    writeEndpointPreferences({ rtmpsEndpoint, whipEndpoint, whepEndpoint });
-  }, [rtmpsEndpoint, whipEndpoint, whepEndpoint]);
+    writeEndpointPreferences({ rtmpsEndpoint, whipEndpoint, whepEndpoint, hlsEndpoint });
+  }, [hlsEndpoint, rtmpsEndpoint, whipEndpoint, whepEndpoint]);
 
   useEffect(() => {
     void refreshOutputs();
@@ -318,6 +357,12 @@ export function StreamingWorkspace({
         setReceiverError(`WHEP 连接状态：${pc.connectionState}`);
       }
     };
+    pc.oniceconnectionstatechange = () => {
+      if (["failed", "disconnected"].includes(pc.iceConnectionState)) {
+        setReceiverState("error");
+        setReceiverError(`WHEP ICE 连接失败：${pc.iceConnectionState}。请确认本地 harness 已映射 8189/udp 和 8190/tcp。`);
+      }
+    };
     try {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -353,6 +398,27 @@ export function StreamingWorkspace({
       notify(`WHEP 接收失败：${message}`, "error");
     }
   }, [notify, stopReceiver, waitForIceGathering, whepEndpoint, whepToken]);
+
+  const toggleHlsReceiver = useCallback(() => {
+    if (hlsReceiverActive) {
+      setHlsReceiverActive(false);
+      setHlsPlayerState("idle");
+      return;
+    }
+    if (!hlsEndpoint.trim()) {
+      notify("请填写 HLS 播放地址。", "info");
+      return;
+    }
+    if (!hlsToken.trim()) {
+      notify("请填写浏览器接收 Token：reader:<读取密码>。", "info");
+      return;
+    }
+    setHlsReceiverActive(true);
+  }, [hlsEndpoint, hlsReceiverActive, hlsToken, notify]);
+
+  const handleHlsPlayerState = useCallback((next: HlsPlayerState) => {
+    setHlsPlayerState(next);
+  }, []);
 
   const createOutput = useCallback(
     async (type: "rtmps" | "whip") => {
@@ -468,7 +534,7 @@ export function StreamingWorkspace({
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-600">OpenTalking Streaming</p>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">流媒体发送与接收</h1>
               <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500">
-                在这里把当前实时数字人会话推送到 RTMPS 或 WHIP，也可以用浏览器通过 WHEP 接收并播放。
+                在这里把当前实时数字人会话推送到 RTMPS 或 WHIP。RTMPS 的 H.264/AAC 推荐通过 HLS 在浏览器中接收，WHIP 则通过 WHEP 接收。
                 流媒体输出和实时对话共用同一个会话画面与音频。
               </p>
             </div>
@@ -526,6 +592,35 @@ export function StreamingWorkspace({
           </section>
         </div>
 
+        <section className="rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">接收端 · HLS 浏览器播放器（RTMPS 推荐）</h2>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">RTMPS H.264/AAC → HLS，浏览器可同时播放画面和声音。HLS 比 WHEP 延迟略高，但不会丢掉 AAC 音频。</p>
+            </div>
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${hlsPlayerState === "playing" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : hlsPlayerState === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-cyan-200 bg-cyan-50 text-cyan-700"}`}>
+              {hlsPlayerState === "playing" ? "播放中" : hlsPlayerState === "loading" ? "加载中" : hlsPlayerState === "ready" ? "已就绪" : hlsPlayerState === "ended" ? "已结束" : hlsPlayerState === "error" ? "失败" : "未播放"}
+            </span>
+          </div>
+          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
+            <div className="overflow-hidden rounded-xl bg-slate-950 shadow-inner">
+              {hlsReceiverActive ? (
+                <HlsVideoPlayer src={hlsEndpoint} token={hlsToken} onStateChange={handleHlsPlayerState} />
+              ) : (
+                <div className="flex aspect-video items-center justify-center px-6 text-center text-sm text-slate-400">点击“开始 HLS 接收”后，这里直接播放 RTMPS 的画面和声音。</div>
+              )}
+            </div>
+            <div className="space-y-3">
+              <Field label="HLS 播放地址（同源代理）" value={hlsEndpoint} onChange={setHlsEndpoint} placeholder="/streaming/hls/live/rtmps-test/index.m3u8" />
+              <Field label="浏览器接收 Token（格式：reader:读取密码）" value={hlsToken} onChange={setHlsToken} type="password" autoComplete="off" />
+              <button type="button" onClick={toggleHlsReceiver} className={`w-full rounded-lg px-3 py-2 text-xs font-semibold text-white ${hlsReceiverActive ? "bg-slate-700 hover:bg-slate-600" : "bg-cyan-700 hover:bg-cyan-600"}`}>
+                {hlsReceiverActive ? "停止 HLS 接收" : "开始 HLS 接收"}
+              </button>
+              <p className="text-xs leading-relaxed text-slate-500">不需要点击“打开接收服务”，播放器会自动把 Token 放到 HLS 请求头中；浏览器只需在视频控件里点击播放即可出声。</p>
+            </div>
+          </div>
+        </section>
+
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -575,8 +670,8 @@ export function StreamingWorkspace({
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-base font-semibold text-slate-950">接收端 · 浏览器 WHEP 播放器</h2>
-              <p className="mt-1 text-xs leading-relaxed text-slate-500">WHEP 是 MediaMTX 的 WebRTC 播放入口；可选择接收 WHIP 流或 RTMPS 转入的流，连接后下面的视频区域会同时播放音频。</p>
+              <h2 className="text-base font-semibold text-slate-950">接收端 · 浏览器 WHEP 播放器（WHIP 专用）</h2>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">WHIP 流使用 H.264/Opus，通过 WHEP 可以低延迟播放画面和声音。RTMPS 流请使用上面的 HLS 播放器，不要在这里接收。</p>
             </div>
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${receiverState === "live" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : receiverState === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
               {receiverState === "live" ? "接收中" : receiverState === "connecting" ? "连接中" : receiverState === "error" ? "接收失败" : "未接收"}
@@ -590,10 +685,10 @@ export function StreamingWorkspace({
             <div className="space-y-3">
               <Field label="WHEP endpoint" value={whepEndpoint} onChange={setWhepEndpoint} placeholder="https://host:8889/path/whep" />
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => setWhepEndpoint("https://127.0.0.1:8889/whip-test/whep")} className="rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100">接收 WHIP 流</button>
+                <button type="button" onClick={() => setWhepEndpoint(defaultEndpoints().whepEndpoint)} className="rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-semibold text-violet-700 hover:bg-violet-100">接收 WHIP 流</button>
                 <button type="button" onClick={() => setWhepEndpoint("https://127.0.0.1:8889/live/rtmps-test/whep")} className="rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-[11px] font-semibold text-orange-700 hover:bg-orange-100">接收 RTMPS 流</button>
               </div>
-              <Field label="接收 Bearer Token" value={whepToken} onChange={setWhepToken} type="password" autoComplete="off" />
+              <Field label="接收 Bearer Token（格式：reader:读取密码）" value={whepToken} onChange={setWhepToken} type="password" autoComplete="off" />
               <div className="flex flex-wrap gap-2">
                 {receiverState === "live" || receiverState === "connecting" ? (
                   <button type="button" onClick={() => void stopReceiver()} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-red-200 hover:text-red-700">停止接收</button>
@@ -603,7 +698,7 @@ export function StreamingWorkspace({
                 <a href={whepEndpoint.replace(/\/whep\/?$/, "")} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-200 hover:text-cyan-700">打开接收服务</a>
               </div>
               {receiverError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-700">{receiverError}</p> : null}
-              <p className="text-xs leading-relaxed text-slate-500">本地自签名证书首次使用时，请先在新标签页打开接收服务并接受浏览器证书提示，再回到这里点击开始。</p>
+              <p className="text-xs leading-relaxed text-slate-500">本地 harness 填 `reader:&lt;读取密码&gt;`，不要填发布端 WHIP token。首次使用自签名证书时，请先在新标签页打开接收服务并接受证书提示，再回到这里点击开始。</p>
             </div>
           </div>
         </section>
@@ -611,7 +706,7 @@ export function StreamingWorkspace({
         <section className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <h2 className="text-base font-semibold text-slate-950">RTMPS 接收地址</h2>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">RTMPS 是发布协议；查看发布流时，MediaMTX 提供 RTSP 播放地址。</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">RTMPS 是发布协议；浏览器查看发布流请使用上面的 HLS 播放器，HLS 保留 H.264/AAC。下面的 RTSP 地址仅用于 ffprobe 或文件级验收。</p>
             <div className="mt-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
               <code className="min-w-0 flex-1 break-all text-xs text-slate-700">{readerUrl}</code>
               <CopyButton value={readerUrl} />
@@ -620,7 +715,7 @@ export function StreamingWorkspace({
           </div>
           <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5 shadow-sm sm:p-6">
             <h2 className="text-base font-semibold text-slate-950">发送测试语句</h2>
-            <p className="mt-1 text-xs leading-relaxed text-slate-600">使用当前实时会话发送一段文本，方便观察 RTMPS/WHEP 接收端是否同步出现媒体。</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-600">使用当前实时会话发送一段文本，方便观察 RTMPS/HLS/WHEP 接收端是否同步出现媒体。</p>
             <div className="mt-4 flex gap-2"><input value={testText} onChange={(event) => setTestText(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-100" /><button type="button" disabled={!sessionLive || !testText.trim()} onClick={() => onSendText?.(testText.trim())} className="rounded-lg bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-45">发送</button></div>
             <label className="mt-4 block"><span className="text-xs font-semibold text-slate-600">Streaming 控制 Token（生产环境需要；本地测试可留空）</span><input type="password" value={controlToken} onChange={(event) => setControlToken(event.target.value)} autoComplete="off" className="mt-1.5 w-full rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-cyan-100" /></label>
           </div>

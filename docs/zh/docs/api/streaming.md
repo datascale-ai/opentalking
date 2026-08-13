@@ -22,6 +22,10 @@ docker compose -f docker/docker-compose.streaming-test.yml up -d
 set -a; . outputs/streaming/credentials.env; set +a
 ```
 
+如果沿用当前 harness 凭据，不要再次执行 `prepare_mediamtx_harness.py`；它会轮换凭据。只有需要主动轮换时才执行该脚本，并重新读取生成的 `credentials.env`。
+
+本地 harness 使用 Linux `network_mode: host`，并把启用的 listener 全部绑定到 `127.0.0.1`。这是为了让普通 Chromium 的本地 ICE 候选直接到达 MediaMTX；它只适用于与 MediaMTX 同一台 Linux 主机上的浏览器。远程浏览器不能使用下面的 `127.0.0.1` 地址。
+
 本地地址：
 
 | 用途 | 地址 |
@@ -30,6 +34,10 @@ set -a; . outputs/streaming/credentials.env; set +a
 | WHIP 发布 | `https://127.0.0.1:8889/whip-test/whip` |
 | RTMPS 播放 | `rtsp://127.0.0.1:8554/live/rtmps-test`（读取凭据由 harness 环境变量提供） |
 | WHIP 播放 | `https://127.0.0.1:8889/whip-test/whep` |
+
+本地 WHEP 的 `8889` 端口只负责信令；浏览器实际音视频还需要 harness 映射的 `8189/udp` 和 `8190/tcp` ICE 端口。harness 只向浏览器公布 `127.0.0.1`，避免使用 Docker 容器内部地址。接收 Bearer Token 使用 `reader:<OPENTALKING_HARNESS_READ_PASSWORD>`，不要使用发布端的 `OPENTALKING_HARNESS_WHIP_TOKEN`。
+
+MediaMTX 1.20 不会把 RTMPS 输入的 AAC 音频转码为 WebRTC 音频；`/live/rtmps-test/whep` 用于验证视频，RTMPS 的完整音视频请使用上面的 RTSP 播放地址。WHIP 输入的 `/whip-test/whep` 可验证 H.264 + Opus 音视频。
 
 MediaMTX 的本地证书由测试 CA 签发，OpenTalking publisher 使用 `OPENTALKING_STREAMING_RTMPS_CA_FILE` 和 `OPENTALKING_STREAMING_WHIP_CA_FILE` 验证，不能把关闭 TLS 校验当作正常测试路径。
 

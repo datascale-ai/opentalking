@@ -4,18 +4,45 @@
 logLevel: info
 rtmp: true
 rtmpEncryption: strict
-rtmpsAddress: :1936
+rtmpsAddress: 127.0.0.1:1936
 rtmpServerKey: /run/opentalking-test-pki/server.key
 rtmpServerCert: /run/opentalking-test-pki/server.crt
 
 webrtc: true
-webrtcAddress: :8889
+webrtcAddress: 127.0.0.1:8889
 webrtcEncryption: true
 webrtcServerKey: /run/opentalking-test-pki/server.key
 webrtcServerCert: /run/opentalking-test-pki/server.crt
+webrtcLocalUDPAddress: 127.0.0.1:8189
+webrtcLocalTCPAddress: 127.0.0.1:8190
+webrtcIPsFromInterfaces: false
+webrtcAdditionalHosts:
+  - 127.0.0.1
+
+# The local Linux harness uses host networking so Chromium can reach the HLS
+# and ICE listeners without Docker bridge/mDNS translation.
+rtspTransports: [tcp]
+rtspAddress: 127.0.0.1:8554
+hls: true
+hlsAddress: 0.0.0.0:8888
+hlsAlwaysRemux: true
+hlsAllowOrigins:
+  - http://127.0.0.1:5280
+  - http://localhost:5280
+  - http://8.92.9.220:5280
+# Standard fMP4 keeps the first complete GOP in the playlist without the
+# low-latency muxer's startup GAP padding; H.264/AAC codecs are unchanged.
+hlsVariant: fmp4
+# Keep enough history for the once-through browser preview to start from
+# media PTS 0 while RTMPS/TLS/HLS muxers are coming online. This is retention,
+# not playback latency; the once-mode player still selects the oldest segment.
+hlsSegmentCount: 30
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+srt: false
+moq: false
 
 authInternalUsers: []
 
 paths:
   all:
-

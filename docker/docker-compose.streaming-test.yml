@@ -6,13 +6,13 @@ services:
     # comment for humans, but pin the actual image for reproducible tests.
     image: bluenviron/mediamtx:1.20.0@sha256:86e63af28616d5e5a18540d7b031b6510bd4cbf1a3c7d224f9e2976f02aefbfb
     restart: "no"
+    # Linux local harness only: host networking keeps the browser's loopback
+    # ICE candidate on the same network namespace as MediaMTX. The config
+    # binds all enabled listeners to 127.0.0.1.
+    network_mode: host
     # The image entrypoint is already /mediamtx; passing only the config path
     # avoids the duplicate-entrypoint failure in MediaMTX 1.20.0.
     command: ["/etc/mediamtx.yml"]
-    ports:
-      - "127.0.0.1:1936:1936"
-      - "127.0.0.1:8889:8889"
-      - "127.0.0.1:8554:8554"
     volumes:
       - ../outputs/streaming/mediamtx.generated.yml:/etc/mediamtx.yml:ro
       - ../outputs/streaming/tls:/run/opentalking-test-pki:ro

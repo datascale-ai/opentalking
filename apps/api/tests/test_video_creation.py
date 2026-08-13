@@ -2747,6 +2747,82 @@ async def test_light2d_job_directory_is_removed_after_completion_or_failure(
 
 
 @pytest.mark.asyncio
+async def test_chunked_video_does_not_send_eof_before_mp4_export_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from opentalking import video_creation as video_creation_module
+
+    avatars = tmp_path / "avatars"
+    exports = tmp_path / "exports"
+    _write_dogo_avatar(avatars)
+    service = VideoCreationService(
+        SimpleNamespace(
+            avatars_dir=str(avatars),
+            exports_dir=str(exports),
+            export_max_bytes=1024,
+            video_creation_light2d_max_duration_sec=300,
+            ffmpeg_bin="ffmpeg",
+        )
+    )
+    renderer = video_creation_module.preflight_light2d_video_creation(
+        service.settings,
+        model="mock",
+        avatar_id="dogo-light2d",
+        source="tts_text",
+        text="hello",
+    )
+    assert renderer is not None
+
+    class RecordingSink:
+        def __init__(self) -> None:
+            self.published = 0
+            self.finished = False
+            self.failures: list[str] = []
+
+        async def publish(self, _chunk: object) -> None:
+            self.published += 1
+
+        async def finish(self) -> None:
+            self.finished = True
+
+        async def fail(self, code: str, _detail: str = "") -> None:
+            self.failures.append(code)
+
+    class FakeArchiveWriter:
+        def __init__(self, _path: Path, *, fps: float) -> None:
+            del fps
+
+        def write(self, _frame: np.ndarray) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    async def failing_mux(_bin: str, _video: Path, _audio: Path, _output: Path) -> None:
+        raise RuntimeError("mux failed")
+
+    sink = RecordingSink()
+    monkeypatch.setattr(video_creation_module, "_IncrementalVideoWriter", FakeArchiveWriter)
+    monkeypatch.setattr(video_creation_module, "_ffmpeg_mux", failing_mux)
+
+    with pytest.raises(RuntimeError, match="mux failed"):
+        await service._create_from_pcm(
+            model="mock",
+            avatar_id="dogo-light2d",
+            pcm=np.ones(1600, dtype=np.int16),
+            title="DOGO",
+            source="tts_text",
+            light2d_renderer=renderer,
+            chunk_sink=sink,  # type: ignore[arg-type]
+        )
+
+    assert sink.published > 0
+    assert sink.finished is False
+    assert sink.failures == ["video_export_failed"]
+
+
+@pytest.mark.asyncio
 async def test_light2d_tts_duration_limit_uses_chunk_sample_rate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

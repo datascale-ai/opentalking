@@ -5,18 +5,27 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, Response, UploadFile
 
 from opentalking.avatar.fasterliveportrait_config import normalize_fasterliveportrait_runtime_config
 from opentalking.providers.tts.indextts_config import normalize_indextts_config
 from opentalking.providers.tts.providers import normalize_tts_provider
 from opentalking.avatar.light2d import Light2DContractError
 from opentalking.video_creation import VideoCreationService, preflight_light2d_video_creation
+from opentalking.video_creation_jobs import VideoCreationJobManager
 
 router = APIRouter(prefix="/video-creation", tags=["video-creation"])
 
 _AUDIO_SOURCES = {"upload", "tts_text", "voice_clone", "reference_video", "duo_dialog"}
 _INDEXTTS_PROVIDERS = {"indextts", "local_indextts", "omnirt_indextts"}
+
+
+def _video_job_manager(request: Request) -> VideoCreationJobManager:
+    manager = getattr(request.app.state, "video_creation_jobs", None)
+    if manager is None:
+        manager = VideoCreationJobManager(request.app.state.settings)
+        request.app.state.video_creation_jobs = manager
+    return manager
 
 
 def _audio_max_bytes(settings: object) -> int:
@@ -110,10 +119,13 @@ async def _save_indextts_emotion_audio(upload: UploadFile | None) -> Path | None
 @router.post("/jobs", response_model=None)
 async def create_video_creation_job(
     request: Request,
+    response: Response,
     model: str = Form(...),
     avatar_id: str = Form(...),
     audio_source: str = Form(...),
     title: str = Form(""),
+    execution_mode: str = Form("sync"),
+    wait_for_rtmps: bool = Form(False),
     audio_file: UploadFile | None = File(default=None),
     text: str | None = Form(default=None),
     tts_provider: str | None = Form(default=None),
@@ -152,6 +164,98 @@ async def create_video_creation_job(
         raise
     service = VideoCreationService(settings)
     try:
+        mode = execution_mode.strip().lower()
+        if mode not in {"sync", "async"}:
+            raise HTTPException(status_code=400, detail="execution_mode must be sync or async")
+
+        if mode == "async":
+            # Files must survive the HTTP request and are removed by the
+            # background runner after the source job finishes.
+            if source == "upload":
+                if audio_file is None:
+                    raise HTTPException(status_code=400, detail="audio_file is required")
+                body = await audio_file.read()
+                max_bytes = _audio_max_bytes(settings)
+                if len(body) > max_bytes:
+                    raise HTTPException(status_code=413, detail=f"audio too large (max {max_bytes} bytes)")
+                if not body:
+                    raise HTTPException(status_code=400, detail="empty audio")
+                suffix = Path(audio_file.filename or "speech.wav").suffix or ".wav"
+                with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                    tmp.write(body)
+                    upload_path = Path(tmp.name)
+            else:
+                upload_path = None
+            emotion_path_for_job = emotion_audio_path
+
+            async def run_async_job(sink: object) -> dict[str, Any]:
+                try:
+                    if source == "upload":
+                        assert upload_path is not None
+                        return await service.create_from_audio_file(
+                            model=model,
+                            avatar_id=avatar_id,
+                            upload_path=upload_path,
+                            title=title,
+                            mime_type=audio_file.content_type if audio_file is not None else None,
+                            fasterliveportrait_config=flp_config,
+                            composition_config=video_composition_config,
+                            light2d_renderer=light2d_renderer,
+                            chunk_sink=sink,  # type: ignore[arg-type]
+                        )
+                    if source == "reference_video":
+                        return await service.create_reference_video(
+                            model=model,
+                            avatar_id=avatar_id,
+                            duration_sec=duration_sec,
+                            title=title,
+                            composition_config=video_composition_config,
+                            light2d_renderer=light2d_renderer,
+                            chunk_sink=sink,  # type: ignore[arg-type]
+                        )
+                    if source == "duo_dialog":
+                        return await service.create_from_duo_dialog(
+                            model=model,
+                            avatar_id=avatar_id,
+                            title=title,
+                            duo_dialog=_parse_duo_dialog(duo_dialog),
+                            tts_provider=tts_provider,
+                            tts_model=tts_model,
+                            indextts_config=index_config,
+                            composition_config=video_composition_config,
+                            chunk_sink=sink,  # type: ignore[arg-type]
+                        )
+                    return await service.create_from_tts_text(
+                        model=model,
+                        avatar_id=avatar_id,
+                        text=text or "",
+                        title=title,
+                        tts_provider=tts_provider,
+                        tts_model=tts_model,
+                        voice=voice,
+                        source=source,
+                        fasterliveportrait_config=flp_config,
+                        indextts_config=index_config,
+                        composition_config=video_composition_config,
+                        light2d_renderer=light2d_renderer,
+                        chunk_sink=sink,  # type: ignore[arg-type]
+                    )
+                finally:
+                    if upload_path is not None:
+                        upload_path.unlink(missing_ok=True)
+                    if emotion_path_for_job is not None:
+                        emotion_path_for_job.unlink(missing_ok=True)
+
+            job = await _video_job_manager(request).submit(
+                source=source,
+                metadata={"model": model, "avatar_id": avatar_id, "title": title},
+                runner=run_async_job,
+                wait_for_start=wait_for_rtmps,
+            )
+            emotion_audio_path = None
+            response.status_code = 202
+            return job.public()
+
         if source == "upload":
             if audio_file is None:
                 raise HTTPException(status_code=400, detail="audio_file is required")
@@ -230,3 +334,28 @@ async def create_video_creation_job(
     finally:
         if emotion_audio_path is not None:
             emotion_audio_path.unlink(missing_ok=True)
+
+
+@router.get("/jobs/{job_id}", response_model=None)
+async def get_video_creation_job(job_id: str, request: Request) -> dict[str, Any]:
+    job = _video_job_manager(request).get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="video creation job not found")
+    return job.public()
+
+
+@router.post("/jobs/{job_id}/stop", response_model=None)
+async def stop_video_creation_job(job_id: str, request: Request) -> dict[str, Any]:
+    try:
+        job = await _video_job_manager(request).stop(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="video creation job not found") from exc
+    return job.public()
+
+
+@router.delete("/jobs/{job_id}", status_code=204, response_model=None)
+async def delete_video_creation_job(job_id: str, request: Request) -> None:
+    try:
+        await _video_job_manager(request).delete(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="video creation job not found") from exc

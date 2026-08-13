@@ -9,7 +9,7 @@ import uuid
 import wave
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Any, cast, cast
+from typing import Any, Protocol, cast
 
 import cv2
 import numpy as np
@@ -35,6 +35,8 @@ from opentalking.providers.synthesis.flashtalk.ws_client import FlashTalkWSClien
 from opentalking.providers.synthesis.omnirt import auth_headers, resolve_synthesis_ws_url
 from opentalking.providers.tts.factory import build_tts_adapter
 from opentalking.scene_assets import SceneAssetStore
+from opentalking.streaming.chunks import MediaChunk
+from opentalking.streaming.types import ProgramAudio, ProgramVideo
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +51,30 @@ SUPPORTED_VIDEO_CREATION_MODELS = {
     "wav2lip",
     LIGHT2D_MODEL_TYPE,
 }
+
+
+class VideoCreationChunkSink(Protocol):
+    async def publish(self, chunk: MediaChunk) -> None: ...
+
+    async def finish(self) -> None: ...
+
+    async def fail(self, code: str, detail: str = "") -> None: ...
+
+
+async def _publish_video_chunk(sink: VideoCreationChunkSink | None, chunk: MediaChunk) -> None:
+    if sink is None:
+        return
+    await sink.publish(chunk)
+
+
+async def _finish_video_chunks(sink: VideoCreationChunkSink | None) -> None:
+    if sink is not None:
+        await sink.finish()
+
+
+async def _fail_video_chunks(sink: VideoCreationChunkSink | None, code: str, detail: str = "") -> None:
+    if sink is not None:
+        await sink.fail(code, detail)
 
 
 def preflight_light2d_video_creation(
@@ -364,6 +390,215 @@ def _apply_video_composition(
         )
         for frame in frames
     ]
+
+
+class _VideoFrameComposer:
+    """Prepare composition assets once and apply them frame by frame."""
+
+    def __init__(self, first_frame: np.ndarray, config: Mapping[str, object] | None) -> None:
+        self.config = dict(config or {})
+        self.enabled = bool(self.config)
+        self._background: np.ndarray | None = None
+        self._fallback_alpha: np.ndarray | None = None
+        self._avatar_fit = "contain"
+        self._avatar_anchor = "center"
+        self._avatar_scale = 1.0
+        self._avatar_offset_x = 0.0
+        self._avatar_offset_y = 0.0
+        if not self.enabled:
+            return
+        first = np.asarray(first_frame, dtype=np.uint8)
+        frame_height, frame_width = first.shape[:2]
+        width = _coerce_composition_int(
+            self.config,
+            "output_width",
+            int(frame_width),
+            min_value=320,
+            max_value=3840,
+        )
+        height = _coerce_composition_int(
+            self.config,
+            "output_height",
+            int(frame_height),
+            min_value=180,
+            max_value=2160,
+        )
+        background_path = self.config.get("background_path")
+        if background_path:
+            background_raw = cv2.imread(str(background_path), cv2.IMREAD_COLOR)
+            if background_raw is None:
+                raise FileNotFoundError("background file not found")
+            self._background = _resize_cover(background_raw, int(width), int(height))
+        else:
+            self._background = _solid_background(int(width), int(height), self.config.get("background_color"))
+        self._fallback_alpha = _load_avatar_alpha_mask(self.config.get("avatar_mask_path"))
+        self._avatar_fit = str(self.config.get("avatar_fit") or "contain")
+        self._avatar_anchor = str(self.config.get("avatar_anchor") or "center")
+        self._avatar_scale = _coerce_composition_float(
+            self.config, "avatar_scale", 1.0, min_value=0.1, max_value=4.0
+        )
+        self._avatar_offset_x = _coerce_composition_float(
+            self.config, "avatar_offset_x", 0.0, min_value=-2000.0, max_value=2000.0
+        )
+        self._avatar_offset_y = _coerce_composition_float(
+            self.config, "avatar_offset_y", 0.0, min_value=-2000.0, max_value=2000.0
+        )
+
+    def apply(self, frame: np.ndarray) -> np.ndarray:
+        arr = np.ascontiguousarray(np.asarray(frame, dtype=np.uint8))
+        if not self.enabled or self._background is None:
+            return arr
+        return _composite_avatar_layer(
+            self._background,
+            arr,
+            avatar_fit=self._avatar_fit,
+            avatar_anchor=self._avatar_anchor,
+            avatar_scale=self._avatar_scale,
+            avatar_offset_x=self._avatar_offset_x,
+            avatar_offset_y=self._avatar_offset_y,
+            fallback_alpha=self._fallback_alpha,
+        )
+
+
+class _IncrementalVideoWriter:
+    """OpenCV archive writer that does not retain every generated frame."""
+
+    def __init__(self, path: Path, *, fps: float) -> None:
+        self.path = path
+        self.fps = max(1.0, float(fps))
+        self._writer: Any = None
+        self._size: tuple[int, int] | None = None
+        self.frames_written = 0
+
+    def write(self, frame: np.ndarray) -> None:
+        arr = np.asarray(frame, dtype=np.uint8)
+        if arr.ndim != 3 or arr.shape[2] < 3:
+            raise RuntimeError("video creation produced an invalid frame")
+        if self._writer is None:
+            height, width = arr.shape[:2]
+            self._size = (int(width), int(height))
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._writer = cv2.VideoWriter(
+                str(self.path),
+                getattr(cv2, "VideoWriter_fourcc")(*"mp4v"),
+                self.fps,
+                self._size,
+            )
+            if not self._writer.isOpened():
+                raise RuntimeError(f"cannot open video writer: {self.path}")
+        assert self._size is not None
+        if (arr.shape[1], arr.shape[0]) != self._size:
+            arr = cv2.resize(arr, self._size, interpolation=cv2.INTER_AREA)
+        if arr.shape[2] >= 4:
+            arr = arr[:, :, :3]
+        self._writer.write(np.ascontiguousarray(arr))
+        self.frames_written += 1
+
+    def close(self) -> None:
+        if self._writer is not None:
+            self._writer.release()
+            self._writer = None
+        if self.frames_written <= 0:
+            raise RuntimeError("video creation produced zero frames")
+
+
+class _VideoChunkEmitter:
+    """Turn generated frames plus source PCM into timestamped media chunks."""
+
+    def __init__(
+        self,
+        *,
+        pcm: np.ndarray,
+        fps: float,
+        sink: VideoCreationChunkSink,
+        chunk_duration_ms: int = 1000,
+    ) -> None:
+        self.pcm = np.asarray(pcm, dtype=np.int16).reshape(-1)
+        self.fps = max(1.0, float(fps))
+        self.sample_rate = 16_000
+        self.sink = sink
+        self.chunk_duration_ms = max(100, int(chunk_duration_ms))
+        self.sequence = 0
+        self.frame_index = 0
+        self.chunk_start_ms = 0.0
+        self.video: list[ProgramVideo] = []
+        self._flushed = False
+        self._finished = False
+
+    async def add_frame(self, frame: np.ndarray) -> None:
+        timestamp_ms = float(self.frame_index) * 1000.0 / self.fps
+        arr = np.ascontiguousarray(np.asarray(frame, dtype=np.uint8))
+        height, width = arr.shape[:2]
+        self.video.append(
+            ProgramVideo(
+                data=arr,
+                width=int(width),
+                height=int(height),
+                timestamp_ms=timestamp_ms,
+                source="video_creation",
+            )
+        )
+        self.frame_index += 1
+        frame_end_ms = timestamp_ms + 1000.0 / self.fps
+        if frame_end_ms >= self.chunk_start_ms + self.chunk_duration_ms:
+            await self._flush(frame_end_ms)
+
+    async def _flush(self, end_ms: float) -> None:
+        if not self.video:
+            return
+        start_ms = self.chunk_start_ms
+        end_ms = max(float(end_ms), start_ms)
+        start_sample = min(self.pcm.size, max(0, int(round(start_ms * self.sample_rate / 1000.0))))
+        end_sample = min(self.pcm.size, max(start_sample, int(round(end_ms * self.sample_rate / 1000.0))))
+        audio: tuple[ProgramAudio, ...] = ()
+        audio_data = self.pcm[start_sample:end_sample]
+        if audio_data.size:
+            audio = (
+                ProgramAudio(
+                    data=np.ascontiguousarray(audio_data),
+                    sample_rate=self.sample_rate,
+                    timestamp_ms=start_ms,
+                    source="video_creation",
+                ),
+            )
+        chunk = MediaChunk(
+            sequence=self.sequence,
+            start_pts_ms=start_ms,
+            end_pts_ms=end_ms,
+            video=tuple(self.video),
+            audio=audio,
+            # The publisher independently forces an IDR at its GOP interval;
+            # this flag tells late subscribers where a replay window starts.
+            starts_with_keyframe=(self.sequence % 2 == 0),
+        )
+        await _publish_video_chunk(self.sink, chunk)
+        self.sequence += 1
+        self.chunk_start_ms = end_ms
+        self.video = []
+
+    async def flush(self) -> None:
+        """Publish the final media chunk without closing the source hub.
+
+        The final MP4 still has to be muxed and registered after this point.
+        Keeping the EOF marker separate prevents an export failure from being
+        reported to RTMPS subscribers as a successful end of stream.
+        """
+
+        if self._flushed:
+            return
+        self._flushed = True
+        total_audio_ms = float(self.pcm.size) * 1000.0 / self.sample_rate
+        if self.video:
+            last_frame_end = float(self.frame_index) * 1000.0 / self.fps
+            await self._flush(max(last_frame_end, total_audio_ms))
+
+    async def finish(self) -> None:
+        if self._finished:
+            return
+        await self.flush()
+        self._finished = True
+        await _finish_video_chunks(self.sink)
+
 
 
 def _build_reference_driver_pcm(total_samples: int, *, level: float = 480.0) -> np.ndarray:
@@ -873,29 +1108,12 @@ def _write_wav(path: Path, pcm: np.ndarray, sample_rate: int = 16000) -> None:
 def _write_video_only(path: Path, frames: list[np.ndarray], fps: float) -> None:
     if not frames:
         raise RuntimeError("video creation produced zero frames")
-    first = np.asarray(frames[0], dtype=np.uint8)
-    height, width = first.shape[:2]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fourcc = getattr(cv2, "VideoWriter_fourcc")
-    writer = cv2.VideoWriter(
-        str(path),
-        fourcc(*"mp4v"),
-        max(1.0, float(fps)),
-        (int(width), int(height)),
-    )
-    if not writer.isOpened():
-        raise RuntimeError(f"cannot open video writer: {path}")
+    writer = _IncrementalVideoWriter(path, fps=fps)
     try:
         for frame in frames:
-            arr = np.asarray(frame, dtype=np.uint8)
-            if arr.shape[:2] != (height, width):
-                resized = cv2.resize(arr, (width, height), interpolation=cv2.INTER_AREA)
-                arr = np.asarray(resized, dtype=np.uint8)
-            if arr.ndim == 3 and arr.shape[2] >= 4:
-                arr = arr[:, :, :3]
-            writer.write(arr)
+            writer.write(frame)
     finally:
-        writer.release()
+        writer.close()
 
 
 def _light2d_composition_config(
@@ -936,16 +1154,7 @@ def _write_light2d_video_only(
     normalized = _light2d_composition_config(renderer, config)
     width = cast(int, normalized["output_width"])
     height = cast(int, normalized["output_height"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(
-        str(path),
-        getattr(cv2, "VideoWriter_fourcc")(*"mp4v"),
-        max(1.0, float(renderer.fps)),
-        (width, height),
-    )
-    if not writer.isOpened():
-        raise RuntimeError(f"cannot open video writer: {path}")
-    wrote_frame = False
+    writer = _IncrementalVideoWriter(path, fps=renderer.fps)
     try:
         for rendered in renderer.iter_frames(np.asarray(pcm, dtype=np.int16).reshape(-1)):
             rgba = np.asarray(rendered.rgba, dtype=np.uint8)
@@ -963,11 +1172,34 @@ def _write_light2d_video_only(
                 avatar_offset_y=cast(float, normalized["avatar_offset_y"]),
             )
             writer.write(np.ascontiguousarray(composed))
-            wrote_frame = True
     finally:
-        writer.release()
-    if not wrote_frame:
-        raise RuntimeError("video creation produced zero frames")
+        writer.close()
+
+
+def _iter_light2d_composed_frames(
+    renderer: Light2DRenderer,
+    pcm: np.ndarray,
+    *,
+    config: Mapping[str, object] | None,
+):
+    normalized = _light2d_composition_config(renderer, config)
+    width = cast(int, normalized["output_width"])
+    height = cast(int, normalized["output_height"])
+    for rendered in renderer.iter_frames(np.asarray(pcm, dtype=np.int16).reshape(-1)):
+        rgba = np.asarray(rendered.rgba, dtype=np.uint8)
+        if rgba.ndim != 3 or rgba.shape[2] != 4:
+            raise RuntimeError("Light2D renderer produced an invalid RGBA frame")
+        background = _solid_background(width, height, normalized["background_color"])
+        bgr_alpha = np.ascontiguousarray(rgba[:, :, [2, 1, 0, 3]])
+        yield _composite_avatar_layer(
+            background,
+            bgr_alpha,
+            avatar_fit=str(normalized["avatar_fit"]),
+            avatar_anchor=str(normalized["avatar_anchor"]),
+            avatar_scale=cast(float, normalized["avatar_scale"]),
+            avatar_offset_x=cast(float, normalized["avatar_offset_x"]),
+            avatar_offset_y=cast(float, normalized["avatar_offset_y"]),
+        )
 
 
 MultiFaceRealtimeV3Worker: Any | None = None
@@ -1121,6 +1353,7 @@ class VideoCreationService:
         fasterliveportrait_config: Mapping[str, object] | None = None,
         composition_config: Mapping[str, object] | None = None,
         light2d_renderer: Light2DRenderer | None = None,
+        chunk_sink: VideoCreationChunkSink | None = None,
     ) -> dict[str, Any]:
         if light2d_renderer is None:
             light2d_renderer = preflight_light2d_video_creation(
@@ -1153,6 +1386,7 @@ class VideoCreationService:
             fasterliveportrait_config=fasterliveportrait_config,
             composition_config=composition_config,
             light2d_renderer=light2d_renderer,
+            chunk_sink=chunk_sink,
         )
 
     async def _synthesize_tts_pcm(
@@ -1224,6 +1458,7 @@ class VideoCreationService:
         indextts_config: Mapping[str, object] | None = None,
         composition_config: Mapping[str, object] | None = None,
         light2d_renderer: Light2DRenderer | None = None,
+        chunk_sink: VideoCreationChunkSink | None = None,
     ) -> dict[str, Any]:
         if light2d_renderer is None:
             light2d_renderer = preflight_light2d_video_creation(
@@ -1257,6 +1492,7 @@ class VideoCreationService:
             fasterliveportrait_config=fasterliveportrait_config,
             composition_config=composition_config,
             light2d_renderer=light2d_renderer,
+            chunk_sink=chunk_sink,
         )
 
     async def create_from_duo_dialog(
@@ -1270,6 +1506,7 @@ class VideoCreationService:
         tts_model: str | None,
         indextts_config: Mapping[str, object] | None = None,
         composition_config: Mapping[str, object] | None = None,
+        chunk_sink: VideoCreationChunkSink | None = None,
     ) -> dict[str, Any]:
         model_value = _normalize_model(model)
         if model_value != "quicktalk":
@@ -1402,32 +1639,72 @@ class VideoCreationService:
                 "auto",
             ),
         )
-        frames: list[np.ndarray] = []
-        for frame in worker.generate_frames_from_script(script):
-            frame_array = _frame_array(frame)
-            if frame_array is not None:
-                frames.append(frame_array)
         fps = float(getattr(worker, 'fps', 25) or 25)
-        composed_frames = _apply_video_composition(frames, config=normalized_composition_config)
-
         video_only = work_dir / 'video_only.mp4'
-        _write_video_only(video_only, composed_frames, fps)
-        output_mp4 = work_dir / "result.mp4"
-        await _ffmpeg_mux(str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"), video_only, audio_wav, output_mp4)
-        content = output_mp4.read_bytes()
-        duration = float(total_pcm.size) / float(sample_rate) if sample_rate else None
-        item = create_video_export(
-            _settings_path(self.settings, "exports_dir", "./data/exports"),
-            content=content,
-            mime_type="video/mp4",
-            kind="video_creation",
-            title=_safe_title(title, model=model_value, avatar_id=avatar_id),
-            duration_sec=duration,
-            session_id=None,
-            avatar_id=avatar_id,
-            model=model_value,
-            max_bytes=_settings_int(self.settings, "export_max_bytes", 1024 * 1024 * 1024),
-        )
+        if chunk_sink is None:
+            frames: list[np.ndarray] = []
+            for frame in worker.generate_frames_from_script(script):
+                frame_array = _frame_array(frame)
+                if frame_array is not None:
+                    frames.append(frame_array)
+            composed_frames = _apply_video_composition(frames, config=normalized_composition_config)
+            _write_video_only(video_only, composed_frames, fps)
+        else:
+            archive_writer = _IncrementalVideoWriter(video_only, fps=fps)
+            emitter = _VideoChunkEmitter(
+                pcm=total_pcm,
+                fps=fps,
+                sink=chunk_sink,
+                chunk_duration_ms=_settings_int(self.settings, "video_creation_chunk_duration_ms", 1000),
+            )
+            composer: _VideoFrameComposer | None = None
+            try:
+                for frame in worker.generate_frames_from_script(script):
+                    frame_array = _frame_array(frame)
+                    if frame_array is None:
+                        continue
+                    if composer is None:
+                        composer = _VideoFrameComposer(frame_array, normalized_composition_config)
+                    composed = composer.apply(frame_array)
+                    archive_writer.write(composed)
+                    await emitter.add_frame(composed)
+                await emitter.flush()
+                archive_writer.close()
+            except Exception:
+                try:
+                    archive_writer.close()
+                except Exception:
+                    pass
+                await _fail_video_chunks(chunk_sink, "video_generation_failed")
+                raise
+        try:
+            output_mp4 = work_dir / "result.mp4"
+            await _ffmpeg_mux(
+                str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"),
+                video_only,
+                audio_wav,
+                output_mp4,
+            )
+            content = output_mp4.read_bytes()
+            duration = float(total_pcm.size) / float(sample_rate) if sample_rate else None
+            item = create_video_export(
+                _settings_path(self.settings, "exports_dir", "./data/exports"),
+                content=content,
+                mime_type="video/mp4",
+                kind="video_creation",
+                title=_safe_title(title, model=model_value, avatar_id=avatar_id),
+                duration_sec=duration,
+                session_id=None,
+                avatar_id=avatar_id,
+                model=model_value,
+                max_bytes=_settings_int(self.settings, "export_max_bytes", 1024 * 1024 * 1024),
+            )
+        except Exception:
+            if chunk_sink is not None:
+                await _fail_video_chunks(chunk_sink, "video_export_failed")
+            raise
+        if chunk_sink is not None:
+            await _finish_video_chunks(chunk_sink)
         log.info(
             "quicktalk duo_dialog export complete: job=%s export_id=%s avatar=%s path=%s",
             job_id,
@@ -1451,6 +1728,7 @@ class VideoCreationService:
         title: str,
         composition_config: Mapping[str, object] | None = None,
         light2d_renderer: Light2DRenderer | None = None,
+        chunk_sink: VideoCreationChunkSink | None = None,
     ) -> dict[str, Any]:
         model_value = _normalize_model(model)
         if model_value != "flashtalk":
@@ -1470,6 +1748,7 @@ class VideoCreationService:
             source="reference_video",
             composition_config=composition_config,
             light2d_renderer=light2d_renderer,
+            chunk_sink=chunk_sink,
         )
 
     async def _resample_pcm(self, pcm: np.ndarray, sample_rate: int) -> np.ndarray:
@@ -1515,6 +1794,7 @@ class VideoCreationService:
         fasterliveportrait_config: Mapping[str, object] | None = None,
         composition_config: Mapping[str, object] | None = None,
         light2d_renderer: Light2DRenderer | None = None,
+        chunk_sink: VideoCreationChunkSink | None = None,
     ) -> dict[str, Any]:
         model_value = _normalize_model(model)
         if light2d_renderer is None:
@@ -1545,34 +1825,71 @@ class VideoCreationService:
             try:
                 _write_wav(audio_wav, pcm, sample_rate)
                 video_only = work_dir / "video_only.mp4"
-                _write_light2d_video_only(
-                    video_only,
-                    light2d_renderer,
-                    pcm,
-                    config=normalized_composition_config,
-                )
-                output_mp4 = work_dir / "result.mp4"
-                await _ffmpeg_mux(
-                    str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"),
-                    video_only,
-                    audio_wav,
-                    output_mp4,
-                )
-                duration = float(pcm.size) / float(sample_rate)
-                item = create_video_export_from_file(
-                    _settings_path(self.settings, "exports_dir", "./data/exports"),
-                    source=output_mp4,
-                    mime_type="video/mp4",
-                    kind="video_creation",
-                    title=_safe_title(title, model=model_value, avatar_id=avatar_id),
-                    duration_sec=duration,
-                    session_id=None,
-                    avatar_id=avatar_id,
-                    model=model_value,
-                    max_bytes=_settings_int(
-                        self.settings, "export_max_bytes", 1024 * 1024 * 1024
-                    ),
-                )
+                if chunk_sink is None:
+                    _write_light2d_video_only(
+                        video_only,
+                        light2d_renderer,
+                        pcm,
+                        config=normalized_composition_config,
+                    )
+                else:
+                    archive_writer = _IncrementalVideoWriter(video_only, fps=light2d_renderer.fps)
+                    emitter = _VideoChunkEmitter(
+                        pcm=pcm,
+                        fps=light2d_renderer.fps,
+                        sink=chunk_sink,
+                        chunk_duration_ms=_settings_int(self.settings, "video_creation_chunk_duration_ms", 1000),
+                    )
+                    try:
+                        for composed in _iter_light2d_composed_frames(
+                            light2d_renderer,
+                            pcm,
+                            config=normalized_composition_config,
+                        ):
+                            archive_writer.write(composed)
+                            await emitter.add_frame(composed)
+                            # Light2D's renderer is synchronous; yield after
+                            # each frame so API polling and RTMPS subscribers
+                            # can run while the job is generating.
+                            await asyncio.sleep(0)
+                        await emitter.flush()
+                        archive_writer.close()
+                    except Exception:
+                        try:
+                            archive_writer.close()
+                        except Exception:
+                            pass
+                        await _fail_video_chunks(chunk_sink, "video_generation_failed")
+                        raise
+                try:
+                    output_mp4 = work_dir / "result.mp4"
+                    await _ffmpeg_mux(
+                        str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"),
+                        video_only,
+                        audio_wav,
+                        output_mp4,
+                    )
+                    duration = float(pcm.size) / float(sample_rate)
+                    item = create_video_export_from_file(
+                        _settings_path(self.settings, "exports_dir", "./data/exports"),
+                        source=output_mp4,
+                        mime_type="video/mp4",
+                        kind="video_creation",
+                        title=_safe_title(title, model=model_value, avatar_id=avatar_id),
+                        duration_sec=duration,
+                        session_id=None,
+                        avatar_id=avatar_id,
+                        model=model_value,
+                        max_bytes=_settings_int(
+                            self.settings, "export_max_bytes", 1024 * 1024 * 1024
+                        ),
+                    )
+                except Exception:
+                    if chunk_sink is not None:
+                        await _fail_video_chunks(chunk_sink, "video_export_failed")
+                    raise
+                if chunk_sink is not None:
+                    await _finish_video_chunks(chunk_sink)
                 return {
                     "job_id": job_id,
                     "status": "done",
@@ -1608,6 +1925,11 @@ class VideoCreationService:
             render_source_pcm = np.concatenate([np.zeros(preroll_samples, dtype=np.int16), pcm])
 
         frames: list[np.ndarray] = []
+        archive_writer: _IncrementalVideoWriter | None = None
+        emitter: _VideoChunkEmitter | None = None
+        composer: _VideoFrameComposer | None = None
+        raw_frame_index = 0
+        emitted_frame_count = 0
         try:
             await client.init_session(
                 **_init_session_kwargs(
@@ -1625,43 +1947,93 @@ class VideoCreationService:
                 render_source_pcm,
                 np.zeros(pad_len, dtype=np.int16),
             ])
+            fps = float(client.fps or 25)
+            preroll_frames = max(0, int(round(float(preroll_samples) * fps / float(sample_rate)))) if preroll_samples else 0
+            target_frames = max(1, int(round(float(pcm.size) * fps / float(sample_rate))))
+            if chunk_sink is not None:
+                video_only = work_dir / "video_only.mp4"
+                archive_writer = _IncrementalVideoWriter(video_only, fps=fps)
+                emitter = _VideoChunkEmitter(
+                    pcm=pcm,
+                    fps=fps,
+                    sink=chunk_sink,
+                    chunk_duration_ms=_settings_int(self.settings, "video_creation_chunk_duration_ms", 1000),
+                )
             for start in range(0, len(render_pcm), chunk_samples):
                 chunk = render_pcm[start:start + chunk_samples]
                 for frame in await client.generate(chunk):
                     arr = _frame_array(frame)
-                    if arr is not None:
+                    if arr is None:
+                        continue
+                    if chunk_sink is None:
                         frames.append(arr)
-            fps = float(client.fps or 25)
+                        continue
+                    if raw_frame_index < preroll_frames or emitted_frame_count >= target_frames:
+                        raw_frame_index += 1
+                        continue
+                    if composer is None:
+                        composer = _VideoFrameComposer(arr, normalized_composition_config)
+                    composed = composer.apply(arr)
+                    assert archive_writer is not None and emitter is not None
+                    archive_writer.write(composed)
+                    await emitter.add_frame(composed)
+                    await asyncio.sleep(0)
+                    raw_frame_index += 1
+                    emitted_frame_count += 1
         finally:
             await client.close()
 
-        if preroll_samples:
-            drop_frames = max(0, int(round(float(preroll_samples) * fps / float(sample_rate))))
-            if drop_frames:
-                frames = frames[drop_frames:]
-        target_frames = max(1, int(round(float(pcm.size) * fps / float(sample_rate))))
-        if len(frames) > target_frames:
-            frames = frames[:target_frames]
-        frames = _apply_video_composition(frames, config=normalized_composition_config)
-
         video_only = work_dir / "video_only.mp4"
-        _write_video_only(video_only, frames, fps)
-        output_mp4 = work_dir / "result.mp4"
-        await _ffmpeg_mux(str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"), video_only, audio_wav, output_mp4)
-        content = output_mp4.read_bytes()
-        duration = float(pcm.size) / float(sample_rate)
-        item = create_video_export(
-            _settings_path(self.settings, "exports_dir", "./data/exports"),
-            content=content,
-            mime_type="video/mp4",
-            kind="video_creation",
-            title=_safe_title(title, model=model_value, avatar_id=avatar_id),
-            duration_sec=duration,
-            session_id=None,
-            avatar_id=avatar_id,
-            model=model_value,
-            max_bytes=_settings_int(self.settings, "export_max_bytes", 1024 * 1024 * 1024),
-        )
+        if chunk_sink is None:
+            if preroll_samples:
+                drop_frames = max(0, int(round(float(preroll_samples) * fps / float(sample_rate))))
+                if drop_frames:
+                    frames = frames[drop_frames:]
+            target_frames = max(1, int(round(float(pcm.size) * fps / float(sample_rate))))
+            if len(frames) > target_frames:
+                frames = frames[:target_frames]
+            frames = _apply_video_composition(frames, config=normalized_composition_config)
+            _write_video_only(video_only, frames, fps)
+        else:
+            assert archive_writer is not None and emitter is not None
+            try:
+                await emitter.flush()
+                archive_writer.close()
+            except Exception:
+                try:
+                    archive_writer.close()
+                except Exception:
+                    pass
+                await _fail_video_chunks(chunk_sink, "video_generation_failed")
+                raise
+        try:
+            output_mp4 = work_dir / "result.mp4"
+            await _ffmpeg_mux(
+                str(getattr(self.settings, "ffmpeg_bin", "ffmpeg") or "ffmpeg"),
+                video_only,
+                audio_wav,
+                output_mp4,
+            )
+            content = output_mp4.read_bytes()
+            duration = float(pcm.size) / float(sample_rate)
+            item = create_video_export(
+                _settings_path(self.settings, "exports_dir", "./data/exports"),
+                content=content,
+                mime_type="video/mp4",
+                kind="video_creation",
+                title=_safe_title(title, model=model_value, avatar_id=avatar_id),
+                duration_sec=duration,
+                session_id=None,
+                avatar_id=avatar_id,
+                model=model_value,
+                max_bytes=_settings_int(self.settings, "export_max_bytes", 1024 * 1024 * 1024),
+            )
+        except Exception:
+            if chunk_sink is not None:
+                await _fail_video_chunks(chunk_sink, "video_export_failed")
+            raise
+        if chunk_sink is not None:
+            await _finish_video_chunks(chunk_sink)
         log.info(
             "video creation export complete: job=%s export_id=%s model=%s avatar=%s path=%s",
             job_id,

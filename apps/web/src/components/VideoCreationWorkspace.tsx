@@ -5,7 +5,12 @@ import {
   ApiError,
   buildApiDownloadUrl,
   buildApiUrl,
+  createVideoCreationRTMPSJob,
   createVideoCreationJob,
+  getVideoCreationJob,
+  getVideoCreationRTMPSJob,
+  stopVideoCreationJob,
+  stopVideoCreationRTMPSJob,
   apiPostForm,
   type AvatarSummary,
   type DuoDialogLine,
@@ -17,6 +22,8 @@ import {
   type SceneBackgroundAsset,
   type SceneComposition,
   type VideoCreationCompositionConfig,
+  type VideoCreationJobResponse,
+  type VideoCreationRTMPSJob,
   type VoiceCatalogItem,
 } from "../lib/api";
 import type { VoiceCloneApplication } from "../lib/voiceCloneApply";
@@ -44,6 +51,7 @@ import {
   QWEN_VOICE_CLONE_TARGET_OPTIONS,
 } from "../constants/ttsQwen";
 import { buildTTSPreviewPayload, requestDuoDialogPreview, requestTTSPreview } from "../lib/ttsPreview";
+import { HlsVideoPlayer, type HlsPlayerState } from "./HlsVideoPlayer";
 
 export type VideoCreationAudioSource = "upload" | "tts_text" | "duo_dialog";
 type VideoCreationMode = "spoken_video" | "reference_video";
@@ -109,6 +117,21 @@ const VIDEO_CREATION_OUTPUT_RESOLUTION_OPTIONS = [480, 720, 1080, 1440, 2160] as
 type VideoCreationOutputResolution = number;
 const MAX_VIDEO_CREATION_OUTPUT_RESOLUTION = 2160;
 const VIDEO_CREATION_OUTPUT_ASPECTS = Object.keys(VIDEO_CREATION_OUTPUT_SIZES) as VideoCreationOutputAspect[];
+
+function defaultHlsPreviewUrl(streamKey = "rtmps-test"): string {
+  return `/streaming/hls/live/${encodeURIComponent(streamKey)}/index.m3u8`;
+}
+
+function shouldEndHlsPreview(
+  videoStatus: string | undefined,
+  rtmpsStatus: string | undefined,
+): boolean {
+  const failureStates = new Set(["failed", "error", "stopped", "cancelled"]);
+  if (failureStates.has(videoStatus ?? "") || failureStates.has(rtmpsStatus ?? "")) {
+    return true;
+  }
+  return ["completed", "done"].includes(videoStatus ?? "") && rtmpsStatus === "completed";
+}
 
 function evenVideoDim(value: number): number {
   const rounded = Math.max(2, Math.round(value));
@@ -471,6 +494,18 @@ export function VideoCreationWorkspace({
   const [title, setTitle] = useState("数字人口播视频");
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<ExportVideoItem | null>(null);
+  const [publishRtmps, setPublishRtmps] = useState(false);
+  const [rtmpsEndpoint, setRtmpsEndpoint] = useState("rtmps://127.0.0.1:1936/live");
+  const [rtmpsStreamKey, setRtmpsStreamKey] = useState("rtmps-test");
+  const [rtmpsUsername, setRtmpsUsername] = useState("publisher");
+  const [rtmpsPassword, setRtmpsPassword] = useState("");
+  const [streamingControlToken, setStreamingControlToken] = useState("");
+  const [hlsEndpoint, setHlsEndpoint] = useState(() => defaultHlsPreviewUrl());
+  const [hlsToken, setHlsToken] = useState("");
+  const [hlsPreviewActive, setHlsPreviewActive] = useState(false);
+  const [hlsPlayerState, setHlsPlayerState] = useState<HlsPlayerState>("idle");
+  const [videoJobStatus, setVideoJobStatus] = useState<VideoCreationJobResponse | null>(null);
+  const [rtmpsJobStatus, setRtmpsJobStatus] = useState<VideoCreationRTMPSJob | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [duoCloneTargetRole, setDuoCloneTargetRole] = useState<DuoDialogRole | null>(null);
   const [ttsPreviewing, setTtsPreviewing] = useState(false);
@@ -485,6 +520,8 @@ export function VideoCreationWorkspace({
   const sourceUploadRef = useRef<HTMLInputElement>(null);
   const ttsPreviewAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsPreviewUrlRef = useRef<string | null>(null);
+
+  const hlsStreamEnded = shouldEndHlsPreview(videoJobStatus?.status, rtmpsJobStatus?.status);
 
   const availableVideoModels = useMemo(() => VIDEO_CREATION_MODELS.filter((item) => models.includes(item)), [models]);
   const regularEffectiveModel = availableVideoModels.includes(model)
@@ -857,6 +894,115 @@ export function VideoCreationWorkspace({
     }
   }, [duoDialogGapMs, duoDialogLines, duoDialogSelected, duoDialogSpeakers, edgeVoice, effectiveIndexTTSConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, onNotify, qwenModel, qwenVoice, showIndexTTSControls, text, ttsProvider]);
 
+  const stopActiveVideoJobs = useCallback(async () => {
+    try {
+      const controlHeaders: Record<string, string> = {};
+      if (streamingControlToken.trim()) {
+        controlHeaders.Authorization = `Bearer ${streamingControlToken.trim()}`;
+      }
+      if (rtmpsJobStatus?.rtmps_job_id) {
+        await stopVideoCreationRTMPSJob(rtmpsJobStatus.rtmps_job_id, controlHeaders);
+      }
+      if (videoJobStatus?.job_id) {
+        await stopVideoCreationJob(videoJobStatus.job_id);
+      }
+      setHlsPreviewActive(false);
+      setHlsPlayerState("idle");
+      setGenerating(false);
+      onNotify?.("已停止视频生成和 RTMPS 发布。", "info");
+    } catch (error) {
+      const detail = error instanceof ApiError ? error.detail : error instanceof Error ? error.message : null;
+      onNotify?.(detail ? `停止失败：${detail}` : "停止视频任务失败。", "error");
+    }
+  }, [onNotify, rtmpsJobStatus?.rtmps_job_id, streamingControlToken, videoJobStatus?.job_id]);
+
+  const handleHlsPlayerState = useCallback((next: HlsPlayerState) => {
+    setHlsPlayerState(next);
+  }, []);
+
+  const toggleHlsPreview = useCallback(() => {
+    if (hlsPreviewActive) {
+      setHlsPreviewActive(false);
+      setHlsPlayerState("idle");
+      return;
+    }
+    if (!hlsEndpoint.trim()) {
+      onNotify?.("请填写 HLS 播放地址。", "info");
+      return;
+    }
+    if (!hlsToken.trim()) {
+      onNotify?.("请填写浏览器接收 Token：reader:<读取密码>。", "info");
+      return;
+    }
+    setHlsPreviewActive(true);
+  }, [hlsEndpoint, hlsPreviewActive, hlsToken, onNotify]);
+
+  const createAndMaybePublish = useCallback(async (input: Parameters<typeof createVideoCreationJob>[0]): Promise<VideoCreationJobResponse> => {
+    if (!publishRtmps) {
+      return createVideoCreationJob(input);
+    }
+    if (!rtmpsEndpoint.trim() || !rtmpsStreamKey.trim() || !rtmpsPassword.trim()) {
+      throw new Error("请填写 RTMPS endpoint、stream key 和发布密码。\n");
+    }
+    const source = await createVideoCreationJob({ ...input, executionMode: "async", waitForRTMPS: true });
+    setVideoJobStatus(source);
+    const authHeaders: Record<string, string> = {};
+    if (streamingControlToken.trim()) {
+      authHeaders.Authorization = `Bearer ${streamingControlToken.trim()}`;
+    }
+    let output: VideoCreationRTMPSJob;
+    try {
+      output = await createVideoCreationRTMPSJob({
+        videoCreationJobId: source.job_id,
+        endpoint: rtmpsEndpoint.trim(),
+        streamKey: rtmpsStreamKey.trim(),
+        username: rtmpsUsername.trim() || undefined,
+        password: rtmpsPassword,
+        controlHeaders: authHeaders,
+        profile: {
+          width: selectedVideoOutputSize.width,
+          height: selectedVideoOutputSize.height,
+          fps: 25,
+          gop_seconds: 1,
+        },
+      });
+    } catch (error) {
+      // The source is intentionally gated in publish mode. If RTMPS auth or
+      // endpoint validation fails, release that gate by stopping the source
+      // instead of leaving an in-memory job waiting forever.
+      await stopVideoCreationJob(source.job_id).catch(() => undefined);
+      throw error;
+    }
+    setRtmpsJobStatus(output);
+    // Start HLS as soon as the RTMPS job exists. The player waits for the
+    // MediaMTX path to become online, so the user does not need to guess when
+    // the first playable segment is ready.
+    if (hlsEndpoint.trim() && hlsToken.trim()) {
+      setHlsPreviewActive(true);
+    }
+    let latestSource = source;
+    let latestOutput = output;
+    for (let attempt = 0; attempt < 7200; attempt += 1) {
+      if (latestSource.status === "completed" || latestSource.status === "failed" || latestSource.status === "stopped") {
+        if (["completed", "failed", "stopped"].includes(latestOutput.status)) break;
+      }
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+      latestSource = await getVideoCreationJob(source.job_id);
+      setVideoJobStatus(latestSource);
+      latestOutput = await getVideoCreationRTMPSJob(output.rtmps_job_id, authHeaders);
+      setRtmpsJobStatus(latestOutput);
+      if (["failed", "stopped"].includes(latestSource.status)) break;
+      if (["failed", "stopped"].includes(latestOutput.status) && latestSource.status === "completed") break;
+    }
+    if (latestSource.status !== "completed" || !latestSource.export_video) {
+      throw new Error(`视频任务未完成：${latestSource.error_code ?? latestSource.status}`);
+    }
+    if (["failed", "stopped"].includes(latestOutput.status)) {
+      throw new Error(`RTMPS 发布未完成：${latestOutput.error_code ?? latestOutput.status}`);
+    }
+    return latestSource;
+  }, [hlsEndpoint, hlsToken, publishRtmps, rtmpsEndpoint, rtmpsPassword, rtmpsStreamKey, rtmpsUsername, selectedVideoOutputSize.height, selectedVideoOutputSize.width, streamingControlToken]);
+
   const handleGenerate = useCallback(async () => {
     if (!selectedAvatar) {
       onNotify?.("请先选择数字人资产。", "info");
@@ -890,9 +1036,16 @@ export function VideoCreationWorkspace({
     }
     setGenerating(true);
     setResult(null);
+    setVideoJobStatus(null);
+    setRtmpsJobStatus(null);
+    // Mount the HLS player immediately after the async source job appears.
+    // It will wait/retry while MediaMTX is still waiting for the first RTMPS
+    // keyframe, so short videos do not miss the only live window.
+    setHlsPreviewActive(Boolean(publishRtmps && hlsEndpoint.trim() && hlsToken.trim()));
+    setHlsPlayerState("idle");
     try {
       if (isReferenceVideoMode) {
-        const response = await createVideoCreationJob({
+        const response = await createAndMaybePublish({
           model: "flashtalk",
           avatarId: selectedAvatar.id,
           title,
@@ -900,13 +1053,14 @@ export function VideoCreationWorkspace({
           durationSec: referenceDurationSec,
           compositionConfig,
         });
+        if (!response.export_video) throw new Error("视频任务完成但没有返回 MP4 export");
         setResult(response.export_video);
         onExportCreated?.(response.export_video);
         onNotify?.(`参考视频已保存到资产库：${response.export_video.title}`, "success");
         return;
       }
       if (audioSource === "duo_dialog") {
-        const response = await createVideoCreationJob({
+        const response = await createAndMaybePublish({
           model: effectiveModel,
           avatarId: selectedAvatar.id,
           title,
@@ -918,12 +1072,13 @@ export function VideoCreationWorkspace({
           duoDialog: duoDialogRequest(duoDialogLines, duoDialogSpeakers, duoDialogGapMs),
           compositionConfig,
         });
+        if (!response.export_video) throw new Error("视频任务完成但没有返回 MP4 export");
         setResult(response.export_video);
         onExportCreated?.(response.export_video);
         onNotify?.(`视频创作已保存到资产库：${response.export_video.title}`, "success");
         return;
       }
-      const response = await createVideoCreationJob({
+      const response = await createAndMaybePublish({
         model: effectiveModel,
         avatarId: selectedAvatar.id,
         title,
@@ -938,17 +1093,18 @@ export function VideoCreationWorkspace({
         indexttsEmotionAudioFile,
         compositionConfig,
       });
+      if (!response.export_video) throw new Error("视频任务完成但没有返回 MP4 export");
       setResult(response.export_video);
       onExportCreated?.(response.export_video);
       onNotify?.(`视频创作已保存到资产库：${response.export_video.title}`, "success");
     } catch (error) {
       console.warn("video creation job failed", error);
-      const detail = error instanceof ApiError ? error.detail : null;
+      const detail = error instanceof ApiError ? error.detail : error instanceof Error ? error.message : null;
       onNotify?.(detail ? `视频创作失败：${detail}` : "视频创作失败，请查看后端日志。", "error");
     } finally {
       setGenerating(false);
     }
-  }, [audioFile, audioSource, compositionConfig, duoDialogAvailable, duoDialogGapMs, duoDialogLines, duoDialogSpeakers, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, isReferenceVideoMode, models, onExportCreated, onNotify, qwenModel, qwenVoice, referenceDurationSec, selectedAvatar, showIndexTTSControls, text, title, ttsProvider]);
+  }, [audioFile, audioSource, compositionConfig, createAndMaybePublish, duoDialogAvailable, duoDialogGapMs, duoDialogLines, duoDialogSpeakers, edgeVoice, effectiveIndexTTSConfig, effectiveModel, fasterliveportraitConfig, hlsEndpoint, hlsToken, indexttsConfig.emotion_mode, indexttsEmotionAudioFile, isReferenceVideoMode, models, onExportCreated, onNotify, publishRtmps, qwenModel, qwenVoice, referenceDurationSec, selectedAvatar, showIndexTTSEmotionStrength, showIndexTTSControls, text, title, ttsProvider]);
 
   return (
     <main className="flex min-h-0 flex-1 flex-col bg-slate-100 p-4">
@@ -1077,6 +1233,59 @@ export function VideoCreationWorkspace({
                 <input value={title} onChange={(event) => setTitle(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
               </label>
             </div>
+
+            <section className="mt-4 rounded-lg border border-orange-200 bg-orange-50/70 p-3">
+              <label className="flex items-center gap-2 text-sm font-semibold text-orange-900">
+                <input
+                  type="checkbox"
+                  checked={publishRtmps}
+                  onChange={(event) => setPublishRtmps(event.target.checked)}
+                  className="h-4 w-4 accent-orange-600"
+                />
+                边生成边发布 RTMPS
+              </label>
+              <p className="mt-1 text-xs leading-relaxed text-orange-800/80">
+                先创建异步视频任务，再把生成中的分片送入同一条 RTMPS 连接；最终 MP4 只作为并行归档结果。
+              </p>
+              {publishRtmps ? (
+                <div className="mt-3 space-y-2">
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      RTMPS endpoint
+                      <input value={rtmpsEndpoint} onChange={(event) => setRtmpsEndpoint(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="rtmps://127.0.0.1:1936/live" />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      Stream key
+                      <input value={rtmpsStreamKey} onChange={(event) => setRtmpsStreamKey(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="rtmps-test" autoComplete="off" />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      发布用户名
+                      <input value={rtmpsUsername} onChange={(event) => setRtmpsUsername(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="publisher" autoComplete="username" />
+                    </label>
+                    <label className="block text-xs font-semibold text-slate-700">
+                      发布密码
+                      <input type="password" value={rtmpsPassword} onChange={(event) => setRtmpsPassword(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="只在本次请求使用" autoComplete="new-password" />
+                    </label>
+                  </div>
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Streaming control token（生产环境必填，本地 harness bypass 可留空）
+                    <input type="password" value={streamingControlToken} onChange={(event) => setStreamingControlToken(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="OPENTALKING_STREAMING_CONTROL_TOKEN" autoComplete="off" />
+                  </label>
+                  <div className="rounded-md border border-cyan-200 bg-cyan-50/70 p-2.5">
+                    <p className="text-xs font-semibold text-cyan-900">浏览器预览（HLS，保留 H.264/AAC）</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-cyan-800/80">RTMPS 发布后，浏览器通过 HLS 播放完整画面和声音。接收 Token 只在当前页面内存中使用。</p>
+                    <label className="mt-2 block text-xs font-semibold text-slate-700">
+                      HLS 播放地址（同源代理）
+                      <input value={hlsEndpoint} onChange={(event) => setHlsEndpoint(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="/streaming/hls/live/rtmps-test/index.m3u8" autoComplete="off" />
+                    </label>
+                    <label className="mt-2 block text-xs font-semibold text-slate-700">
+                      浏览器接收 Token（格式：reader:读取密码）
+                      <input type="password" value={hlsToken} onChange={(event) => setHlsToken(event.target.value)} className="mt-1 w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-normal" placeholder="reader:读取密码" autoComplete="off" />
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+            </section>
 
             {!isReferenceVideoMode && effectiveModel === "fasterliveportrait" ? (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -1556,6 +1765,72 @@ export function VideoCreationWorkspace({
               </button>
               {result ? <span className="text-sm font-medium text-emerald-700">已保存到资产库</span> : null}
             </div>
+            {publishRtmps && (videoJobStatus || rtmpsJobStatus) ? (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                {generating ? (
+                  <button type="button" onClick={() => void stopActiveVideoJobs()} className="mb-3 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">
+                    停止生成与发布
+                  </button>
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <span className="font-semibold text-slate-800">生成状态：</span>
+                    {videoJobStatus?.status ?? "queued"}
+                    <span className="ml-2">{Math.round(videoJobStatus?.generated_duration_ms ?? 0)} ms</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-slate-800">RTMPS：</span>
+                    {rtmpsJobStatus?.status ?? "waiting_source"}
+                    <span className="ml-2">{Math.round(rtmpsJobStatus?.published_duration_ms ?? 0)} ms</span>
+                  </div>
+                  <div>缓冲：{Math.round(rtmpsJobStatus?.buffer_duration_ms ?? 0)} ms</div>
+                  <div>媒体帧：{rtmpsJobStatus?.sent_video ?? 0} / {rtmpsJobStatus?.sent_audio ?? 0}</div>
+                  <div>发送字节：{Math.round((rtmpsJobStatus?.bytes_sent ?? 0) / 1024)} KB</div>
+                  <div className={rtmpsJobStatus?.dropped_chunks ? "font-semibold text-red-700" : ""}>丢弃分片：{rtmpsJobStatus?.dropped_chunks ?? 0}</div>
+                </div>
+                {rtmpsJobStatus?.last_error ? <p className="mt-2 text-red-700">错误：{rtmpsJobStatus.last_error}</p> : null}
+              </div>
+            ) : null}
+            {publishRtmps && (videoJobStatus || rtmpsJobStatus) ? (
+              <section className="mt-4 rounded-lg border border-cyan-200 bg-cyan-50/60 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-cyan-950">浏览器视频和音频预览</p>
+                    <p className="mt-1 text-xs leading-relaxed text-cyan-900/75">链路：RTMPS H.264/AAC → HLS fMP4 → 浏览器播放器。优化后首帧通常约 1～3 秒。</p>
+                  </div>
+                  <button type="button" onClick={toggleHlsPreview} className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white ${hlsPreviewActive ? "bg-slate-700 hover:bg-slate-600" : "bg-cyan-700 hover:bg-cyan-600"}`}>
+                    {hlsPreviewActive ? "停止浏览器预览" : "开始浏览器预览"}
+                  </button>
+                </div>
+                {hlsPreviewActive ? (
+                  <div className="mt-3">
+                    <HlsVideoPlayer
+                      key={videoJobStatus?.job_id ?? "pending-video-job"}
+                      src={hlsEndpoint}
+                      token={hlsToken}
+                      playbackMode="once"
+                      streamEnded={hlsStreamEnded}
+                      onStateChange={handleHlsPlayerState}
+                    />
+                    <p className="mt-2 text-xs text-cyan-900/75">
+                      HLS 状态：{hlsPlayerState === "playing"
+                        ? "播放中（画面和声音）"
+                        : hlsPlayerState === "ready"
+                          ? "已就绪，请点击视频播放"
+                          : hlsPlayerState === "loading"
+                            ? "加载中"
+                            : hlsPlayerState === "ended"
+                              ? "发布完成，预览结束（请查看下方 MP4）"
+                              : hlsPlayerState === "error"
+                                ? "失败"
+                                : "未启动"}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-cyan-900/75">点击“生成并保存”后会自动启动 HLS；播放器会等待 RTMPS 流上线并自动播放画面和声音。</p>
+                )}
+              </section>
+            ) : null}
             {result ? (
               <div data-testid="video-creation-result-panel" className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">

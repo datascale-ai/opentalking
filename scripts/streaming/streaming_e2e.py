@@ -16,7 +16,10 @@ def main() -> int:
     parser.add_argument("--avatar", required=True)
     parser.add_argument("--model", default="mock")
     parser.add_argument("--tts-provider", default="mock")
-    parser.add_argument("--control-token", default="")
+    parser.add_argument(
+        "--control-token",
+        default=os.environ.get("OPENTALKING_STREAMING_CONTROL_TOKEN", ""),
+    )
     parser.add_argument("--rtmps-endpoint", required=True)
     parser.add_argument("--rtmps-stream-key", required=True)
     parser.add_argument("--rtmps-username", default=os.environ.get("OPENTALKING_HARNESS_RTMPS_USERNAME", ""))

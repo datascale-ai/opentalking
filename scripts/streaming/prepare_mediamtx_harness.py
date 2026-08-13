@@ -8,6 +8,7 @@ The generated files live below ``outputs/`` (which is gitignored) and are
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import os
 import secrets
 from pathlib import Path
@@ -29,6 +30,12 @@ def main() -> int:
     parser.add_argument("--output-dir", default="outputs/streaming")
     args = parser.parse_args()
     template = Path(args.template).read_text(encoding="utf-8")
+    public_ip = os.environ.get("OPENTALKING_STREAMING_PUBLIC_IP", "").strip()
+    if public_ip:
+        try:
+            ipaddress.ip_address(public_ip)
+        except ValueError as exc:
+            raise SystemExit(f"OPENTALKING_STREAMING_PUBLIC_IP is not an IP address: {public_ip}") from exc
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     publish_password = secrets.token_urlsafe(24)
@@ -54,6 +61,16 @@ def main() -> int:
         path: whip-test
 '''
     rendered = template.replace("authInternalUsers: []", auth.rstrip())
+    if public_ip:
+        # The default harness is loopback-only. A remote browser needs the
+        # server address for WebRTC signaling and ICE media candidates.
+        rendered = rendered.replace("webrtcAddress: 127.0.0.1:8889", "webrtcAddress: 0.0.0.0:8889")
+        rendered = rendered.replace("webrtcLocalUDPAddress: 127.0.0.1:8189", "webrtcLocalUDPAddress: 0.0.0.0:8189")
+        rendered = rendered.replace("webrtcLocalTCPAddress: 127.0.0.1:8190", "webrtcLocalTCPAddress: 0.0.0.0:8190")
+        rendered = rendered.replace(
+            "webrtcAdditionalHosts:\n  - 127.0.0.1",
+            f"webrtcAdditionalHosts:\n  - 127.0.0.1\n  - {public_ip}",
+        )
     config_path = output_dir / "mediamtx.generated.yml"
     credentials_path = output_dir / "credentials.env"
     _write_private(config_path, rendered)
