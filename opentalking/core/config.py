@@ -379,7 +379,12 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    cors_origins: str | list[str] = "*"
+    # Default to the shipped WebUI origins only. A wildcard here is not inert:
+    # combined with allow_credentials=True it makes CORS preflight approve
+    # cross-origin JSON requests from any site, so a page the operator visits
+    # can drive the API (including POST /runtime-config/apply). Widen this
+    # explicitly via OPENTALKING_CORS_ORIGINS when the UI is served elsewhere.
+    cors_origins: str | list[str] = "http://localhost:5173,http://127.0.0.1:5173"
 
     redis_url: str = "redis://localhost:6379/0"
     avatars_dir: str = "./examples/avatars"
