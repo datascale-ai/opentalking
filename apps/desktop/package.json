@@ -1,0 +1,49 @@
+{
+  "name": "opentalking-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Electron desktop client for OpenTalking",
+  "author": "OpenTalking",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/datascale-ai/opentalking.git",
+    "directory": "apps/desktop"
+  },
+  "main": ".vite/build/main.js",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && npm run build:main && npm run build:preload && npm run build:renderer",
+    "build:main": "vite build --config vite.main.config.ts",
+    "build:preload": "vite build --config vite.preload.config.ts",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "prepare:binaries": "bash scripts/prepare-extra-binaries.sh",
+    "make:mac": "npm run prepare:binaries && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.json5 --mac --publish never",
+    "make:mac:signed": "npm run prepare:binaries && npm run build && OPENTALKING_MAC_NOTARIZE=1 electron-builder --config electron-builder.json5 --mac --publish never",
+    "make:win": "npm run prepare:binaries && npm run build && electron-builder --config electron-builder.json5 --win --x64 --publish never",
+    "package:mac": "npm run prepare:binaries && npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --config electron-builder.json5 --mac --dir --publish never",
+    "package:win": "npm run prepare:binaries && npm run build && electron-builder --config electron-builder.json5 --win --x64 --dir --publish never",
+    "smoke": "npm run build"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "extract-zip": "^2.0.1",
+    "http-proxy": "^1.18.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.5.0",
+    "@types/http-proxy": "^1.17.15",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "electron": "^33.2.1",
+    "electron-builder": "^24.13.3",
+    "typescript": "~5.6.3",
+    "vite": "^5.4.11"
+  }
+}

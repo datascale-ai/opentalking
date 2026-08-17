@@ -1,0 +1,83 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "cc.opentalking.desktop",
+  "productName": "OpenTalking Desktop",
+  "asar": true,
+  "npmRebuild": true,
+  "publish": null,
+  "directories": {
+    "output": "dist-release",
+    "buildResources": "resources/build"
+  },
+  "files": [
+    ".vite/build/**",
+    ".vite/renderer/**",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/extra/${os}-${arch}",
+      "to": "extra/${os}-${arch}",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "mac": {
+    "category": "public.app-category.video",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "arm64",
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+    "hardenedRuntime": true,
+    "gatekeeperAssess": false,
+    "entitlements": "entitlements.mac.plist",
+    "entitlementsInherit": "entitlements.mac.plist",
+    "extendInfo": {
+      "NSCameraUsageDescription": "OpenTalking uses the camera when a desktop workflow needs video input for realtime digital-human interaction.",
+      "NSMicrophoneUsageDescription": "OpenTalking uses the microphone for realtime voice input and speech-driven digital-human interaction.",
+      "NSDocumentsFolderUsageDescription": "OpenTalking may import model packages and save works selected by the user.",
+      "NSDownloadsFolderUsageDescription": "OpenTalking may import model packages downloaded by the user."
+    }
+  },
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "zip",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-${version}-win-${arch}.${ext}",
+    "requestedExecutionLevel": "asInvoker"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "shortcutName": "OpenTalking Desktop",
+    "uninstallDisplayName": "OpenTalking Desktop"
+  },
+  "afterSign": "scripts/notarize.cjs"
+}

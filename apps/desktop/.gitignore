@@ -1,0 +1,14 @@
+node_modules/
+.vite/
+out/
+dist-release/
+dist/
+build/
+!resources/build/
+!resources/build/.gitkeep
+resources/extra/*
+!resources/extra/common/
+!resources/extra/common/.gitkeep
+.binary-work/
+.DS_Store
+*.local

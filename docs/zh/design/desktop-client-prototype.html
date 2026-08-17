@@ -1,0 +1,2425 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenTalking Desktop Prototype</title>
+  <style>
+    :root {
+      --bg: #f4f6f5;
+      --app: #ffffff;
+      --panel: #ffffff;
+      --panel-soft: #f8faf9;
+      --panel-warm: #fbf7ef;
+      --line: #dde5e2;
+      --line-soft: #edf2f0;
+      --ink: #17221f;
+      --text: #27342f;
+      --muted: #65736e;
+      --subtle: #8b9893;
+      --green: #157a53;
+      --green-soft: #e6f5ee;
+      --blue: #2563eb;
+      --blue-soft: #e9f0ff;
+      --amber: #a86613;
+      --amber-soft: #fff3d8;
+      --red: #b93f34;
+      --red-soft: #fff0ed;
+      --violet: #6d5bd0;
+      --violet-soft: #efedff;
+      --shadow: 0 18px 42px rgba(24, 35, 31, 0.12);
+      --radius: 8px;
+      --nav: 208px;
+      --top: 64px;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-width: 1180px;
+      margin: 0;
+      background: var(--bg);
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .shell {
+      width: min(1540px, calc(100vw - 36px));
+      height: min(940px, calc(100vh - 36px));
+      min-height: 820px;
+      margin: 18px auto;
+      display: grid;
+      grid-template-columns: var(--nav) 1fr;
+      grid-template-rows: var(--top) 1fr;
+      overflow: hidden;
+      border: 1px solid rgba(23, 34, 31, 0.12);
+      border-radius: 16px;
+      background: var(--app);
+      box-shadow: var(--shadow);
+    }
+
+    .topbar {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: var(--nav) 1fr auto;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+    }
+
+    .brand {
+      height: var(--top);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      border-right: 1px solid var(--line);
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: #163f34;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 15px;
+      line-height: 19px;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 14px;
+      white-space: nowrap;
+    }
+
+    .top-main {
+      min-width: 0;
+      padding: 0 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .title-block {
+      min-width: 0;
+    }
+
+    .title-block h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 24px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .title-block p {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-strip,
+    .top-actions,
+    .row,
+    .button-row,
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-strip {
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .top-actions {
+      padding-right: 16px;
+    }
+
+    .pill,
+    .tag,
+    .state {
+      min-height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .tag.green,
+    .state.ready {
+      border-color: rgba(21, 122, 83, 0.2);
+      background: var(--green-soft);
+      color: var(--green);
+    }
+
+    .tag.blue,
+    .state.remote {
+      border-color: rgba(37, 99, 235, 0.22);
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .tag.amber,
+    .state.warn {
+      border-color: rgba(168, 102, 19, 0.24);
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .tag.red,
+    .state.error {
+      border-color: rgba(185, 63, 52, 0.2);
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .tag.violet {
+      border-color: rgba(109, 91, 208, 0.22);
+      background: var(--violet-soft);
+      color: var(--violet);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--subtle);
+    }
+
+    .dot.ready {
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(21, 122, 83, 0.12);
+    }
+
+    .dot.warn {
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(168, 102, 19, 0.12);
+    }
+
+    .dot.error {
+      background: var(--red);
+      box-shadow: 0 0 0 4px rgba(185, 63, 52, 0.12);
+    }
+
+    .button,
+    .icon-button,
+    .nav-item {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--text);
+      border-radius: 8px;
+      transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+    }
+
+    .button {
+      min-height: 34px;
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-size: 13px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .button:hover,
+    .icon-button:hover,
+    .nav-item:hover {
+      border-color: #b9c6c1;
+      background: var(--panel-soft);
+    }
+
+    .button.primary {
+      border-color: #163f34;
+      background: #163f34;
+      color: #ffffff;
+    }
+
+    .button.primary:hover {
+      background: #0f352b;
+      border-color: #0f352b;
+    }
+
+    .button.success {
+      border-color: var(--green);
+      background: var(--green);
+      color: #ffffff;
+    }
+
+    .button.danger {
+      border-color: rgba(185, 63, 52, 0.24);
+      background: var(--red-soft);
+      color: var(--red);
+    }
+
+    .button.ghost {
+      background: transparent;
+    }
+
+    .icon-button {
+      width: 34px;
+      height: 34px;
+      display: inline-grid;
+      place-items: center;
+      font-size: 14px;
+      font-weight: 750;
+    }
+
+    .sidebar {
+      grid-row: 2;
+      border-right: 1px solid var(--line);
+      background: #fbfcfb;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .nav {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .nav-item {
+      width: 100%;
+      min-height: 38px;
+      padding: 0 10px;
+      display: grid;
+      grid-template-columns: 24px 1fr auto;
+      align-items: center;
+      gap: 8px;
+      border-color: transparent;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+      font-size: 13px;
+      font-weight: 620;
+    }
+
+    .nav-item.active {
+      border-color: rgba(21, 122, 83, 0.16);
+      background: var(--green-soft);
+      color: #143f34;
+    }
+
+    .nav-icon {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: #ffffff;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .nav-item.active .nav-icon {
+      border-color: rgba(21, 122, 83, 0.22);
+      color: var(--green);
+    }
+
+    .badge {
+      min-width: 21px;
+      height: 20px;
+      padding: 0 6px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 999px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 12px;
+      border-top: 1px solid var(--line);
+    }
+
+    .current-box {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .current-box .label {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 15px;
+    }
+
+    .current-box strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .current-box .mini {
+      margin-top: 10px;
+      display: grid;
+      gap: 7px;
+    }
+
+    .mini-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .mini-line b {
+      color: var(--text);
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .main {
+      grid-row: 2;
+      min-width: 0;
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .view {
+      display: none;
+      height: 100%;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .screen {
+      display: grid;
+      gap: 14px;
+      max-width: 1260px;
+      margin: 0 auto;
+    }
+
+    .screen.wide {
+      max-width: 1320px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    .panel.soft {
+      background: var(--panel-soft);
+    }
+
+    .panel-head {
+      min-height: 52px;
+      padding: 13px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+
+    .panel-title {
+      min-width: 0;
+    }
+
+    .panel-title h2,
+    .panel-title h3 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 20px;
+    }
+
+    .panel-title p {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .panel-body {
+      padding: 14px;
+    }
+
+    .home-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.75fr);
+      gap: 14px;
+    }
+
+    .hero-workbench {
+      min-height: 312px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 310px;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #ffffff;
+    }
+
+    .hero-copy {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .hero-copy h2 {
+      margin: 0;
+      max-width: 620px;
+      font-size: 26px;
+      line-height: 34px;
+      letter-spacing: 0;
+    }
+
+    .hero-copy p {
+      margin: 8px 0 0;
+      max-width: 620px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 22px;
+    }
+
+    .ready-list {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .ready-item {
+      min-height: 72px;
+      padding: 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .ready-item .row {
+      justify-content: space-between;
+    }
+
+    .ready-item strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .ready-item span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 15px;
+    }
+
+    .avatar-preview {
+      min-height: 276px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, #f8faf9, #eef4f1);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      overflow: hidden;
+    }
+
+    .avatar-head {
+      margin: 28px auto 0;
+      width: 126px;
+      height: 126px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 50% 38%, #ffe6ca 0 36%, transparent 37%),
+        linear-gradient(180deg, #182b35 0 48%, #273f48 49% 100%);
+      border: 1px solid rgba(23, 34, 31, 0.18);
+      position: relative;
+    }
+
+    .avatar-head::before,
+    .avatar-head::after {
+      content: "";
+      position: absolute;
+      top: 55px;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #26322e;
+    }
+
+    .avatar-head::before {
+      left: 42px;
+    }
+
+    .avatar-head::after {
+      right: 42px;
+    }
+
+    .avatar-body {
+      margin: 10px auto 0;
+      width: 164px;
+      height: 98px;
+      border-radius: 36px 36px 0 0;
+      background: #163f34;
+      border: 1px solid rgba(23, 34, 31, 0.18);
+    }
+
+    .stage-caption {
+      margin-top: auto;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      border-top: 1px solid var(--line);
+    }
+
+    .stage-caption strong {
+      display: block;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .stage-caption span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .next-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .action-card {
+      min-height: 156px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      justify-content: space-between;
+    }
+
+    .action-card:hover {
+      border-color: rgba(21, 122, 83, 0.34);
+    }
+
+    .action-card h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 20px;
+    }
+
+    .action-card p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .status-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 52px;
+      padding: 10px 12px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .summary-row strong {
+      display: block;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .summary-row span {
+      display: block;
+      margin-top: 1px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .live-grid {
+      height: calc(100vh - 140px);
+      min-height: 700px;
+      display: grid;
+      grid-template-columns: 280px minmax(430px, 1fr) 330px;
+      gap: 14px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .choice-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .choice {
+      width: 100%;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      text-align: left;
+    }
+
+    .choice.selected {
+      border-color: rgba(21, 122, 83, 0.35);
+      background: var(--green-soft);
+    }
+
+    .choice strong {
+      display: block;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .choice span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .stage {
+      min-height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #111f1b;
+      color: #ffffff;
+    }
+
+    .stage-top,
+    .stage-bottom {
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .stage-bottom {
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      border-bottom: 0;
+    }
+
+    .stage-top .pill,
+    .stage-bottom .pill {
+      border-color: rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .stage-scene {
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      position: relative;
+    }
+
+    .stage-avatar {
+      width: min(360px, 70%);
+      aspect-ratio: 3 / 4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      border-radius: 12px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .stage-avatar .avatar-head {
+      width: 148px;
+      height: 148px;
+      margin-top: 0;
+    }
+
+    .stage-avatar .avatar-body {
+      width: 190px;
+      height: 142px;
+      margin-bottom: 0;
+      background: #23614f;
+    }
+
+    .subtitle-box {
+      position: absolute;
+      left: 32px;
+      right: 32px;
+      bottom: 28px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.58);
+      color: #ffffff;
+      font-size: 15px;
+      line-height: 22px;
+      text-align: center;
+    }
+
+    .chat-panel {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+    }
+
+    .messages {
+      min-height: 0;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      overflow: auto;
+    }
+
+    .bubble {
+      max-width: 88%;
+      padding: 10px 11px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 19px;
+    }
+
+    .bubble.user {
+      margin-left: auto;
+      background: #163f34;
+      color: #ffffff;
+    }
+
+    .bubble.assistant {
+      margin-right: auto;
+      background: var(--panel-soft);
+      border: 1px solid var(--line-soft);
+      color: var(--text);
+    }
+
+    .chat-input {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+    }
+
+    .input,
+    .textarea,
+    .select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      outline: none;
+    }
+
+    .input,
+    .select {
+      height: 36px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
+    .textarea {
+      min-height: 104px;
+      padding: 10px;
+      resize: vertical;
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    .input:focus,
+    .textarea:focus,
+    .select:focus {
+      border-color: rgba(21, 122, 83, 0.48);
+      box-shadow: 0 0 0 3px rgba(21, 122, 83, 0.1);
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .create-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 14px;
+    }
+
+    .mode-tabs {
+      display: inline-flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+    }
+
+    .mode-tab {
+      min-height: 30px;
+      padding: 0 10px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .mode-tab.active {
+      background: #ffffff;
+      color: var(--ink);
+      box-shadow: 0 1px 2px rgba(23, 34, 31, 0.08);
+    }
+
+    .mode-panel {
+      display: none;
+    }
+
+    .mode-panel.active {
+      display: block;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .form-grid .full {
+      grid-column: 1 / -1;
+    }
+
+    .preview-box {
+      min-height: 264px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 1fr auto;
+    }
+
+    .preview-scene {
+      min-height: 200px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, #eef5f1, #ffffff);
+    }
+
+    .preview-scene .avatar-head {
+      width: 92px;
+      height: 92px;
+      margin: 0;
+    }
+
+    .preview-info {
+      padding: 12px;
+      border-top: 1px solid var(--line);
+      background: #ffffff;
+    }
+
+    .preview-info strong {
+      display: block;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .preview-info span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 16px;
+    }
+
+    .progress {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--line-soft);
+    }
+
+    .progress span {
+      display: block;
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+      transition: width .2s ease;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .table th,
+    .table td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .table th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      background: var(--panel-soft);
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .asset-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .asset-card,
+    .package-card,
+    .tool-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #ffffff;
+    }
+
+    .asset-card {
+      overflow: hidden;
+    }
+
+    .asset-thumb {
+      height: 150px;
+      display: grid;
+      place-items: center;
+      background: var(--panel-soft);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .asset-thumb .avatar-head {
+      width: 82px;
+      height: 82px;
+      margin: 0;
+    }
+
+    .asset-body {
+      padding: 12px;
+    }
+
+    .asset-body strong {
+      display: block;
+      font-size: 14px;
+      line-height: 19px;
+    }
+
+    .asset-body p {
+      margin: 4px 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .voice-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .voice-item {
+      min-height: 112px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      display: grid;
+      gap: 10px;
+    }
+
+    .wave {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .wave i {
+      width: 5px;
+      border-radius: 999px;
+      background: #9ab4ab;
+    }
+
+    .wave i:nth-child(1) { height: 18px; }
+    .wave i:nth-child(2) { height: 28px; }
+    .wave i:nth-child(3) { height: 22px; }
+    .wave i:nth-child(4) { height: 32px; }
+    .wave i:nth-child(5) { height: 16px; }
+    .wave i:nth-child(6) { height: 25px; }
+    .wave i:nth-child(7) { height: 19px; }
+
+    .packages-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 14px;
+    }
+
+    .package-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .package-card {
+      min-height: 230px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .package-head {
+      display: grid;
+      grid-template-columns: 44px 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .package-icon {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: var(--green);
+      font-weight: 800;
+    }
+
+    .package-head h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 20px;
+    }
+
+    .package-head p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 17px;
+    }
+
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .compat {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+    }
+
+    .compat span {
+      min-height: 34px;
+      padding: 6px 7px;
+      border: 1px solid var(--line-soft);
+      border-radius: 7px;
+      background: var(--panel-soft);
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 15px;
+    }
+
+    .compat span.ok {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(21, 122, 83, 0.16);
+    }
+
+    .compat span.no {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(168, 102, 19, 0.16);
+    }
+
+    .log-box {
+      height: 180px;
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #18231f;
+      color: #cfe4da;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 18px;
+      white-space: pre-wrap;
+    }
+
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .tool-card {
+      min-height: 152px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .tool-card h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 20px;
+    }
+
+    .tool-card p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .settings-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.55fr);
+      gap: 14px;
+    }
+
+    .key-value {
+      display: grid;
+      gap: 8px;
+    }
+
+    .kv-row {
+      display: grid;
+      grid-template-columns: 140px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1px solid var(--line-soft);
+      border-radius: 8px;
+      background: #ffffff;
+      font-size: 13px;
+    }
+
+    .kv-row span {
+      color: var(--muted);
+    }
+
+    .webui-box {
+      min-height: 520px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #b9c6c1;
+      border-radius: var(--radius);
+      background: #ffffff;
+      text-align: center;
+      padding: 28px;
+    }
+
+    .webui-box h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 26px;
+    }
+
+    .webui-box p {
+      margin: 8px auto 18px;
+      max-width: 480px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 21px;
+    }
+
+    .toast {
+      position: fixed;
+      right: 28px;
+      bottom: 28px;
+      z-index: 20;
+      transform: translateY(16px);
+      opacity: 0;
+      pointer-events: none;
+      padding: 11px 14px;
+      border: 1px solid rgba(21, 122, 83, 0.18);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--text);
+      box-shadow: 0 14px 36px rgba(24, 35, 31, 0.16);
+      font-size: 13px;
+      transition: opacity .16s ease, transform .16s ease;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    @media (max-width: 1240px) {
+      body {
+        min-width: 1040px;
+      }
+
+      .shell {
+        width: calc(100vw - 24px);
+        margin: 12px auto;
+      }
+
+      .home-grid,
+      .create-grid,
+      .packages-layout,
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .live-grid {
+        grid-template-columns: 260px minmax(380px, 1fr) 310px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">OT</div>
+        <div>
+          <strong>OpenTalking</strong>
+          <span>Desktop Workbench</span>
+        </div>
+      </div>
+      <div class="top-main">
+        <div class="title-block">
+          <h1 id="page-title">首页</h1>
+          <p id="page-subtitle">确认当前体验状态，选择下一步任务</p>
+        </div>
+        <div class="status-strip">
+          <span class="pill"><span class="dot ready"></span>基础体验可用</span>
+          <span class="pill"><span class="dot warn"></span>QuickTalk 未启动</span>
+          <span class="pill">当前组合：<b id="top-combo">新闻主播 + 自然女声</b></span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button class="button" type="button" data-action="check">状态检查</button>
+        <button class="button primary" type="button" data-action="start-mock">启动基础体验</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-item active" type="button" data-view="home">
+          <span class="nav-icon">首</span><span>首页</span><span></span>
+        </button>
+        <button class="nav-item" type="button" data-view="live">
+          <span class="nav-icon">对</span><span>实时对话</span><span></span>
+        </button>
+        <button class="nav-item" type="button" data-view="create">
+          <span class="nav-icon">成</span><span>生成视频</span><span></span>
+        </button>
+        <button class="nav-item" type="button" data-view="avatars">
+          <span class="nav-icon">人</span><span>数字人</span><span class="badge">3</span>
+        </button>
+        <button class="nav-item" type="button" data-view="voices">
+          <span class="nav-icon">声</span><span>声音</span><span class="badge">4</span>
+        </button>
+        <button class="nav-item" type="button" data-view="packages">
+          <span class="nav-icon">模</span><span>模型包</span><span class="badge">2</span>
+        </button>
+        <button class="nav-item" type="button" data-view="works">
+          <span class="nav-icon">品</span><span>作品</span><span class="badge">8</span>
+        </button>
+        <button class="nav-item" type="button" data-view="tools">
+          <span class="nav-icon">工</span><span>工具</span><span></span>
+        </button>
+        <button class="nav-item" type="button" data-view="settings">
+          <span class="nav-icon">设</span><span>设置与诊断</span><span></span>
+        </button>
+        <button class="nav-item" type="button" data-view="webui">
+          <span class="nav-icon">旧</span><span>兼容 WebUI</span><span></span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="current-box">
+          <div class="label">当前工作组合</div>
+          <strong id="side-combo">新闻主播 + 自然女声</strong>
+          <div class="mini">
+            <div class="mini-line"><span>后端</span><b>Mock API</b></div>
+            <div class="mini-line"><span>模型包</span><b id="side-package">未运行</b></div>
+            <div class="mini-line"><span>作品</span><b>8 个</b></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="view active" id="view-home" data-title="首页" data-subtitle="确认当前体验状态，选择下一步任务">
+        <div class="screen wide">
+          <div class="home-grid">
+            <div class="hero-workbench">
+              <div class="hero-copy">
+                <div>
+                  <div class="tag green">基础体验已准备</div>
+                  <h2>先选好数字人和声音，再开始对话或生成视频</h2>
+                  <p>OpenTalking 桌面端把普通用户的主流程收敛成三步：准备形象和声音，确认模型服务可用，进入实时对话或视频生成。</p>
+                </div>
+                <div class="ready-list">
+                  <div class="ready-item">
+                    <div class="row"><span>数字人</span><span class="dot ready"></span></div>
+                    <strong id="home-avatar">新闻主播</strong>
+                    <span>可用于实时对话</span>
+                  </div>
+                  <div class="ready-item">
+                    <div class="row"><span>声音</span><span class="dot ready"></span></div>
+                    <strong id="home-voice">自然女声</strong>
+                    <span>支持试听和生成</span>
+                  </div>
+                  <div class="ready-item">
+                    <div class="row"><span>后端</span><span class="dot ready"></span></div>
+                    <strong>Mock API</strong>
+                    <span>基础体验可用</span>
+                  </div>
+                  <div class="ready-item">
+                    <div class="row"><span>模型包</span><span class="dot warn"></span></div>
+                    <strong id="home-package">未启动</strong>
+                    <span>可导入 QuickTalk</span>
+                  </div>
+                </div>
+                <div class="button-row">
+                  <button class="button primary" type="button" data-jump="live">进入实时对话</button>
+                  <button class="button" type="button" data-jump="create">生成口播视频</button>
+                  <button class="button" type="button" data-jump="packages">管理模型包</button>
+                </div>
+              </div>
+              <div class="avatar-preview">
+                <div class="avatar-head"></div>
+                <div class="avatar-body"></div>
+                <div class="stage-caption">
+                  <strong id="home-combo">新闻主播 + 自然女声</strong>
+                  <span>当前组合会同步到实时对话和生成视频</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="status-stack">
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>下一步</h2>
+                    <p>保持首页只给用户最清晰的入口</p>
+                  </div>
+                </div>
+                <div class="panel-body status-stack">
+                  <div class="summary-row">
+                    <div><strong>基础体验</strong><span>无需模型包，适合先熟悉流程</span></div>
+                    <button class="button primary" type="button" data-jump="live">开始</button>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>本地高质量模式</strong><span>导入 QuickTalk .otpkg 后启动</span></div>
+                    <button class="button" type="button" data-jump="packages">导入</button>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>远端 API</strong><span>连接已有 OpenTalking 服务</span></div>
+                    <button class="button" type="button" data-jump="settings">配置</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>最近任务</h2>
+                    <p>任务完成后统一进入作品</p>
+                  </div>
+                  <button class="button" type="button" data-jump="works">查看全部</button>
+                </div>
+                <div class="panel-body status-stack">
+                  <div class="summary-row">
+                    <div><strong>课程开场口播</strong><span>视频生成 · 已完成</span></div>
+                    <span class="state ready">可下载</span>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>客服欢迎语</strong><span>声音试听 · 已完成</span></div>
+                    <span class="state ready">可试听</span>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>产品介绍</strong><span>对口型视频 · 排队中</span></div>
+                    <span class="state warn">等待</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="next-grid">
+            <div class="action-card">
+              <div>
+                <span class="tag green">实时</span>
+                <h3>数字人对话</h3>
+                <p>左侧准备形象和声音，中间是数字人舞台，右侧输入文字或语音。</p>
+              </div>
+              <button class="button primary" type="button" data-jump="live">开始对话</button>
+            </div>
+            <div class="action-card">
+              <div>
+                <span class="tag blue">任务</span>
+                <h3>生成视频</h3>
+                <p>输入脚本，选择数字人和声音，生成结果自动沉淀到作品。</p>
+              </div>
+              <button class="button" type="button" data-jump="create">创建视频</button>
+            </div>
+            <div class="action-card">
+              <div>
+                <span class="tag amber">模型</span>
+                <h3>QuickTalk 本地包</h3>
+                <p>参考 AIGCPanel 的模型服务卡片，导入、启动、看日志都在一处完成。</p>
+              </div>
+              <button class="button" type="button" data-jump="packages">打开模型包</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-live" data-title="实时对话" data-subtitle="三栏布局：准备、数字人舞台、对话消息">
+        <div class="screen wide">
+          <div class="live-grid">
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>对话前准备</h2>
+                    <p>先确认形象、声音和后端</p>
+                  </div>
+                </div>
+                <div class="panel-body stack">
+                  <div class="field">
+                    <label>数字人</label>
+                    <select class="select" id="live-avatar-select">
+                      <option>新闻主播</option>
+                      <option>课程老师</option>
+                      <option>客服助理</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>声音</label>
+                    <select class="select" id="live-voice-select">
+                      <option>自然女声</option>
+                      <option>稳重男声</option>
+                      <option>课程讲解</option>
+                      <option>客服亲和</option>
+                    </select>
+                  </div>
+                  <div class="choice-list">
+                    <button class="choice selected" type="button">
+                      <strong>文字输入</strong>
+                      <span>稳定、适合演示和客服脚本</span>
+                    </button>
+                    <button class="choice" type="button">
+                      <strong>麦克风对话</strong>
+                      <span>需要系统麦克风权限</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>运行状态</h2>
+                    <p>普通用户只看可用性</p>
+                  </div>
+                </div>
+                <div class="panel-body status-stack">
+                  <div class="summary-row">
+                    <div><strong>OpenTalking API</strong><span>127.0.0.1:8010</span></div>
+                    <span class="state ready">可用</span>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>QuickTalk</strong><span id="live-package-text">未启动</span></div>
+                    <span class="state warn" id="live-package-state">未运行</span>
+                  </div>
+                  <button class="button" type="button" data-jump="packages">打开模型包</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="stage">
+              <div class="stage-top">
+                <div class="row">
+                  <span class="pill" id="stage-avatar">新闻主播</span>
+                  <span class="pill" id="stage-voice">自然女声</span>
+                </div>
+                <span class="pill"><span class="dot ready"></span>已连接</span>
+              </div>
+              <div class="stage-scene">
+                <div class="stage-avatar">
+                  <div class="avatar-head"></div>
+                  <div class="avatar-body"></div>
+                </div>
+                <div class="subtitle-box" id="stage-subtitle">你好，我是 OpenTalking 数字人。输入一句话，我会同步生成语音和画面。</div>
+              </div>
+              <div class="stage-bottom">
+                <div class="button-row">
+                  <button class="button success" type="button" id="start-session">开始</button>
+                  <button class="button" type="button">打断</button>
+                  <button class="button" type="button">录制</button>
+                </div>
+                <div class="row">
+                  <span class="pill">延迟 180ms</span>
+                  <span class="pill">字幕开启</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel chat-panel">
+              <div class="panel-head">
+                <div class="panel-title">
+                  <h2>对话消息</h2>
+                  <p>消息、字幕和语音同步</p>
+                </div>
+              </div>
+              <div class="messages" id="messages">
+                <div class="bubble assistant">准备好了。你可以输入问题，也可以让数字人介绍产品。</div>
+                <div class="bubble user">请用 30 秒介绍 OpenTalking。</div>
+                <div class="bubble assistant">OpenTalking 是可私有化部署的实时数字人对话平台，适合客服、课程和内容生产。</div>
+              </div>
+              <div class="chat-input">
+                <textarea class="textarea" id="chat-input" placeholder="输入要让数字人说的话">继续介绍本地模型包的作用</textarea>
+                <div class="button-row">
+                  <button class="button primary" type="button" id="send-message">发送</button>
+                  <button class="button" type="button">麦克风</button>
+                  <button class="button" type="button">清空</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-create" data-title="生成视频" data-subtitle="脚本输入、生成配置和任务记录放在同一个工作流里">
+        <div class="screen wide">
+          <div class="create-grid">
+            <div class="panel">
+              <div class="panel-head">
+                <div class="panel-title">
+                  <h2>创建视频任务</h2>
+                  <p>生成后自动进入作品列表</p>
+                </div>
+                <div class="mode-tabs">
+                  <button class="mode-tab active" type="button" data-mode="script">脚本口播</button>
+                  <button class="mode-tab" type="button" data-mode="lip">对口型</button>
+                  <button class="mode-tab" type="button" data-mode="record">实时录制</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="mode-panel active" data-mode-panel="script">
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>数字人</label>
+                      <select class="select" id="create-avatar-select">
+                        <option>新闻主播</option>
+                        <option>课程老师</option>
+                        <option>客服助理</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>声音</label>
+                      <select class="select" id="create-voice-select">
+                        <option>自然女声</option>
+                        <option>稳重男声</option>
+                        <option>课程讲解</option>
+                        <option>客服亲和</option>
+                      </select>
+                    </div>
+                    <div class="field full">
+                      <label>脚本文案</label>
+                      <textarea class="textarea" id="script-text" style="min-height: 190px;">大家好，今天用一分钟介绍 OpenTalking。它可以把数字人实时对话、声音合成和视频生成放到一个桌面工作台里，适合课程、客服、直播助理和产品演示。</textarea>
+                    </div>
+                    <div class="field">
+                      <label>画面比例</label>
+                      <select class="select">
+                        <option>16:9 横屏</option>
+                        <option>9:16 竖屏</option>
+                        <option>1:1 方形</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label>字幕</label>
+                      <select class="select">
+                        <option>自动字幕</option>
+                        <option>不显示字幕</option>
+                        <option>仅导出 SRT</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style="height: 14px"></div>
+                  <div class="button-row">
+                    <button class="button primary" type="button" id="generate-video">生成视频</button>
+                    <button class="button" type="button">保存草稿</button>
+                  </div>
+                </div>
+                <div class="mode-panel" data-mode-panel="lip">
+                  <div class="form-grid">
+                    <div class="field full">
+                      <label>上传视频</label>
+                      <input class="input" value="选择一个人像视频文件" />
+                    </div>
+                    <div class="field full">
+                      <label>音频或文本</label>
+                      <textarea class="textarea">上传音频，或输入要生成的口播文本。</textarea>
+                    </div>
+                  </div>
+                  <div style="height: 14px"></div>
+                  <button class="button primary" type="button" id="generate-lip">生成对口型视频</button>
+                </div>
+                <div class="mode-panel" data-mode-panel="record">
+                  <div class="summary-row">
+                    <div><strong>从实时对话录制</strong><span>进入对话页后打开录制，结束后保存视频、音频和字幕。</span></div>
+                    <button class="button primary" type="button" data-jump="live">进入实时对话</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="preview-box">
+                <div class="preview-scene">
+                  <div class="avatar-head"></div>
+                </div>
+                <div class="preview-info">
+                  <strong id="create-preview-title">新闻主播 + 自然女声</strong>
+                  <span id="create-preview-sub">Mock API 可生成基础预览；QuickTalk 启动后使用本地高质量模式</span>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>生成状态</h2>
+                    <p id="generate-state">等待开始</p>
+                  </div>
+                </div>
+                <div class="panel-body stack">
+                  <div class="progress"><span id="generate-progress"></span></div>
+                  <div class="summary-row">
+                    <div><strong>当前模型</strong><span id="create-model-text">Mock 基础体验</span></div>
+                    <button class="button" type="button" data-jump="packages">切换</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <h2>视频任务</h2>
+                <p>参考 AIGCPanel 的任务记录方式，生成、失败、重试都有明确状态</p>
+              </div>
+              <button class="button" type="button" data-jump="works">打开作品</button>
+            </div>
+            <table class="table">
+              <thead>
+                <tr><th>任务</th><th>类型</th><th>组合</th><th>状态</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>课程开场口播</td><td>脚本口播</td><td>课程老师 / 课程讲解</td><td><span class="state ready">已完成</span></td><td><button class="button">预览</button></td></tr>
+                <tr><td>产品介绍短视频</td><td>对口型</td><td>新闻主播 / 自然女声</td><td><span class="state warn">生成中</span></td><td><button class="button">日志</button></td></tr>
+                <tr><td>直播片段 06-04</td><td>实时录制</td><td>客服助理 / 客服亲和</td><td><span class="state ready">已完成</span></td><td><button class="button">下载</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-avatars" data-title="数字人" data-subtitle="管理可用于对话和视频生成的形象">
+        <div class="screen">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <h2>数字人形象</h2>
+                <p>选择一个默认形象，后续任务自动带入</p>
+              </div>
+              <button class="button primary" type="button">创建数字人</button>
+            </div>
+            <div class="panel-body">
+              <div class="asset-grid">
+                <div class="asset-card">
+                  <div class="asset-thumb"><div class="avatar-head"></div></div>
+                  <div class="asset-body">
+                    <strong>新闻主播</strong>
+                    <p>适合产品介绍、资讯口播和演示视频。</p>
+                    <button class="button primary" type="button" data-avatar="新闻主播">设为默认</button>
+                  </div>
+                </div>
+                <div class="asset-card">
+                  <div class="asset-thumb"><div class="avatar-head"></div></div>
+                  <div class="asset-body">
+                    <strong>课程老师</strong>
+                    <p>适合知识讲解、课件录制和培训内容。</p>
+                    <button class="button" type="button" data-avatar="课程老师">设为默认</button>
+                  </div>
+                </div>
+                <div class="asset-card">
+                  <div class="asset-thumb"><div class="avatar-head"></div></div>
+                  <div class="asset-body">
+                    <strong>客服助理</strong>
+                    <p>适合企业服务、直播问答和欢迎语。</p>
+                    <button class="button" type="button" data-avatar="客服助理">设为默认</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-voices" data-title="声音" data-subtitle="试听、选择和复刻数字人声音">
+        <div class="screen">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <h2>声音库</h2>
+                <p>声音选择会同步到实时对话和生成视频</p>
+              </div>
+              <button class="button primary" type="button">复刻声音</button>
+            </div>
+            <div class="panel-body">
+              <div class="voice-list">
+                <div class="voice-item">
+                  <div class="row" style="justify-content: space-between"><strong>自然女声</strong><span class="state ready">默认</span></div>
+                  <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="button-row"><button class="button">试听</button><button class="button primary" data-voice="自然女声">使用</button></div>
+                </div>
+                <div class="voice-item">
+                  <div class="row" style="justify-content: space-between"><strong>稳重男声</strong><span class="state ready">可用</span></div>
+                  <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="button-row"><button class="button">试听</button><button class="button" data-voice="稳重男声">使用</button></div>
+                </div>
+                <div class="voice-item">
+                  <div class="row" style="justify-content: space-between"><strong>课程讲解</strong><span class="state ready">可用</span></div>
+                  <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="button-row"><button class="button">试听</button><button class="button" data-voice="课程讲解">使用</button></div>
+                </div>
+                <div class="voice-item">
+                  <div class="row" style="justify-content: space-between"><strong>客服亲和</strong><span class="state ready">可用</span></div>
+                  <div class="wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="button-row"><button class="button">试听</button><button class="button" data-voice="客服亲和">使用</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-packages" data-title="模型包" data-subtitle="像 AIGCPanel 一样管理模型服务：导入、启动、停止、日志、诊断">
+        <div class="screen wide">
+          <div class="packages-layout">
+            <div class="panel">
+              <div class="panel-head">
+                <div class="panel-title">
+                  <h2>模型启动包</h2>
+                  <p>.otpkg 导入后进入用户数据目录，Windows 通过 WSL2 托管本地后端</p>
+                </div>
+                <div class="toolbar">
+                  <button class="button primary" type="button" id="import-package">导入 .otpkg</button>
+                  <button class="button" type="button">打开目录</button>
+                  <button class="button" type="button">刷新</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="package-grid">
+                  <div class="package-card" id="quicktalk-card">
+                    <div class="package-head">
+                      <div class="package-icon">QT</div>
+                      <div>
+                        <h3>QuickTalk Local</h3>
+                        <p>opentalking-quicktalk-local · v1.0.0</p>
+                      </div>
+                      <span class="state warn" id="quicktalk-state">未运行</span>
+                    </div>
+                    <div class="tag-list">
+                      <span class="tag green">实时对话</span>
+                      <span class="tag blue">视频生成</span>
+                      <span class="tag violet">本地高质量</span>
+                    </div>
+                    <div class="compat">
+                      <span class="no">macOS<br />仅远端 API</span>
+                      <span class="ok">Windows<br />WSL2 CUDA</span>
+                      <span class="ok">Linux<br />CUDA</span>
+                    </div>
+                    <div class="button-row">
+                      <button class="button success" type="button" id="start-package">启动</button>
+                      <button class="button" type="button" id="stop-package">停止</button>
+                      <button class="button" type="button" data-log="quicktalk">日志</button>
+                      <button class="button" type="button">诊断</button>
+                    </div>
+                  </div>
+
+                  <div class="package-card">
+                    <div class="package-head">
+                      <div class="package-icon">MK</div>
+                      <div>
+                        <h3>Mock 基础体验</h3>
+                        <p>内置测试服务 · 无需权重</p>
+                      </div>
+                      <span class="state ready">运行中</span>
+                    </div>
+                    <div class="tag-list">
+                      <span class="tag green">演示流程</span>
+                      <span class="tag blue">接口联调</span>
+                    </div>
+                    <div class="compat">
+                      <span class="ok">macOS<br />支持</span>
+                      <span class="ok">Windows<br />支持</span>
+                      <span class="ok">Linux<br />支持</span>
+                    </div>
+                    <div class="button-row">
+                      <button class="button" type="button">重启</button>
+                      <button class="button" type="button" data-log="mock">日志</button>
+                    </div>
+                  </div>
+
+                  <div class="package-card">
+                    <div class="package-head">
+                      <div class="package-icon">API</div>
+                      <div>
+                        <h3>远端 OpenTalking API</h3>
+                        <p>连接团队已有服务，不加载远端 UI</p>
+                      </div>
+                      <span class="state remote">可配置</span>
+                    </div>
+                    <div class="tag-list">
+                      <span class="tag blue">远端</span>
+                      <span class="tag green">无需本地模型</span>
+                    </div>
+                    <div class="summary-row">
+                      <div><strong>API Base URL</strong><span>https://demo.example.com/api</span></div>
+                      <button class="button" type="button" data-jump="settings">编辑</button>
+                    </div>
+                  </div>
+
+                  <div class="package-card">
+                    <div class="package-head">
+                      <div class="package-icon">+</div>
+                      <div>
+                        <h3>导入新的模型包</h3>
+                        <p>通过 opentalking.package.json 校验兼容性</p>
+                      </div>
+                      <span class="state warn">等待导入</span>
+                    </div>
+                    <div class="tag-list">
+                      <span class="tag amber">路径校验</span>
+                      <span class="tag amber">平台检查</span>
+                      <span class="tag amber">资源完整性</span>
+                    </div>
+                    <button class="button primary" type="button" id="import-package-2">选择 .otpkg 文件</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>服务日志</h2>
+                    <p id="log-title">QuickTalk Local</p>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <div class="log-box" id="package-log">[12:02:18] package detected: opentalking-quicktalk-local
+[12:02:18] platform check: macOS local quicktalk unsupported
+[12:02:19] Windows WSL2 path ready: ~/OpenTalking/packages/quicktalk
+[12:02:19] health endpoint: /models</div>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>普通用户提示</h2>
+                    <p>技术细节留在模型包页和诊断页</p>
+                  </div>
+                </div>
+                <div class="panel-body status-stack">
+                  <div class="summary-row">
+                    <div><strong>Windows</strong><span>导入 QuickTalk 包后可一键启动 WSL2 后端</span></div>
+                    <span class="state ready">P1</span>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>macOS</strong><span>首轮使用 Mock 或远端 API，本地 QuickTalk 后置</span></div>
+                    <span class="state warn">限制</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-works" data-title="作品" data-subtitle="统一管理生成视频、录制、字幕、音频和失败任务">
+        <div class="screen wide">
+          <div class="panel">
+            <div class="panel-head">
+              <div class="panel-title">
+                <h2>作品与任务记录</h2>
+                <p>借鉴 AIGCPanel 的记录闭环：预览、下载、重试、删除</p>
+              </div>
+              <div class="toolbar">
+                <input class="input" style="width: 220px" value="搜索作品名称" />
+                <button class="button">打开作品目录</button>
+              </div>
+            </div>
+            <table class="table">
+              <thead>
+                <tr><th>名称</th><th>类型</th><th>数字人 / 声音</th><th>状态</th><th>创建时间</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>课程开场口播</td><td>视频</td><td>课程老师 / 课程讲解</td><td><span class="state ready">已完成</span></td><td>今天 10:22</td><td><button class="button">预览</button> <button class="button">下载</button></td></tr>
+                <tr><td>客服欢迎语</td><td>音频</td><td>客服助理 / 客服亲和</td><td><span class="state ready">已完成</span></td><td>今天 09:48</td><td><button class="button">试听</button> <button class="button">导出</button></td></tr>
+                <tr><td>产品介绍字幕</td><td>字幕</td><td>新闻主播 / 自然女声</td><td><span class="state ready">已完成</span></td><td>昨天 18:14</td><td><button class="button">查看</button> <button class="button">下载</button></td></tr>
+                <tr><td>直播录制 06-04</td><td>录制</td><td>新闻主播 / 自然女声</td><td><span class="state warn">处理中</span></td><td>今天 12:30</td><td><button class="button">日志</button></td></tr>
+                <tr><td>短视频测试 03</td><td>视频</td><td>客服助理 / 稳重男声</td><td><span class="state error">失败</span></td><td>昨天 16:07</td><td><button class="button">重试</button> <button class="button">日志</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-tools" data-title="工具" data-subtitle="把常用独立任务放到工具箱，主流程仍围绕数字人">
+        <div class="screen">
+          <div class="tools-grid">
+            <div class="tool-card">
+              <div>
+                <span class="tag green">声音</span>
+                <h3>文本转语音</h3>
+                <p>快速生成一段音频，保存到作品。</p>
+              </div>
+              <button class="button">打开</button>
+            </div>
+            <div class="tool-card">
+              <div>
+                <span class="tag blue">字幕</span>
+                <h3>字幕生成</h3>
+                <p>从视频或音频提取字幕，支持导出 SRT。</p>
+              </div>
+              <button class="button">打开</button>
+            </div>
+            <div class="tool-card">
+              <div>
+                <span class="tag amber">诊断</span>
+                <h3>环境检查</h3>
+                <p>检查 API、模型包、WSL2、ffmpeg 和日志目录。</p>
+              </div>
+              <button class="button" data-jump="settings">检查</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings" data-title="设置与诊断" data-subtitle="技术配置集中在这里，首页不暴露复杂参数">
+        <div class="screen wide">
+          <div class="settings-grid">
+            <div class="panel">
+              <div class="panel-head">
+                <div class="panel-title">
+                  <h2>连接配置</h2>
+                  <p>支持 Mock、本地托管、模型包和远端 API</p>
+                </div>
+                <button class="button primary" type="button">保存</button>
+              </div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field">
+                    <label>后端模式</label>
+                    <select class="select">
+                      <option>managed-mock</option>
+                      <option>managed-package</option>
+                      <option>remote</option>
+                      <option>managed-local</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>API Base URL</label>
+                    <input class="input" value="http://127.0.0.1:8010" />
+                  </div>
+                  <div class="field">
+                    <label>Windows WSL2 发行版</label>
+                    <input class="input" value="Ubuntu-22.04" />
+                  </div>
+                  <div class="field">
+                    <label>默认端口</label>
+                    <input class="input" value="8010" />
+                  </div>
+                </div>
+                <div class="key-value">
+                  <div class="kv-row"><span>OpenTalking API</span><strong>/models 可访问</strong><span class="state ready">通过</span></div>
+                  <div class="kv-row"><span>ffmpeg</span><strong>resources/extra/darwin-arm64/ffmpeg</strong><span class="state ready">已找到</span></div>
+                  <div class="kv-row"><span>WSL2</span><strong>Windows 环境中检测</strong><span class="state warn">待检查</span></div>
+                  <div class="kv-row"><span>日志目录</span><strong>~/Library/Application Support/OpenTalking/logs</strong><button class="button">打开</button></div>
+                  <div class="kv-row"><span>作品目录</span><strong>~/OpenTalking/works</strong><button class="button">打开</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="stack">
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>诊断摘要</h2>
+                    <p>失败时给出明确下一步</p>
+                  </div>
+                </div>
+                <div class="panel-body status-stack">
+                  <div class="summary-row">
+                    <div><strong>端口 8010</strong><span>当前未冲突</span></div>
+                    <span class="state ready">正常</span>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>远端 API</strong><span>上次检查：2026-06-04 12:18</span></div>
+                    <span class="state ready">正常</span>
+                  </div>
+                  <div class="summary-row">
+                    <div><strong>模型包</strong><span>QuickTalk 可导入，macOS 本地运行受限</span></div>
+                    <span class="state warn">提示</span>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-head">
+                  <div class="panel-title">
+                    <h2>兼容入口</h2>
+                    <p>保留现有 WebUI 作为二级入口</p>
+                  </div>
+                </div>
+                <div class="panel-body">
+                  <button class="button" type="button" data-jump="webui">打开兼容 WebUI</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-webui" data-title="兼容 WebUI" data-subtitle="加载现有 apps/web/dist，继续通过 /api 访问 Electron 代理">
+        <div class="screen">
+          <div class="webui-box">
+            <div>
+              <h2>兼容 WebUI 入口</h2>
+              <p>桌面新版 UI 默认面向普通用户；现有 WebUI 保留给熟悉旧流程的用户和开发调试场景。</p>
+              <div class="button-row" style="justify-content: center">
+                <button class="button primary" type="button">加载 WebUI</button>
+                <button class="button" type="button" data-jump="home">返回首页</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast">操作已提交</div>
+
+  <script>
+    const state = {
+      avatar: "新闻主播",
+      voice: "自然女声",
+      packageRunning: false,
+    };
+
+    const views = document.querySelectorAll(".view");
+    const navItems = document.querySelectorAll(".nav-item");
+    const pageTitle = document.getElementById("page-title");
+    const pageSubtitle = document.getElementById("page-subtitle");
+    const toast = document.getElementById("toast");
+
+    const refs = {
+      topCombo: document.getElementById("top-combo"),
+      sideCombo: document.getElementById("side-combo"),
+      homeCombo: document.getElementById("home-combo"),
+      homeAvatar: document.getElementById("home-avatar"),
+      homeVoice: document.getElementById("home-voice"),
+      liveAvatarSelect: document.getElementById("live-avatar-select"),
+      liveVoiceSelect: document.getElementById("live-voice-select"),
+      createAvatarSelect: document.getElementById("create-avatar-select"),
+      createVoiceSelect: document.getElementById("create-voice-select"),
+      stageAvatar: document.getElementById("stage-avatar"),
+      stageVoice: document.getElementById("stage-voice"),
+      createPreviewTitle: document.getElementById("create-preview-title"),
+      quicktalkState: document.getElementById("quicktalk-state"),
+      sidePackage: document.getElementById("side-package"),
+      homePackage: document.getElementById("home-package"),
+      livePackageText: document.getElementById("live-package-text"),
+      livePackageState: document.getElementById("live-package-state"),
+      createModelText: document.getElementById("create-model-text"),
+      packageLog: document.getElementById("package-log"),
+      generateState: document.getElementById("generate-state"),
+      generateProgress: document.getElementById("generate-progress"),
+      messages: document.getElementById("messages"),
+      chatInput: document.getElementById("chat-input"),
+      stageSubtitle: document.getElementById("stage-subtitle"),
+    };
+
+    function showToast(text) {
+      toast.textContent = text;
+      toast.classList.add("show");
+      window.clearTimeout(showToast.timer);
+      showToast.timer = window.setTimeout(() => toast.classList.remove("show"), 1800);
+    }
+
+    function syncState() {
+      const combo = `${state.avatar} + ${state.voice}`;
+      refs.topCombo.textContent = combo;
+      refs.sideCombo.textContent = combo;
+      refs.homeCombo.textContent = combo;
+      refs.homeAvatar.textContent = state.avatar;
+      refs.homeVoice.textContent = state.voice;
+      refs.liveAvatarSelect.value = state.avatar;
+      refs.liveVoiceSelect.value = state.voice;
+      refs.createAvatarSelect.value = state.avatar;
+      refs.createVoiceSelect.value = state.voice;
+      refs.stageAvatar.textContent = state.avatar;
+      refs.stageVoice.textContent = state.voice;
+      refs.createPreviewTitle.textContent = combo;
+
+      const runningText = state.packageRunning ? "运行中" : "未运行";
+      refs.quicktalkState.textContent = runningText;
+      refs.quicktalkState.className = state.packageRunning ? "state ready" : "state warn";
+      refs.sidePackage.textContent = runningText;
+      refs.homePackage.textContent = state.packageRunning ? "QuickTalk 运行中" : "未启动";
+      refs.livePackageText.textContent = state.packageRunning ? "QuickTalk Local 已连接" : "未启动";
+      refs.livePackageState.textContent = runningText;
+      refs.livePackageState.className = state.packageRunning ? "state ready" : "state warn";
+      refs.createModelText.textContent = state.packageRunning ? "QuickTalk Local" : "Mock 基础体验";
+    }
+
+    function activateView(name) {
+      views.forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
+      navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === name));
+      const active = document.getElementById(`view-${name}`);
+      if (active) {
+        pageTitle.textContent = active.dataset.title || "OpenTalking";
+        pageSubtitle.textContent = active.dataset.subtitle || "";
+      }
+    }
+
+    document.querySelectorAll("[data-view]").forEach((button) => {
+      button.addEventListener("click", () => activateView(button.dataset.view));
+    });
+
+    document.querySelectorAll("[data-jump]").forEach((button) => {
+      button.addEventListener("click", () => activateView(button.dataset.jump));
+    });
+
+    refs.liveAvatarSelect.addEventListener("change", (event) => {
+      state.avatar = event.target.value;
+      syncState();
+      showToast(`已切换为 ${state.avatar}`);
+    });
+
+    refs.liveVoiceSelect.addEventListener("change", (event) => {
+      state.voice = event.target.value;
+      syncState();
+      showToast(`已切换为 ${state.voice}`);
+    });
+
+    refs.createAvatarSelect.addEventListener("change", (event) => {
+      state.avatar = event.target.value;
+      syncState();
+    });
+
+    refs.createVoiceSelect.addEventListener("change", (event) => {
+      state.voice = event.target.value;
+      syncState();
+    });
+
+    document.querySelectorAll("[data-avatar]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.avatar = button.dataset.avatar;
+        syncState();
+        showToast(`默认数字人已设为 ${state.avatar}`);
+      });
+    });
+
+    document.querySelectorAll("[data-voice]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.voice = button.dataset.voice;
+        syncState();
+        showToast(`默认声音已设为 ${state.voice}`);
+      });
+    });
+
+    document.querySelectorAll(".mode-tab").forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.mode;
+        document.querySelectorAll(".mode-tab").forEach((item) => item.classList.toggle("active", item === button));
+        document.querySelectorAll("[data-mode-panel]").forEach((panel) => {
+          panel.classList.toggle("active", panel.dataset.modePanel === mode);
+        });
+        refs.generateState.textContent = "等待开始";
+        refs.generateProgress.style.width = "0%";
+      });
+    });
+
+    document.getElementById("send-message").addEventListener("click", () => {
+      const text = refs.chatInput.value.trim() || "继续介绍 OpenTalking";
+      const user = document.createElement("div");
+      user.className = "bubble user";
+      user.textContent = text;
+      const assistant = document.createElement("div");
+      assistant.className = "bubble assistant";
+      assistant.textContent = "收到。我会用当前数字人和声音回复，并把结果同步到舞台字幕。";
+      refs.messages.append(user, assistant);
+      refs.messages.scrollTop = refs.messages.scrollHeight;
+      refs.stageSubtitle.textContent = assistant.textContent;
+      showToast("消息已发送");
+    });
+
+    document.getElementById("start-session").addEventListener("click", () => {
+      refs.stageSubtitle.textContent = `当前使用 ${state.avatar} + ${state.voice}，可以开始实时对话。`;
+      showToast("实时对话已开始");
+    });
+
+    function simulateGenerate(label) {
+      let value = 0;
+      refs.generateState.textContent = `${label}生成中`;
+      refs.generateProgress.style.width = "0%";
+      const timer = window.setInterval(() => {
+        value += 16;
+        refs.generateProgress.style.width = `${Math.min(value, 100)}%`;
+        if (value >= 100) {
+          window.clearInterval(timer);
+          refs.generateState.textContent = `${label}已完成`;
+          showToast("任务已保存到作品");
+        }
+      }, 170);
+    }
+
+    document.getElementById("generate-video").addEventListener("click", () => simulateGenerate("视频"));
+    document.getElementById("generate-lip").addEventListener("click", () => simulateGenerate("对口型"));
+
+    document.getElementById("start-package").addEventListener("click", () => {
+      state.packageRunning = true;
+      refs.packageLog.textContent += "\n[12:04:02] start command submitted\n[12:04:08] /models ready: quicktalk.connected=true";
+      syncState();
+      showToast("QuickTalk Local 已启动");
+    });
+
+    document.getElementById("stop-package").addEventListener("click", () => {
+      state.packageRunning = false;
+      refs.packageLog.textContent += "\n[12:05:11] stop command submitted\n[12:05:12] process stopped";
+      syncState();
+      showToast("QuickTalk Local 已停止");
+    });
+
+    document.querySelectorAll("[data-log]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const name = button.dataset.log === "mock" ? "Mock 基础体验" : "QuickTalk Local";
+        document.getElementById("log-title").textContent = name;
+        showToast(`正在查看 ${name} 日志`);
+      });
+    });
+
+    document.querySelectorAll("[data-action='check']").forEach((button) => {
+      button.addEventListener("click", () => showToast("状态检查完成"));
+    });
+
+    document.querySelectorAll("[data-action='start-mock']").forEach((button) => {
+      button.addEventListener("click", () => showToast("基础体验已启动"));
+    });
+
+    document.getElementById("import-package").addEventListener("click", () => showToast("选择 .otpkg 文件"));
+    document.getElementById("import-package-2").addEventListener("click", () => showToast("选择 .otpkg 文件"));
+
+    syncState();
+  </script>
+</body>
+</html>

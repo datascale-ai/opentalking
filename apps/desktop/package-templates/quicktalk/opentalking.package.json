@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "opentalking-quicktalk-local",
+  "title": "QuickTalk 本地启动包",
+  "version": "1.0.0",
+  "model": "quicktalk",
+  "backend": "local",
+  "platforms": [
+    {
+      "os": "win32",
+      "arch": ["x64"],
+      "runtime": "wsl2",
+      "supported": true
+    },
+    {
+      "os": "linux",
+      "arch": ["x64"],
+      "runtime": "native",
+      "supported": true
+    },
+    {
+      "os": "darwin",
+      "arch": ["arm64", "x64"],
+      "runtime": "native",
+      "supported": false,
+      "message": "QuickTalk 本地首批支持 Windows WSL2/Linux CUDA；macOS 请使用远端 API 或 Mock。"
+    }
+  ],
+  "entry": {
+    "start": "scripts/start.sh",
+    "stop": "scripts/stop.sh",
+    "diagnose": "scripts/diagnose.sh",
+    "cwd": "."
+  },
+  "health": {
+    "expectModel": "quicktalk"
+  },
+  "env": {
+    "OPENTALKING_DEFAULT_MODEL": "quicktalk",
+    "OPENTALKING_QUICKTALK_BACKEND": "local",
+    "OPENTALKING_QUICKTALK_ASSET_ROOT": "${PACKAGE_ROOT}/models/quicktalk",
+    "OPENTALKING_FFMPEG_BIN": "${FFMPEG_BIN}"
+  },
+  "resources": {
+    "requiredFiles": [
+      "scripts/start.sh",
+      "scripts/stop.sh",
+      "models/quicktalk/checkpoints/quicktalk.pth",
+      "models/quicktalk/checkpoints/repair.npy",
+      "models/quicktalk/checkpoints/chinese-hubert-large/pytorch_model.bin",
+      "models/quicktalk/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx"
+    ]
+  }
+}
