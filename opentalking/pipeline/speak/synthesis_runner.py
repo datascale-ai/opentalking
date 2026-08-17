@@ -34,7 +34,7 @@ from opentalking.core.session_store import (
 )
 from opentalking.providers.synthesis.flashtalk.idle_generator import IdleVideoGenerator
 from opentalking.core.session_store import set_session_state
-from opentalking.providers.llm.openai_compatible.adapter import OpenAICompatibleLLMClient
+from opentalking.providers.llm.factory import create_llm_client
 from opentalking.providers.llm.openai_compatible.sentence_splitter import SentenceSplitter
 from opentalking.providers.llm.openai_compatible.conversation import ConversationHistory
 from opentalking.providers.memory.runtime import MemoryRuntime, MemoryScope
@@ -371,7 +371,9 @@ class FlashTalkRunner:
         self._allow_background_idle_cache = flashtalk_client is not None and self.model_type == "flashtalk"
 
         # LLM client
-        self.llm = OpenAICompatibleLLMClient(
+        _provider = getattr(get_settings(), "llm_provider", "openai_compatible") or "openai_compatible"
+        self.llm = create_llm_client(
+            provider=_provider,
             base_url=llm_base_url,
             api_key=llm_api_key,
             model=llm_model,
