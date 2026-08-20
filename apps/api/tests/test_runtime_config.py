@@ -226,6 +226,51 @@ async def test_runtime_config_apply_discards_stale_wechat_memory_registry(monkey
     assert not hasattr(request.app.state, "wechat_import_registry")
 
 
+async def test_runtime_config_apply_persists_llm_provider(monkeypatch, tmp_path) -> None:
+    payload = await runtime_config.apply_runtime_config(
+        runtime_config.RuntimeConfigPayload(
+            llm_provider="orcarouter",
+            llm_base_url="https://api.orcarouter.ai/v1/",
+            llm_model="orcarouter/auto",
+            llm_api_key="orca-secret",
+        ),
+        _request(monkeypatch, tmp_path),
+    )
+
+    assert payload["applied"] is True
+    assert payload["llm"]["provider"] == "orcarouter"
+    assert payload["llm"]["base_url"] == "https://api.orcarouter.ai/v1"
+    assert payload["llm"]["model"] == "orcarouter/auto"
+    assert payload["llm"]["api_key_set"] is True
+    assert os.environ["OPENTALKING_LLM_PROVIDER"] == "orcarouter"
+    assert os.environ["OPENTALKING_LLM_BASE_URL"] == "https://api.orcarouter.ai/v1"
+    assert os.environ["OPENTALKING_LLM_MODEL"] == "orcarouter/auto"
+    assert "orca-secret" not in str(payload)
+
+
+async def test_runtime_config_get_reports_llm_provider(monkeypatch, tmp_path) -> None:
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENTALKING_LLM_PROVIDER=orcarouter",
+                "OPENTALKING_LLM_BASE_URL=https://api.orcarouter.ai/v1",
+                "OPENTALKING_LLM_MODEL=orcarouter/auto",
+                "OPENTALKING_LLM_API_KEY=orca-secret",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = await runtime_config.get_runtime_config(_request(monkeypatch, tmp_path))
+
+    assert payload["llm"]["provider"] == "orcarouter"
+    assert payload["llm"]["base_url"] == "https://api.orcarouter.ai/v1"
+    assert payload["llm"]["model"] == "orcarouter/auto"
+    assert payload["llm"]["api_key_set"] is True
+    assert "orca-secret" not in str(payload)
+
+
 async def test_runtime_config_apply_rejects_unknown_provider(monkeypatch, tmp_path) -> None:
     with pytest.raises(HTTPException) as exc_info:
         await runtime_config.apply_runtime_config(

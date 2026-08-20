@@ -22,6 +22,7 @@ Common alternatives:
 | vLLM | Point `OPENTALKING_LLM_BASE_URL` to the vLLM OpenAI-compatible server. |
 | Ollama | Use the Ollama OpenAI-compatible endpoint, usually `http://localhost:11434/v1`. |
 | DeepSeek | Use the provider's OpenAI-compatible base URL and model id. |
+| [OrcaRouter](https://www.orcarouter.ai) | Set `OPENTALKING_LLM_BASE_URL=https://api.orcarouter.ai/v1`, `OPENTALKING_LLM_API_KEY=<orcarouter-api-key>`, and `OPENTALKING_LLM_MODEL=orcarouter/auto`. OrcaRouter is an OpenAI-compatible intelligent routing gateway that sends each request to the best-fit model. It also runs gateway-level, zero-trust security for AI agents on the same endpoint — screening every prompt/response and governing every tool call on a default-deny basis, with no application code changes. |
 
 Verify the API key and endpoint by starting OpenTalking and sending a text `speak`
 request after creating a `mock` session.

@@ -156,6 +156,7 @@ export async function apiUploadFile<T>(path: string, fieldName: string, file: Fi
 }
 
 export type RuntimeConfigLlm = {
+  provider: string;
   base_url: string;
   model: string;
   api_key_set: boolean;
@@ -203,6 +204,7 @@ export type RuntimeConfigResponse = {
 };
 
 export type RuntimeConfigApplyInput = {
+  llm_provider?: string;
   llm_base_url?: string;
   llm_model?: string;
   llm_api_key?: string;

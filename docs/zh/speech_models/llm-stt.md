@@ -22,6 +22,7 @@ OPENTALKING_LLM_MODEL=qwen-flash
 | vLLM | 指向 vLLM OpenAI-compatible server。 |
 | Ollama | 使用 Ollama OpenAI-compatible endpoint，通常为 `http://localhost:11434/v1`。 |
 | DeepSeek | 使用 provider 提供的 OpenAI-compatible base URL 和模型 id。 |
+| [OrcaRouter](https://www.orcarouter.ai) | 设置 `OPENTALKING_LLM_BASE_URL=https://api.orcarouter.ai/v1`、`OPENTALKING_LLM_API_KEY=<orcarouter-api-key>`、`OPENTALKING_LLM_MODEL=orcarouter/auto`。OrcaRouter 是 OpenAI-compatible 智能路由网关，自动把每条请求路由到最合适的模型；同一端点还提供面向 AI Agent 的网关级零信任安全能力——以默认拒绝的原则审查每条 prompt/response、管控每个工具调用，无需改任何应用代码。 |
 
 ## STT
 

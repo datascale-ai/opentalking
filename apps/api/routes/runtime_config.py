@@ -102,6 +102,7 @@ _RUNTIME_ENV_KEYS = {
 
 
 class RuntimeConfigPayload(BaseModel):
+    llm_provider: Optional[str] = Field(default=None, max_length=64)
     llm_base_url: Optional[str] = Field(default=None, max_length=2048)
     llm_model: Optional[str] = Field(default=None, max_length=256)
     llm_api_key: Optional[str] = Field(default=None, max_length=4096)
@@ -498,8 +499,14 @@ def _current_payload(settings: Any | None = None) -> dict[str, Any]:
         or _settings_value(settings, "stt_provider", "dashscope")
     )
     llm_key = _env_value(values, "OPENTALKING_LLM_API_KEY", _settings_value(settings, "llm_api_key"))
+    llm_provider = _env_value(
+        values,
+        "OPENTALKING_LLM_PROVIDER",
+        _settings_value(settings, "llm_provider", "openai_compatible"),
+    )
     return {
         "llm": {
+            "provider": llm_provider,
             "base_url": _env_value(values, "OPENTALKING_LLM_BASE_URL", _settings_value(settings, "llm_base_url")).rstrip("/"),
             "model": _env_value(values, "OPENTALKING_LLM_MODEL", _settings_value(settings, "llm_model", "qwen-flash")),
             "api_key_set": bool(llm_key),
@@ -511,9 +518,11 @@ def _current_payload(settings: Any | None = None) -> dict[str, Any]:
 
 
 def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
-    updates: dict[str, str] = {"OPENTALKING_LLM_PROVIDER": "openai_compatible"}
+    updates: dict[str, str] = {}
     sync_key = ""
 
+    if raw := _strip(payload.llm_provider):
+        updates["OPENTALKING_LLM_PROVIDER"] = raw
     if value := _strip(payload.llm_base_url):
         updates["OPENTALKING_LLM_BASE_URL"] = value.rstrip("/")
     if value := _strip(payload.llm_model):

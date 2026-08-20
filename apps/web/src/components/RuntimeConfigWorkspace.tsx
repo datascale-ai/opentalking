@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { RuntimeConfigApplyInput, RuntimeConfigResponse } from "../lib/api";
 import type { TtsProviderExtended } from "../constants/ttsBailian";
-
-const RUNTIME_LLM_DEFAULT = {
-  baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  model: "qwen-flash",
-};
+import {
+  RUNTIME_LLM_DEFAULT,
+  RUNTIME_LLM_PRESETS,
+  normalizeRuntimeLlmProvider,
+} from "../lib/llmPresets";
 
 const RUNTIME_STT_PRESETS: Record<string, { label: string; baseUrl: string; model: string; needsKey: boolean }> = {
   dashscope: {
@@ -114,6 +114,7 @@ const MEM0_MODEL_PRESETS = {
 };
 
 type RuntimeConfigForm = {
+  llmProvider: string;
   llmBaseUrl: string;
   llmModel: string;
   llmApiKey: string;
@@ -137,6 +138,7 @@ type RuntimeConfigForm = {
 };
 
 const RUNTIME_FORM_DEFAULTS: RuntimeConfigForm = {
+  llmProvider: "dashscope",
   llmBaseUrl: RUNTIME_LLM_DEFAULT.baseUrl,
   llmModel: RUNTIME_LLM_DEFAULT.model,
   llmApiKey: "",
@@ -176,12 +178,20 @@ function runtimeFormFromConfig(
     ? runtimeConfig.stt.provider
     : "dashscope";
   const sttPreset = RUNTIME_STT_PRESETS[sttProvider] ?? RUNTIME_STT_PRESETS.dashscope;
+  const rawLlmProvider = normalizeRuntimeLlmProvider(runtimeConfig.llm.provider);
+  // When nothing is configured the backend reports the generic openai_compatible
+  // capability, but the app's shipped default LLM is DashScope.
+  const llmProvider = !runtimeConfig.llm.base_url && rawLlmProvider === "openai_compatible"
+    ? "dashscope"
+    : rawLlmProvider;
+  const llmPreset = RUNTIME_LLM_PRESETS[llmProvider];
   const resolvedTtsProvider = normalizeRuntimeTtsProvider(runtimeConfig.tts.provider);
   const ttsProvider = preferDashscopeWhenEdge && resolvedTtsProvider === "edge" ? "dashscope" : resolvedTtsProvider;
   const ttsPreset = RUNTIME_TTS_PRESETS[ttsProvider];
   return {
-    llmBaseUrl: runtimeConfig.llm.base_url || RUNTIME_LLM_DEFAULT.baseUrl,
-    llmModel: runtimeConfig.llm.model || RUNTIME_LLM_DEFAULT.model,
+    llmProvider,
+    llmBaseUrl: runtimeConfig.llm.base_url || llmPreset.baseUrl,
+    llmModel: runtimeConfig.llm.model || llmPreset.model,
     llmApiKey: "",
     sttProvider,
     sttBaseUrl: runtimeConfig.stt.base_url || sttPreset.baseUrl,
@@ -238,6 +248,16 @@ export function RuntimeConfigWorkspace({
     setRuntimeForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const selectRuntimeLlmProvider = (provider: string) => {
+    const preset = RUNTIME_LLM_PRESETS[provider] ?? RUNTIME_LLM_PRESETS.dashscope;
+    setRuntimeForm((prev) => ({
+      ...prev,
+      llmProvider: provider,
+      llmBaseUrl: preset.baseUrl,
+      llmModel: preset.model,
+    }));
+  };
+
   const selectRuntimeSttProvider = (provider: string) => {
     const preset = RUNTIME_STT_PRESETS[provider] ?? RUNTIME_STT_PRESETS.dashscope;
     setRuntimeForm((prev) => ({
@@ -266,6 +286,7 @@ export function RuntimeConfigWorkspace({
       || runtimeForm.ttsModel.trim() !== initialRuntimeForm.ttsModel.trim()
       || runtimeForm.ttsApiKey.trim() !== initialRuntimeForm.ttsApiKey.trim();
     const payload: RuntimeConfigApplyInput = {
+      llm_provider: runtimeForm.llmProvider,
       llm_base_url: runtimeForm.llmBaseUrl.trim(),
       llm_model: runtimeForm.llmModel.trim(),
       stt_provider: runtimeForm.sttProvider,
@@ -319,6 +340,7 @@ export function RuntimeConfigWorkspace({
   const runtimeMem0EmbedderKeySet = Boolean(runtimeConfig?.mem0?.embedder.api_key_set || runtimeForm.mem0EmbedderApiKey.trim());
   const runtimeSttProviderOptions = Object.entries(RUNTIME_STT_PRESETS);
   const runtimeTtsProviderOptions = Object.entries(RUNTIME_TTS_PRESETS) as [TtsProviderExtended, typeof RUNTIME_TTS_PRESETS[TtsProviderExtended]][];
+  const runtimeLlmProviderOptions = Object.entries(RUNTIME_LLM_PRESETS);
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto bg-slate-100">
@@ -334,6 +356,18 @@ export function RuntimeConfigWorkspace({
               </span>
             </div>
             <div className="grid gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-500">Provider</span>
+                <select
+                  value={runtimeForm.llmProvider}
+                  onChange={(event) => selectRuntimeLlmProvider(event.target.value)}
+                  className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-cyan-300"
+                >
+                  {runtimeLlmProviderOptions.map(([provider, preset]) => (
+                    <option key={provider} value={provider}>{preset.label}</option>
+                  ))}
+                </select>
+              </label>
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-500">Base URL</span>
                 <input
