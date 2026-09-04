@@ -3,10 +3,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import math
+import os
 import re
 import shutil
+import sqlite3
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -15,6 +19,7 @@ import numpy as np
 
 
 _LIGHTRAG_RUN_LOCK = threading.Lock()
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,6 +61,15 @@ class KnowledgeIndex(Protocol):
         filename: str,
         text: str,
     ) -> None:
+        ...
+
+    def index_documents(
+        self,
+        *,
+        kb_id: str,
+        documents: list[dict[str, str]],
+    ) -> None:
+        """Index several documents while reusing one index context when possible."""
         ...
 
     def delete_document(self, *, kb_id: str, doc_id: str) -> None:
@@ -171,6 +185,54 @@ class LightRAGKnowledgeIndex:
         self.embedding_dim = max(8, int(embedding_dim))
         self.embedding_max_token_size = max(1, int(embedding_max_token_size))
         self.language = language.strip() or "Chinese"
+        # Content-addressed, bounded cache.  The key includes the provider
+        # model and embedding dimension so a configuration change cannot reuse
+        # vectors produced by an incompatible model.
+        self._embedding_cache: OrderedDict[str, np.ndarray] = OrderedDict()
+        self._embedding_cache_limit = max(
+            0, int(os.environ.get("OPENTALKING_KNOWLEDGE_EMBEDDING_CACHE_SIZE", "4096"))
+        )
+        self._embedding_cache_version = "tokenizer-local-char-v1"
+        self._embedding_cache_db = self.root / "embedding_cache.sqlite3"
+        try:
+            self.embedding_chunk_version = os.environ.get(
+                "OPENTALKING_KNOWLEDGE_CHUNK_VERSION", "chunk-v1"
+            ).strip() or "chunk-v1"
+        except Exception:
+            self.embedding_chunk_version = "chunk-v1"
+        try:
+            self.embedding_batch_size = max(
+                1,
+                int(os.environ.get("OPENTALKING_KNOWLEDGE_EMBEDDING_BATCH_SIZE", "16")),
+            )
+        except ValueError:
+            self.embedding_batch_size = 16
+        try:
+            self.embedding_batch_token_limit = max(
+                1,
+                int(
+                    os.environ.get(
+                        "OPENTALKING_KNOWLEDGE_EMBEDDING_BATCH_TOKENS",
+                        str(self.embedding_max_token_size * self.embedding_batch_size),
+                    )
+                ),
+            )
+        except ValueError:
+            self.embedding_batch_token_limit = self.embedding_max_token_size * self.embedding_batch_size
+        try:
+            self.embedding_concurrency = max(
+                1,
+                int(os.environ.get("OPENTALKING_KNOWLEDGE_EMBEDDING_CONCURRENCY", "4")),
+            )
+        except ValueError:
+            self.embedding_concurrency = 4
+        try:
+            self.insert_concurrency = max(
+                1,
+                int(os.environ.get("OPENTALKING_KNOWLEDGE_INSERT_CONCURRENCY", "2")),
+            )
+        except ValueError:
+            self.insert_concurrency = 2
 
     @property
     def uses_remote_models(self) -> bool:
@@ -200,6 +262,28 @@ class LightRAGKnowledgeIndex:
                 text=clean_text,
             )
         )
+
+    def index_documents(
+        self,
+        *,
+        kb_id: str,
+        documents: list[dict[str, str]],
+    ) -> None:
+        """Index a batch using one LightRAG initialization/finalization cycle."""
+        if not documents or not self._lightrag_available():
+            return
+        clean_documents = [
+            {
+                "doc_id": str(item.get("doc_id") or "").strip(),
+                "filename": str(item.get("filename") or "document.txt"),
+                "text": str(item.get("text") or "").strip(),
+            }
+            for item in documents
+        ]
+        clean_documents = [item for item in clean_documents if item["doc_id"] and item["text"]]
+        if not clean_documents:
+            return
+        _run_async(self._index_documents_async(kb_id=kb_id, documents=clean_documents))
 
     def delete_document(self, *, kb_id: str, doc_id: str) -> None:
         if not self._lightrag_available():
@@ -298,6 +382,9 @@ class LightRAGKnowledgeIndex:
             embedding_func=self._embedding_func(),
             tokenizer=Tokenizer("opentalking-local-char", _LocalCharTokenizer()),
             tiktoken_model_name="",
+            embedding_batch_num=self.embedding_batch_size,
+            embedding_func_max_async=self.embedding_concurrency,
+            max_parallel_insert=self.insert_concurrency,
             addon_params={"language": self.language},
         )
         await rag.initialize_storages()
@@ -319,6 +406,31 @@ class LightRAGKnowledgeIndex:
                 except Exception:
                     pass
             await rag.ainsert(text, ids=[doc_id], file_paths=[filename])
+        finally:
+            await self._finalize_rag(rag)
+
+    async def _index_documents_async(
+        self,
+        *,
+        kb_id: str,
+        documents: list[dict[str, str]],
+    ) -> None:
+        rag = await self._new_rag(kb_id)
+        try:
+            for document in documents:
+                if hasattr(rag, "adelete_by_doc_id"):
+                    try:
+                        await rag.adelete_by_doc_id(document["doc_id"])
+                    except Exception:
+                        pass
+            # LightRAG accepts a list of inputs/ids/file_paths. One pipeline
+            # invocation lets it batch embedding and queue processing across
+            # documents instead of paying scheduling overhead per document.
+            await rag.ainsert(
+                [document["text"] for document in documents],
+                ids=[document["doc_id"] for document in documents],
+                file_paths=[document["filename"] for document in documents],
+            )
         finally:
             await self._finalize_rag(rag)
 
@@ -351,6 +463,175 @@ class LightRAGKnowledgeIndex:
         finalize = getattr(rag, "finalize_storages", None)
         if finalize is not None:
             await finalize()
+
+    def _embedding_cache_key(self, text: str) -> str:
+        payload = "\x00".join(
+            (
+                self._embedding_cache_version,
+                self.embedding_chunk_version,
+                self.embedding_model,
+                str(self.embedding_dim),
+                str(self.embedding_max_token_size),
+                text,
+            )
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _open_embedding_cache(self) -> sqlite3.Connection | None:
+        if not self._embedding_cache_limit:
+            return None
+        try:
+            self._embedding_cache_db.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(self._embedding_cache_db), timeout=5.0)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS embeddings (
+                  cache_key TEXT PRIMARY KEY,
+                  dimension INTEGER NOT NULL,
+                  vector BLOB NOT NULL,
+                  updated_at REAL NOT NULL
+                )
+                """
+            )
+            return conn
+        except Exception:  # noqa: BLE001
+            logger.debug("embedding cache unavailable", exc_info=True)
+            return None
+
+    def _cached_embedding_rows(
+        self, texts: list[str]
+    ) -> tuple[list[np.ndarray | None], list[tuple[int, str]]]:
+        rows: list[np.ndarray | None] = []
+        missing: list[tuple[int, str]] = []
+        conn = self._open_embedding_cache()
+        persistent_rows: dict[str, np.ndarray] = {}
+        if conn is not None:
+            try:
+                keys = [self._embedding_cache_key(text) for text in texts]
+                placeholders = ",".join("?" for _ in keys)
+                if placeholders:
+                    for cache_key, dimension, raw_vector in conn.execute(
+                        f"SELECT cache_key, dimension, vector FROM embeddings WHERE cache_key IN ({placeholders})",
+                        keys,
+                    ).fetchall():
+                        if int(dimension) != self.embedding_dim:
+                            continue
+                        vector = np.frombuffer(bytes(raw_vector), dtype=np.float32).copy()
+                        if vector.size == self.embedding_dim:
+                            persistent_rows[str(cache_key)] = vector
+            except Exception:  # noqa: BLE001
+                logger.debug("failed to read embedding cache", exc_info=True)
+            finally:
+                conn.close()
+        for index, text in enumerate(texts):
+            key = self._embedding_cache_key(text)
+            vector: np.ndarray | None = (
+                self._embedding_cache.get(key) if self._embedding_cache_limit else None
+            )
+            if vector is None and self._embedding_cache_limit:
+                vector = persistent_rows.get(key)
+                if vector is not None:
+                    self._embedding_cache[key] = vector.copy()
+                    self._embedding_cache.move_to_end(key)
+            if vector is None:
+                rows.append(None)
+                missing.append((index, key))
+            else:
+                self._embedding_cache.move_to_end(key)
+                rows.append(vector.copy())
+        return rows, missing
+
+    def _save_embedding_cache(self, key: str, vector: np.ndarray) -> None:
+        if not self._embedding_cache_limit:
+            return
+        self._embedding_cache[key] = np.asarray(vector, dtype=np.float32).copy()
+        self._embedding_cache.move_to_end(key)
+        while len(self._embedding_cache) > self._embedding_cache_limit:
+            self._embedding_cache.popitem(last=False)
+        self._save_embedding_cache_rows({key: self._embedding_cache[key]})
+
+    def _save_embedding_cache_rows(self, vectors: dict[str, np.ndarray]) -> None:
+        if not self._embedding_cache_limit or not vectors:
+            return
+        conn = self._open_embedding_cache()
+        if conn is not None:
+            try:
+                conn.executemany(
+                    """
+                    INSERT INTO embeddings(cache_key, dimension, vector, updated_at)
+                    VALUES (?, ?, ?, strftime('%s','now'))
+                    ON CONFLICT(cache_key) DO UPDATE SET
+                      dimension = excluded.dimension,
+                      vector = excluded.vector,
+                      updated_at = excluded.updated_at
+                    """,
+                    [
+                        (key, self.embedding_dim, np.asarray(vector, dtype=np.float32).tobytes())
+                        for key, vector in vectors.items()
+                    ],
+                )
+                conn.execute(
+                    """
+                    DELETE FROM embeddings
+                    WHERE cache_key NOT IN (
+                      SELECT cache_key FROM embeddings ORDER BY updated_at DESC LIMIT ?
+                    )
+                    """,
+                    (self._embedding_cache_limit,),
+                )
+                conn.commit()
+            except Exception:  # noqa: BLE001
+                logger.debug("failed to write embedding cache", exc_info=True)
+            finally:
+                conn.close()
+
+    async def _embed_with_cache(self, texts: list[str], provider: Any) -> np.ndarray:
+        cached, missing = self._cached_embedding_rows(texts)
+        if missing:
+            unique_missing: list[str] = []
+            key_to_position: dict[str, int] = {}
+            for index, key in missing:
+                if key not in key_to_position:
+                    key_to_position[key] = len(unique_missing)
+                    unique_missing.append(texts[index])
+            generated_batches: list[np.ndarray] = []
+            batches: list[list[str]] = []
+            current: list[str] = []
+            current_tokens = 0
+            for value in unique_missing:
+                estimated_tokens = max(1, len(value))
+                if current and (
+                    len(current) >= self.embedding_batch_size
+                    or current_tokens + estimated_tokens > self.embedding_batch_token_limit
+                ):
+                    batches.append(current)
+                    current = []
+                    current_tokens = 0
+                current.append(value)
+                current_tokens += estimated_tokens
+            if current:
+                batches.append(current)
+            for batch in batches:
+                generated_batch = np.asarray(await provider(batch), dtype=np.float32)
+                if generated_batch.ndim == 1:
+                    generated_batch = generated_batch.reshape(1, -1)
+                if generated_batch.shape[0] != len(batch):
+                    raise ValueError("embedding provider returned a row count different from the request")
+                generated_batches.append(generated_batch)
+            generated = np.concatenate(generated_batches, axis=0)
+            cache_vectors: dict[str, np.ndarray] = {}
+            for key, position in key_to_position.items():
+                vector = generated[position]
+                self._embedding_cache[key] = np.asarray(vector, dtype=np.float32).copy()
+                self._embedding_cache.move_to_end(key)
+                cache_vectors[key] = self._embedding_cache[key]
+            while len(self._embedding_cache) > self._embedding_cache_limit:
+                self._embedding_cache.popitem(last=False)
+            self._save_embedding_cache_rows(cache_vectors)
+            for index, key in missing:
+                cached[index] = generated[key_to_position[key]].copy()
+        return np.asarray(cached, dtype=np.float32)
 
     def _llm_model_func(self) -> Any:
         if not self.uses_remote_models:
@@ -398,7 +679,10 @@ class LightRAGKnowledgeIndex:
                 model_name="opentalking-local-hash",
             )
             async def local_embedding_func(texts: list[str]) -> np.ndarray:
-                return _hash_embedding(texts, dim=self.embedding_dim)
+                async def local_provider(values: list[str]) -> np.ndarray:
+                    return _hash_embedding(values, dim=self.embedding_dim)
+
+                return await self._embed_with_cache(texts, local_provider)
 
             return local_embedding_func
 
@@ -412,12 +696,15 @@ class LightRAGKnowledgeIndex:
             model_name=self.embedding_model,
         )
         async def embedding_func(texts: list[str]) -> np.ndarray:
-            return await openai_embed_func(
-                texts,
-                model=self.embedding_model,
-                api_key=self.embedding_api_key,
-                base_url=self.embedding_base_url,
-            )
+            async def remote(values: list[str]) -> Any:
+                return await openai_embed_func(
+                    values,
+                    model=self.embedding_model,
+                    api_key=self.embedding_api_key,
+                    base_url=self.embedding_base_url,
+                )
+
+            return await self._embed_with_cache(texts, remote)
 
         return embedding_func
 

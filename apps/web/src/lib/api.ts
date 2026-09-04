@@ -591,11 +591,15 @@ export type KnowledgeDocument = {
   mime_type: string;
   bytes: number;
   sha256: string;
-  status: "ready" | "error" | string;
+  status: "uploaded" | "extracting" | "indexing" | "ready_fast" | "ready" | "error" | string;
   error: string | null;
   chunk_count: number;
   created_at: string;
   updated_at: string;
+  index_phase?: "queued" | "extraction" | "fast_index" | "complete" | "failed" | string;
+  retry_count?: number;
+  index_error?: string | null;
+  generation?: number;
 };
 
 export type KnowledgeDocumentsResponse = {

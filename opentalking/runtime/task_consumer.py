@@ -12,7 +12,12 @@ from typing import Any
 
 from opentalking.core.config import get_settings
 from opentalking.core.queue_status import set_flashtalk_queue_status
-from opentalking.core.redis_keys import TASK_QUEUE, command_receipt_key
+from opentalking.core.redis_keys import (
+    TASK_QUEUE,
+    command_receipt_key,
+    knowledge_index_job_key,
+    knowledge_prepare_job_key,
+)
 from opentalking.core.session_store import get_session_record, set_session_state
 from opentalking.agent.context_builder import AgentSessionConfig
 from opentalking.runtime.bus import publish_event
@@ -63,6 +68,30 @@ AnyRunner = Any
 _flashtalk_slot_lock: asyncio.Lock | None = None
 _slot_queue_size: int = 0
 _queued_tasks: dict[str, asyncio.Task] = {}  # sid -> queued background task
+_knowledge_index_locks: dict[str, asyncio.Lock] = {}
+_knowledge_index_tasks: set[asyncio.Task[Any]] = set()
+_knowledge_index_semaphore: asyncio.Semaphore | None = None
+
+
+def _knowledge_index_limit() -> int:
+    try:
+        return max(1, int(os.environ.get("OPENTALKING_KNOWLEDGE_INDEX_WORKERS", "2")))
+    except ValueError:
+        return 2
+
+
+def _knowledge_index_max_attempts() -> int:
+    try:
+        return max(1, int(os.environ.get("OPENTALKING_KNOWLEDGE_INDEX_MAX_ATTEMPTS", "3")))
+    except ValueError:
+        return 3
+
+
+def _get_knowledge_index_semaphore() -> asyncio.Semaphore:
+    global _knowledge_index_semaphore
+    if _knowledge_index_semaphore is None:
+        _knowledge_index_semaphore = asyncio.Semaphore(_knowledge_index_limit())
+    return _knowledge_index_semaphore
 
 
 def _get_slot_lock() -> asyncio.Lock:
@@ -535,6 +564,294 @@ async def handle_worker_task(
 ) -> None:
     cmd = task.get("cmd")
     sid = task.get("session_id")
+    if cmd == "knowledge_index":
+        kb_id = str(task.get("kb_id") or "").strip()
+        doc_id = str(task.get("doc_id") or "").strip()
+        attempt = max(0, int(task.get("attempt") or 0))
+        generation_raw = task.get("generation")
+        generation = int(generation_raw) if generation_raw is not None else None
+        if not kb_id or not doc_id:
+            log.warning("knowledge_index task missing kb_id/doc_id")
+            return
+
+        async def _run_knowledge_index() -> None:
+            lock = _knowledge_index_locks.setdefault(kb_id, asyncio.Lock())
+            async with _get_knowledge_index_semaphore(), lock:
+                retry_queued = False
+                try:
+                    from opentalking.agent.context_builder import default_knowledge_store
+
+                    store = default_knowledge_store()
+                    if generation is None:
+                        document = await store.index_document(kb_id=kb_id, doc_id=doc_id)
+                    else:
+                        document = await store.index_document_for_generation(
+                            kb_id=kb_id,
+                            doc_id=doc_id,
+                            generation=generation,
+                        )
+                    log.info(
+                        "knowledge index completed: kb=%s doc=%s status=%s chunks=%s",
+                        kb_id,
+                        doc_id,
+                        document.status,
+                        document.chunk_count,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    if getattr(exc, "discard_job", False):
+                        log.info(
+                            "discarding stale knowledge index job: kb=%s doc=%s generation=%s",
+                            kb_id,
+                            doc_id,
+                            generation,
+                        )
+                        return
+                    # A worker-level exception (for example a missing file or a
+                    # database failure) must be visible in the document state.
+                    # The store handles index/extraction errors it can classify;
+                    # this catches failures before it can return a document.
+                    document_exists = False
+                    try:
+                        from opentalking.agent.context_builder import default_knowledge_store
+
+                        store = default_knowledge_store()
+                        # Enrichment failures happen after local chunks have
+                        # been committed. Preserve that fast index so the
+                        # document remains queryable while retries continue.
+                        if getattr(exc, "preserve_fast_index", False):
+                            marked = await store.mark_index_enrichment_error(
+                                kb_id=kb_id,
+                                doc_id=doc_id,
+                                error=f"worker failed: {exc}",
+                                retry_count=attempt + 1,
+                            )
+                        else:
+                            marked = await store.mark_index_error(
+                                kb_id=kb_id,
+                                doc_id=doc_id,
+                                error=f"worker failed: {exc}",
+                                retry_count=attempt + 1,
+                            )
+                        document_exists = marked is not None
+                    except Exception:  # noqa: BLE001
+                        log.exception(
+                            "failed to persist knowledge worker error: kb=%s doc=%s",
+                            kb_id,
+                            doc_id,
+                        )
+                    if document_exists and attempt + 1 < _knowledge_index_max_attempts():
+                        retry_task = {
+                            "cmd": "knowledge_index",
+                            "kb_id": kb_id,
+                            "doc_id": doc_id,
+                            "attempt": attempt + 1,
+                        }
+                        if generation is not None:
+                            retry_task["generation"] = generation
+                        if task.get("content_hash"):
+                            retry_task["content_hash"] = task["content_hash"]
+                        try:
+                            await r.rpush(
+                                TASK_QUEUE,
+                                json.dumps(retry_task, ensure_ascii=False),
+                            )
+                            retry_queued = True
+                            log.warning(
+                                "knowledge index retry queued: kb=%s doc=%s attempt=%s",
+                                kb_id,
+                                doc_id,
+                                attempt + 1,
+                            )
+                        except Exception:  # noqa: BLE001
+                            log.exception(
+                                "failed to queue knowledge index retry: kb=%s doc=%s",
+                                kb_id,
+                                doc_id,
+                            )
+                    else:
+                        log.exception(
+                            "knowledge index worker failed permanently: kb=%s doc=%s attempts=%s",
+                            kb_id,
+                            doc_id,
+                            attempt + 1,
+                        )
+                finally:
+                    if not retry_queued and hasattr(r, "delete"):
+                        await r.delete(knowledge_index_job_key(kb_id, doc_id))
+
+        index_task = asyncio.create_task(_run_knowledge_index())
+        _knowledge_index_tasks.add(index_task)
+        index_task.add_done_callback(_knowledge_index_tasks.discard)
+        return
+    if cmd == "knowledge_index_batch":
+        kb_id = str(task.get("kb_id") or "").strip()
+        raw_doc_ids = task.get("doc_ids")
+        doc_ids = [str(value).strip() for value in raw_doc_ids if str(value).strip()] if isinstance(raw_doc_ids, list) else []
+        attempt = max(0, int(task.get("attempt") or 0))
+        raw_generations = task.get("generations")
+        generations: dict[str, int] = {
+            str(doc_id): int(raw_generations[str(doc_id)])
+            for doc_id in doc_ids
+            if isinstance(raw_generations, dict) and str(doc_id) in raw_generations
+        }
+        if raw_generations is not None and not generations:
+            log.warning("knowledge_index_batch task has no valid generations: kb=%s", kb_id)
+        if not kb_id or not doc_ids:
+            log.warning("knowledge_index_batch task missing kb_id/doc_ids")
+            return
+
+        async def _run_knowledge_index_batch() -> None:
+            lock = _knowledge_index_locks.setdefault(kb_id, asyncio.Lock())
+            async with _get_knowledge_index_semaphore(), lock:
+                retry_queued = False
+                try:
+                    from opentalking.agent.context_builder import default_knowledge_store
+
+                    store = default_knowledge_store()
+                    if generations:
+                        documents = await store.index_documents(
+                            kb_id=kb_id,
+                            doc_ids=doc_ids,
+                            expected_generations=generations,
+                        )
+                    else:
+                        documents = await store.index_documents(kb_id=kb_id, doc_ids=doc_ids)
+                    log.info(
+                        "knowledge index batch completed: kb=%s docs=%s statuses=%s",
+                        kb_id,
+                        len(documents),
+                        [document.status for document in documents],
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001
+                    if getattr(exc, "discard_job", False):
+                        log.info("discarding stale knowledge index batch: kb=%s docs=%s", kb_id, doc_ids)
+                        return
+                    existing_doc_ids: list[str] = []
+                    try:
+                        from opentalking.agent.context_builder import default_knowledge_store
+
+                        store = default_knowledge_store()
+                        for doc_id in doc_ids:
+                            if getattr(exc, "preserve_fast_index", False):
+                                marked = await store.mark_index_enrichment_error(
+                                    kb_id=kb_id,
+                                    doc_id=doc_id,
+                                    error=f"batch worker failed: {exc}",
+                                    retry_count=attempt + 1,
+                                )
+                            else:
+                                marked = await store.mark_index_error(
+                                    kb_id=kb_id,
+                                    doc_id=doc_id,
+                                    error=f"batch worker failed: {exc}",
+                                    retry_count=attempt + 1,
+                                )
+                            if marked is not None:
+                                existing_doc_ids.append(doc_id)
+                    except Exception:  # noqa: BLE001
+                        log.exception(
+                            "failed to persist batch knowledge worker error: kb=%s",
+                            kb_id,
+                        )
+                    if existing_doc_ids and attempt + 1 < _knowledge_index_max_attempts():
+                        try:
+                            retry_generations = {
+                                doc_id: generations[doc_id]
+                                for doc_id in existing_doc_ids
+                                if doc_id in generations
+                            }
+                            await r.rpush(
+                                TASK_QUEUE,
+                                json.dumps(
+                                    {
+                                        "cmd": "knowledge_index_batch",
+                                        "kb_id": kb_id,
+                                        "doc_ids": existing_doc_ids,
+                                        "attempt": attempt + 1,
+                                        **({"generations": retry_generations} if retry_generations else {}),
+                                    },
+                                    ensure_ascii=False,
+                                ),
+                            )
+                            retry_queued = True
+                            log.warning(
+                                "knowledge index batch retry queued: kb=%s docs=%s attempt=%s",
+                                kb_id,
+                                len(doc_ids),
+                                attempt + 1,
+                            )
+                        except Exception:  # noqa: BLE001
+                            log.exception(
+                                "failed to queue knowledge index batch retry: kb=%s",
+                                kb_id,
+                            )
+                    log.exception(
+                        "knowledge index batch worker failed: kb=%s docs=%s attempt=%s",
+                        kb_id,
+                        len(doc_ids),
+                        attempt + 1,
+                    )
+                finally:
+                    if not retry_queued and hasattr(r, "delete"):
+                        for doc_id in doc_ids:
+                            await r.delete(knowledge_index_job_key(kb_id, doc_id))
+
+        batch_task = asyncio.create_task(_run_knowledge_index_batch())
+        _knowledge_index_tasks.add(batch_task)
+        batch_task.add_done_callback(_knowledge_index_tasks.discard)
+        return
+    if cmd == "knowledge_prepare_file":
+        file_id = str(task.get("file_id") or "").strip()
+        attempt = max(0, int(task.get("attempt") or 0))
+        if not file_id:
+            log.warning("knowledge_prepare_file task missing file_id")
+            return
+        retry_queued = False
+        try:
+            from opentalking.agent.context_builder import default_knowledge_store
+
+            document = await default_knowledge_store().prepare_file(file_id)
+            log.info(
+                "knowledge file prepared: file=%s status=%s chunks=%s",
+                file_id,
+                document.status,
+                document.chunk_count,
+            )
+        except Exception as exc:  # noqa: BLE001
+            try:
+                marked = await default_knowledge_store().mark_file_error(
+                    file_id=file_id,
+                    error=f"worker failed: {exc}",
+                )
+                if marked is not None and attempt + 1 < _knowledge_index_max_attempts():
+                    await r.rpush(
+                        TASK_QUEUE,
+                        json.dumps(
+                            {
+                                "cmd": "knowledge_prepare_file",
+                                "file_id": file_id,
+                                "attempt": attempt + 1,
+                            },
+                            ensure_ascii=False,
+                        ),
+                    )
+                    retry_queued = True
+                    log.warning(
+                        "knowledge file preparation retry queued: file=%s attempt=%s",
+                        file_id,
+                        attempt + 1,
+                    )
+            except Exception:  # noqa: BLE001
+                log.exception("failed to persist knowledge file worker error: file=%s", file_id)
+            log.exception("knowledge file preparation failed: file=%s", file_id)
+        finally:
+            if not retry_queued and hasattr(r, "delete"):
+                await r.delete(knowledge_prepare_job_key(file_id))
+        return
     if not sid or not cmd:
         return
     if cmd == "init":
@@ -735,6 +1052,54 @@ async def consume_task_queue(
     device: str,
     runners: dict[str, SessionRunner],
 ) -> None:
+    # Recover jobs left in ``uploaded``/``indexing`` state after a worker
+    # restart. The document/chunks are durable; only extraction/index side
+    # effects are retried.
+    try:
+        from opentalking.agent.context_builder import default_knowledge_store
+
+        store = default_knowledge_store()
+        pending_documents = await store.list_indexing_documents()
+        # ``uploaded`` records are also recoverable: they have durable files
+        # but extraction/chunking has not yet started.
+        seen: set[tuple[str, str]] = set()
+        for document in pending_documents:
+            if document.status not in {"uploaded", "indexing"}:
+                continue
+            marker = (document.kb_id, document.id)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            key = knowledge_index_job_key(document.kb_id, document.id)
+            if hasattr(r, "set") and not await r.set(key, "queued", nx=True, ex=24 * 60 * 60):
+                continue
+            await r.rpush(
+                TASK_QUEUE,
+                json.dumps(
+                    {
+                        "cmd": "knowledge_index",
+                        "kb_id": document.kb_id,
+                        "doc_id": document.id,
+                        "generation": document.generation,
+                        "content_hash": document.sha256,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+        for document in await store.list_pending_files():
+            key = knowledge_prepare_job_key(document.id)
+            if hasattr(r, "set") and not await r.set(key, "queued", nx=True, ex=24 * 60 * 60):
+                continue
+            await r.rpush(
+                TASK_QUEUE,
+                json.dumps(
+                    {"cmd": "knowledge_prepare_file", "file_id": document.id},
+                    ensure_ascii=False,
+                ),
+            )
+    except Exception:  # noqa: BLE001
+        log.warning("failed to recover knowledge indexing jobs", exc_info=True)
+
     while True:
         try:
             res = await r.brpop(TASK_QUEUE, timeout=5)
