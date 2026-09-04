@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import logging
 import os
@@ -1046,15 +1047,11 @@ async def handle_worker_task(
         runners.pop(sid, None)
 
 
-async def consume_task_queue(
-    r: Any,
-    avatars_root: Path,
-    device: str,
-    runners: dict[str, SessionRunner],
-) -> None:
+async def _recover_knowledge_index_jobs(r: Any) -> None:
     # Recover jobs left in ``uploaded``/``indexing`` state after a worker
     # restart. The document/chunks are durable; only extraction/index side
-    # effects are retried.
+    # effects are retried. This deliberately runs outside the real-time task
+    # consumer so SQLite recovery never delays session initialization.
     try:
         from opentalking.agent.context_builder import default_knowledge_store
 
@@ -1097,18 +1094,33 @@ async def consume_task_queue(
                     ensure_ascii=False,
                 ),
             )
+    except asyncio.CancelledError:
+        raise
     except Exception:  # noqa: BLE001
         log.warning("failed to recover knowledge indexing jobs", exc_info=True)
 
-    while True:
-        try:
-            res = await r.brpop(TASK_QUEUE, timeout=5)
-            if not res:
-                continue
-            _, raw = res
-            task = json.loads(raw)
-            await handle_worker_task(task, r, avatars_root, device, runners)
-        except asyncio.CancelledError:
-            break
-        except Exception:  # noqa: BLE001
-            log.exception("task consumer error")
+
+async def consume_task_queue(
+    r: Any,
+    avatars_root: Path,
+    device: str,
+    runners: dict[str, SessionRunner],
+) -> None:
+    recovery_task = asyncio.create_task(_recover_knowledge_index_jobs(r))
+    try:
+        while True:
+            try:
+                res = await r.brpop(TASK_QUEUE, timeout=5)
+                if not res:
+                    continue
+                _, raw = res
+                task = json.loads(raw)
+                await handle_worker_task(task, r, avatars_root, device, runners)
+            except asyncio.CancelledError:
+                break
+            except Exception:  # noqa: BLE001
+                log.exception("task consumer error")
+    finally:
+        recovery_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await recovery_task

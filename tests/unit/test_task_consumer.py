@@ -138,6 +138,46 @@ class KnowledgeEnrichmentFailure(RuntimeError):
     preserve_fast_index = True
 
 
+@pytest.mark.asyncio
+async def test_consumer_handles_session_tasks_while_knowledge_recovery_is_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recovery_started = asyncio.Event()
+    allow_recovery_to_finish = asyncio.Event()
+    handled = asyncio.Event()
+
+    class SlowRecoveryStore:
+        async def list_indexing_documents(self) -> list[SimpleNamespace]:
+            recovery_started.set()
+            await allow_recovery_to_finish.wait()
+            return []
+
+        async def list_pending_files(self) -> list[SimpleNamespace]:
+            return []
+
+    async def fake_handle_worker_task(task: dict[str, object], *_args: object) -> None:
+        if task.get("cmd") == "init":
+            handled.set()
+
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: SlowRecoveryStore(),
+    )
+    monkeypatch.setattr(task_consumer, "handle_worker_task", fake_handle_worker_task)
+    redis = InMemoryRedis()
+    consumer = asyncio.create_task(
+        task_consumer.consume_task_queue(redis, Path("."), "cpu", {})
+    )
+    try:
+        await asyncio.wait_for(recovery_started.wait(), timeout=1)
+        await redis.rpush(TASK_QUEUE, json.dumps({"cmd": "init", "session_id": "sess_fast"}))
+        await asyncio.wait_for(handled.wait(), timeout=1)
+    finally:
+        allow_recovery_to_finish.set()
+        consumer.cancel()
+        await consumer
+
+
 def test_task_knowledge_base_ids_do_not_fallback_to_default() -> None:
     assert task_consumer._task_knowledge_base_ids({}) == []
     assert task_consumer._task_knowledge_base_ids({"knowledge_base_ids": []}) == []
