@@ -108,7 +108,11 @@ function metadataLine(item: ExportVideoItem): string {
 
 function knowledgeStatusLabel(document: KnowledgeDocument): string {
   if (document.status === "ready") return "已索引";
+  if (document.status === "ready_fast") return "可检索（增强中）";
   if (document.status === "error") return "索引失败";
+  if (document.status === "uploaded") return "等待处理";
+  if (document.status === "extracting") return "解析中";
+  if (document.status === "indexing") return "索引中";
   return document.status || "处理中";
 }
 
@@ -207,6 +211,10 @@ function normalizeKnowledgeDocument(item: unknown, index = 0): KnowledgeDocument
     chunk_count: Number.isFinite(chunkCount) ? chunkCount : 0,
     created_at: String(record.created_at ?? ""),
     updated_at: String(record.updated_at ?? ""),
+    index_phase: typeof record.index_phase === "string" ? record.index_phase : "",
+    retry_count: Number.isFinite(Number(record.retry_count)) ? Number(record.retry_count) : 0,
+    index_error: typeof record.index_error === "string" ? record.index_error : null,
+    generation: Number.isFinite(Number(record.generation)) ? Number(record.generation) : 0,
   };
 }
 
@@ -407,6 +415,25 @@ export function AssetLibraryWorkspace({
       setKnowledgeDocuments([]);
     }
   }, [activeTab, loadKnowledgeDocuments, selectedKnowledgeId]);
+
+  useEffect(() => {
+    if (activeTab !== "knowledge" || !selectedKnowledgeId) return;
+    const hasPending = knowledgeDocuments.some((document) =>
+      document.status === "uploaded" || document.status === "extracting" || document.status === "indexing",
+    );
+    if (!hasPending) return;
+    const timer = window.setInterval(() => {
+      void loadKnowledgeDocuments(selectedKnowledgeId);
+      void loadKnowledgeBases();
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [
+    activeTab,
+    knowledgeDocuments,
+    loadKnowledgeBases,
+    loadKnowledgeDocuments,
+    selectedKnowledgeId,
+  ]);
 
   useEffect(() => {
     if (activeTab === "scenes") void loadScenes();

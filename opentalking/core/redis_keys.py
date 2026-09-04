@@ -21,6 +21,14 @@ def uploaded_pcm_key(session_id: str, upload_id: str) -> str:
     return f"opentalking:uploaded_pcm:{session_id}:{upload_id}"
 
 
+def knowledge_index_job_key(kb_id: str, doc_id: str) -> str:
+    return f"opentalking:knowledge:index:{kb_id}:{doc_id}"
+
+
+def knowledge_prepare_job_key(file_id: str) -> str:
+    return f"opentalking:knowledge:prepare:{file_id}"
+
+
 def streaming_output_index_key(session_id: str) -> str:
     """Short-lived streaming output snapshot index for one Session."""
     return f"opentalking:streaming:index:{session_id}"

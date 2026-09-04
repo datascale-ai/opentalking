@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -14,6 +15,7 @@ from opentalking.agent.knowledge_store import (
     DuplicateKnowledgeDocumentError,
     KnowledgeStore,
 )
+from opentalking.core.redis_keys import TASK_QUEUE, knowledge_index_job_key, knowledge_prepare_job_key
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -57,6 +59,10 @@ class KnowledgeDocumentResponse(BaseModel):
     chunk_count: int
     created_at: str
     updated_at: str
+    index_phase: str = ""
+    retry_count: int = 0
+    index_error: str | None = None
+    generation: int = 0
 
 
 class KnowledgeDocumentsResponse(BaseModel):
@@ -160,6 +166,9 @@ async def _add_uploaded_document(
     *,
     kb_id: str,
     file: UploadFile,
+    background_tasks: BackgroundTasks | None = None,
+    redis: object | None = None,
+    enqueue_index: bool = True,
 ) -> KnowledgeDocumentResponse:
     filename = file.filename or "document.txt"
     mime_type = file.content_type or "application/octet-stream"
@@ -177,12 +186,34 @@ async def _add_uploaded_document(
                     raise HTTPException(status_code=413, detail="document is larger than 20MB")
                 tmp.write(chunk)
         try:
-            doc = await store.add_document(
-                kb_id=kb_id,
-                filename=filename,
-                mime_type=mime_type,
-                source_path=tmp_path,
+            use_deferred = (
+                background_tasks is not None and store.supports_deferred_indexing
             )
+            if use_deferred:
+                doc = await store.add_document_deferred(
+                    kb_id=kb_id,
+                    filename=filename,
+                    mime_type=mime_type,
+                    source_path=tmp_path,
+                    consume_source=True,
+                )
+            else:
+                doc = await store.add_document(
+                    kb_id=kb_id,
+                    filename=filename,
+                    mime_type=mime_type,
+                    source_path=tmp_path,
+                )
+            if enqueue_index and doc.status in {"uploaded", "indexing"}:
+                await _enqueue_index_job(
+                    store,
+                    kb_id=kb_id,
+                    doc_id=doc.id,
+                    redis=redis,
+                    background_tasks=background_tasks,
+                    generation=doc.generation,
+                    content_hash=doc.sha256,
+                )
         except DuplicateKnowledgeDocumentError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except ValueError as exc:
@@ -191,6 +222,139 @@ async def _add_uploaded_document(
         if tmp_path is not None:
             tmp_path.unlink(missing_ok=True)
     return KnowledgeDocumentResponse(**asdict(doc))
+
+
+async def _enqueue_index_job(
+    store: KnowledgeStore,
+    *,
+    kb_id: str,
+    doc_id: str,
+    redis: object | None,
+    background_tasks: BackgroundTasks | None,
+    generation: int | None = None,
+    content_hash: str | None = None,
+) -> None:
+    """Submit an idempotent index job without coupling it to the HTTP request."""
+    task: dict[str, object] = {
+        "cmd": "knowledge_index",
+        "kb_id": kb_id,
+        "doc_id": doc_id,
+    }
+    if generation is not None:
+        task["generation"] = int(generation)
+    if content_hash:
+        task["content_hash"] = content_hash
+    if redis is not None and hasattr(redis, "rpush"):
+        key = knowledge_index_job_key(kb_id, doc_id)
+        if hasattr(redis, "set"):
+            claimed = await redis.set(key, "queued", nx=True, ex=24 * 60 * 60)  # type: ignore[attr-defined]
+            if not claimed:
+                return
+        try:
+            await redis.rpush(TASK_QUEUE, json.dumps(task, ensure_ascii=False))  # type: ignore[attr-defined]
+        except Exception:
+            # Do not leave an NX claim behind when the broker rejected the
+            # enqueue; otherwise this document could be suppressed for a day.
+            if hasattr(redis, "delete"):
+                try:
+                    await redis.delete(key)  # type: ignore[attr-defined]
+                except Exception:  # noqa: BLE001
+                    pass
+            raise
+        return
+    if background_tasks is not None:
+        if generation is None:
+            background_tasks.add_task(store.index_document, kb_id=kb_id, doc_id=doc_id)
+        else:
+            background_tasks.add_task(
+                store.index_document_for_generation,
+                kb_id=kb_id,
+                doc_id=doc_id,
+                generation=generation,
+            )
+
+
+async def _enqueue_index_batch_job(
+    store: KnowledgeStore,
+    *,
+    kb_id: str,
+    doc_ids: list[str],
+    redis: object | None,
+    background_tasks: BackgroundTasks | None,
+) -> None:
+    """Submit one batch task for a multi-document import."""
+    unique_ids = list(dict.fromkeys(doc_id.strip() for doc_id in doc_ids if doc_id.strip()))
+    if not unique_ids:
+        return
+    task: dict[str, object] = {
+        "cmd": "knowledge_index_batch",
+        "kb_id": kb_id,
+        "doc_ids": unique_ids,
+    }
+    # Capture the document generations/content hashes at enqueue time.  A
+    # later reindex/delete must not allow an old batch result to overwrite the
+    # newer generation.
+    try:
+        documents = [await store.get_document_status(kb_id=kb_id, doc_id=doc_id) for doc_id in unique_ids]
+        task["generations"] = {document.id: document.generation for document in documents}
+        task["content_hashes"] = {document.id: document.sha256 for document in documents}
+    except Exception:
+        # The worker will perform the authoritative existence check; enqueue
+        # remains available for lightweight/fake stores used by integrations.
+        pass
+    if redis is not None and hasattr(redis, "rpush"):
+        claimed_ids: list[str] = []
+        try:
+            for doc_id in unique_ids:
+                key = knowledge_index_job_key(kb_id, doc_id)
+                if not hasattr(redis, "set"):
+                    claimed_ids.append(doc_id)
+                    continue
+                claimed = await redis.set(key, "queued", nx=True, ex=24 * 60 * 60)  # type: ignore[attr-defined]
+                if claimed:
+                    claimed_ids.append(doc_id)
+            if not claimed_ids:
+                return
+            await redis.rpush(  # type: ignore[attr-defined]
+                TASK_QUEUE,
+                json.dumps({**task, "doc_ids": claimed_ids}, ensure_ascii=False),
+            )
+        except Exception:
+            if hasattr(redis, "delete"):
+                for doc_id in claimed_ids:
+                    try:
+                        await redis.delete(knowledge_index_job_key(kb_id, doc_id))  # type: ignore[attr-defined]
+                    except Exception:  # noqa: BLE001
+                        pass
+            raise
+        return
+    if background_tasks is not None:
+        background_tasks.add_task(store.index_documents, kb_id=kb_id, doc_ids=unique_ids)
+
+
+async def _enqueue_file_prepare_job(
+    store: KnowledgeStore,
+    *,
+    file_id: str,
+    redis: object | None,
+    background_tasks: BackgroundTasks | None,
+) -> None:
+    task = {"cmd": "knowledge_prepare_file", "file_id": file_id}
+    if redis is not None and hasattr(redis, "rpush"):
+        key = knowledge_prepare_job_key(file_id)
+        if hasattr(redis, "set"):
+            claimed = await redis.set(key, "queued", nx=True, ex=24 * 60 * 60)  # type: ignore[attr-defined]
+            if not claimed:
+                return
+        try:
+            await redis.rpush(TASK_QUEUE, json.dumps(task, ensure_ascii=False))  # type: ignore[attr-defined]
+        except Exception:
+            if hasattr(redis, "delete"):
+                await redis.delete(key)  # type: ignore[attr-defined]
+            raise
+        return
+    if background_tasks is not None:
+        background_tasks.add_task(store.prepare_file, file_id)
 
 
 async def _add_uploaded_file(
@@ -254,6 +418,8 @@ async def list_knowledge_bases() -> KnowledgeBasesResponse:
 
 @router.post("/knowledge-bases", response_model=KnowledgeBaseResponse)
 async def create_knowledge_base(
+    request: Request,
+    background_tasks: BackgroundTasks,
     name: str = Form(...),
     document_ids: list[str] | None = Form(default=None),
     files: list[UploadFile] | None = File(default=None),
@@ -267,13 +433,40 @@ async def create_knowledge_base(
     store = default_knowledge_store()
     try:
         knowledge_base = await store.create_knowledge_base(clean_name)
+        deferred_existing_ids: list[str] = []
+        deferred_file_ids: list[str] = []
         for doc_id in selected_document_ids:
-            await store.add_existing_document(
+            add_existing = (
+                store.add_existing_document_deferred
+                if background_tasks is not None and store.supports_deferred_indexing
+                else store.add_existing_document
+            )
+            doc = await add_existing(
                 kb_id=knowledge_base.id,
                 source_doc_id=doc_id,
             )
+            if doc.status in {"uploaded", "indexing"}:
+                deferred_existing_ids.append(doc.id)
         for file in files or []:
-            await _add_uploaded_document(store, kb_id=knowledge_base.id, file=file)
+            uploaded_document = await _add_uploaded_document(
+                store,
+                kb_id=knowledge_base.id,
+                file=file,
+                background_tasks=background_tasks,
+                redis=getattr(request.app.state, "redis", None),
+                enqueue_index=False,
+            )
+            if uploaded_document.status in {"uploaded", "indexing"}:
+                deferred_file_ids.append(uploaded_document.id)
+        all_deferred_ids = deferred_existing_ids + deferred_file_ids
+        if all_deferred_ids:
+            await _enqueue_index_batch_job(
+                store,
+                kb_id=knowledge_base.id,
+                doc_ids=all_deferred_ids,
+                redis=getattr(request.app.state, "redis", None),
+                background_tasks=background_tasks,
+                )
     except HTTPException:
         if "knowledge_base" in locals():
             try:
@@ -346,11 +539,19 @@ async def query_lightrag_index(
         raise HTTPException(status_code=400, detail="query is required")
     limit = min(max(1, request.limit), 20)
     store = default_knowledge_store()
-    status = store.knowledge_index.status(kb_id=kb_id)
+    status = await store.index_status(kb_id=kb_id)
     results = []
     if status.available and status.indexed:
         try:
-            results = store.knowledge_index.query(kb_id=kb_id, query=query, limit=limit)
+            chunk_results = await store.query_index(kb_id=kb_id, query=query, limit=limit)
+            results = [
+                LightRAGQueryResultResponse(
+                    doc_id=chunk.doc_id,
+                    text=chunk.text,
+                    score=chunk.score,
+                )
+                for chunk in chunk_results
+            ]
         except Exception:
             return LightRAGQueryResponse(
                 available=status.available,
@@ -362,11 +563,23 @@ async def query_lightrag_index(
         available=status.available,
         indexed=status.indexed,
         reason=status.reason,
-        results=[
-            LightRAGQueryResultResponse(**asdict(result))
-            for result in results
-        ],
+        results=results,
     )
+
+
+@router.get(
+    "/knowledge-bases/{kb_id}/documents/{doc_id}/status",
+    response_model=KnowledgeDocumentResponse,
+)
+async def get_knowledge_document_status(kb_id: str, doc_id: str) -> KnowledgeDocumentResponse:
+    try:
+        document = await default_knowledge_store().get_document_status(
+            kb_id=kb_id,
+            doc_id=doc_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="knowledge document not found") from exc
+    return KnowledgeDocumentResponse(**asdict(document))
 
 
 @router.get(
@@ -418,9 +631,49 @@ async def list_all_knowledge_documents() -> KnowledgeDocumentsResponse:
     response_model=KnowledgeDocumentResponse,
 )
 async def upload_knowledge_file(
+    request: Request,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ) -> KnowledgeDocumentResponse:
-    return await _add_uploaded_file(default_knowledge_store(), file=file)
+    store = default_knowledge_store()
+    if not store.supports_deferred_indexing:
+        return await _add_uploaded_file(store, file=file)
+    filename = file.filename or "document.txt"
+    mime_type = file.content_type or "application/octet-stream"
+    total = 0
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(prefix="opentalking-kb-file-", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_DOCUMENT_BYTES:
+                    raise HTTPException(status_code=413, detail="document is larger than 20MB")
+                tmp.write(chunk)
+        try:
+            doc = await store.add_file_deferred(
+                filename=filename,
+                mime_type=mime_type,
+                source_path=tmp_path,
+                consume_source=True,
+            )
+            await _enqueue_file_prepare_job(
+                store,
+                file_id=doc.id,
+                redis=getattr(request.app.state, "redis", None),
+                background_tasks=background_tasks,
+            )
+        except DuplicateKnowledgeDocumentError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+    return KnowledgeDocumentResponse(**asdict(doc))
 
 
 @router.delete(
@@ -476,10 +729,18 @@ async def list_knowledge_documents(kb_id: str) -> KnowledgeDocumentsResponse:
     response_model=KnowledgeDocumentResponse,
 )
 async def upload_knowledge_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
     kb_id: str,
     file: UploadFile = File(...),
 ) -> KnowledgeDocumentResponse:
-    return await _add_uploaded_document(default_knowledge_store(), kb_id=kb_id, file=file)
+    return await _add_uploaded_document(
+        default_knowledge_store(),
+        kb_id=kb_id,
+        file=file,
+        background_tasks=background_tasks,
+        redis=getattr(request.app.state, "redis", None),
+    )
 
 
 @router.post(
@@ -488,17 +749,34 @@ async def upload_knowledge_document(
 )
 async def import_knowledge_documents(
     kb_id: str,
-    request: ImportKnowledgeDocumentsRequest,
+    request: Request,
+    body: ImportKnowledgeDocumentsRequest,
+    background_tasks: BackgroundTasks,
 ) -> KnowledgeDocumentsResponse:
-    document_ids = [doc_id.strip() for doc_id in request.document_ids if doc_id.strip()]
+    document_ids = [doc_id.strip() for doc_id in body.document_ids if doc_id.strip()]
     if not document_ids:
         raise HTTPException(status_code=400, detail="at least one document is required")
     store = default_knowledge_store()
     imported = []
+    deferred_ids: list[str] = []
     try:
         for doc_id in document_ids:
-            imported.append(
-                await store.add_existing_document(kb_id=kb_id, source_doc_id=doc_id)
+            add_existing = (
+                store.add_existing_document_deferred
+                if background_tasks is not None and store.supports_deferred_indexing
+                else store.add_existing_document
+            )
+            doc = await add_existing(kb_id=kb_id, source_doc_id=doc_id)
+            imported.append(doc)
+            if doc.status in {"uploaded", "indexing"}:
+                deferred_ids.append(doc.id)
+        if deferred_ids:
+            await _enqueue_index_batch_job(
+                store,
+                kb_id=kb_id,
+                doc_ids=deferred_ids,
+                redis=getattr(request.app.state, "redis", None),
+                background_tasks=background_tasks,
             )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="knowledge file not found") from exc
@@ -549,9 +827,27 @@ async def view_knowledge_document(kb_id: str, doc_id: str) -> FileResponse:
     "/knowledge-bases/{kb_id}/documents/{doc_id}/reindex",
     response_model=KnowledgeDocumentResponse,
 )
-async def reindex_knowledge_document(kb_id: str, doc_id: str) -> KnowledgeDocumentResponse:
+async def reindex_knowledge_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    kb_id: str,
+    doc_id: str,
+) -> KnowledgeDocumentResponse:
+    store = default_knowledge_store()
     try:
-        doc = await default_knowledge_store().reindex_document(kb_id=kb_id, doc_id=doc_id)
+        if store.supports_deferred_indexing:
+            doc = await store.request_reindex(kb_id=kb_id, doc_id=doc_id)
+            await _enqueue_index_job(
+                store,
+                kb_id=kb_id,
+                doc_id=doc_id,
+                redis=getattr(request.app.state, "redis", None),
+                background_tasks=background_tasks,
+                generation=doc.generation,
+            )
+        else:
+            # Fallback/fake indexes retain the historical synchronous contract.
+            doc = await store.reindex_document(kb_id=kb_id, doc_id=doc_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="knowledge document not found") from exc
     except ValueError as exc:

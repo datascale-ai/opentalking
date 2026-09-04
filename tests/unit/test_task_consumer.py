@@ -94,6 +94,90 @@ class ChatCapableRunner(StubRunner):
         return task
 
 
+async def _drain_knowledge_tasks() -> None:
+    for _ in range(100):
+        if not task_consumer._knowledge_index_tasks:
+            return
+        await asyncio.sleep(0.001)
+    assert not task_consumer._knowledge_index_tasks
+
+
+class KnowledgeWorkerStoreStub:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.indexed: list[tuple[str, str]] = []
+        self.errors: list[tuple[str, str, str, int | None]] = []
+        self.enrichment_errors: list[tuple[str, str, str, int | None]] = []
+
+    async def index_document(self, *, kb_id: str, doc_id: str):
+        if self.fail:
+            raise RuntimeError("index backend unavailable")
+        self.indexed.append((kb_id, doc_id))
+        return SimpleNamespace(status="ready", chunk_count=1)
+
+    async def mark_index_error(
+        self, *, kb_id: str, doc_id: str, error: str, retry_count: int | None = None
+    ):
+        self.errors.append((kb_id, doc_id, error, retry_count))
+        return SimpleNamespace(status="error", chunk_count=0)
+
+    async def mark_index_enrichment_error(
+        self, *, kb_id: str, doc_id: str, error: str, retry_count: int | None = None
+    ):
+        self.enrichment_errors.append((kb_id, doc_id, error, retry_count))
+        return SimpleNamespace(status="ready_fast", chunk_count=1)
+
+    async def index_documents(self, *, kb_id: str, doc_ids: list[str]):
+        if self.fail:
+            raise RuntimeError("batch index backend unavailable")
+        self.indexed.extend((kb_id, doc_id) for doc_id in doc_ids)
+        return [SimpleNamespace(status="ready", chunk_count=1) for _ in doc_ids]
+
+
+class KnowledgeEnrichmentFailure(RuntimeError):
+    preserve_fast_index = True
+
+
+@pytest.mark.asyncio
+async def test_consumer_handles_session_tasks_while_knowledge_recovery_is_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recovery_started = asyncio.Event()
+    allow_recovery_to_finish = asyncio.Event()
+    handled = asyncio.Event()
+
+    class SlowRecoveryStore:
+        async def list_indexing_documents(self) -> list[SimpleNamespace]:
+            recovery_started.set()
+            await allow_recovery_to_finish.wait()
+            return []
+
+        async def list_pending_files(self) -> list[SimpleNamespace]:
+            return []
+
+    async def fake_handle_worker_task(task: dict[str, object], *_args: object) -> None:
+        if task.get("cmd") == "init":
+            handled.set()
+
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: SlowRecoveryStore(),
+    )
+    monkeypatch.setattr(task_consumer, "handle_worker_task", fake_handle_worker_task)
+    redis = InMemoryRedis()
+    consumer = asyncio.create_task(
+        task_consumer.consume_task_queue(redis, Path("."), "cpu", {})
+    )
+    try:
+        await asyncio.wait_for(recovery_started.wait(), timeout=1)
+        await redis.rpush(TASK_QUEUE, json.dumps({"cmd": "init", "session_id": "sess_fast"}))
+        await asyncio.wait_for(handled.wait(), timeout=1)
+    finally:
+        allow_recovery_to_finish.set()
+        consumer.cancel()
+        await consumer
+
+
 def test_task_knowledge_base_ids_do_not_fallback_to_default() -> None:
     assert task_consumer._task_knowledge_base_ids({}) == []
     assert task_consumer._task_knowledge_base_ids({"knowledge_base_ids": []}) == []
@@ -972,3 +1056,251 @@ async def test_handle_worker_task_flashtalk_init_marks_worker_ready(
 
     await handle_worker_task({"cmd": "close", "session_id": sid}, redis, Path("."), "cpu", runners)
     await asyncio.sleep(0.6)
+
+
+@pytest.mark.asyncio
+async def test_handle_worker_task_knowledge_index_is_async_and_cleans_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub()
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    monkeypatch.setattr(task_consumer, "_knowledge_index_tasks", set())
+    redis = InMemoryRedis()
+    kb_id, doc_id = "kb_worker", "doc_worker"
+    await redis.set(task_consumer.knowledge_index_job_key(kb_id, doc_id), "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_index", "kb_id": kb_id, "doc_id": doc_id},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await _drain_knowledge_tasks()
+
+    assert store.indexed == [(kb_id, doc_id)]
+    assert await redis.exists(task_consumer.knowledge_index_job_key(kb_id, doc_id)) == 0
+
+
+@pytest.mark.asyncio
+async def test_handle_worker_task_knowledge_prepare_cleans_claim_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub(fail=True)
+
+    async def fail_prepare(_file_id: str):
+        raise RuntimeError("extractor unavailable")
+
+    async def mark_file_error(*, file_id: str, error: str):
+        store.errors.append(("file", file_id, error, None))
+        return None
+
+    store.prepare_file = fail_prepare  # type: ignore[attr-defined]
+    store.mark_file_error = mark_file_error  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    redis = InMemoryRedis()
+    file_id = "file_prepare_failure"
+    key = task_consumer.knowledge_prepare_job_key(file_id)
+    await redis.set(key, "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_prepare_file", "file_id": file_id},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await asyncio.sleep(0)
+
+    assert await redis.exists(key) == 0
+    assert store.errors and store.errors[0][1] == file_id
+
+
+@pytest.mark.asyncio
+async def test_handle_worker_task_knowledge_prepare_retries_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub(fail=True)
+
+    async def fail_prepare(_file_id: str):
+        raise RuntimeError("extractor unavailable")
+
+    async def mark_file_error(*, file_id: str, error: str):
+        store.errors.append(("file", file_id, error, None))
+        return SimpleNamespace(status="error")
+
+    store.prepare_file = fail_prepare  # type: ignore[attr-defined]
+    store.mark_file_error = mark_file_error  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    monkeypatch.setattr(task_consumer, "_knowledge_index_tasks", set())
+    monkeypatch.setenv("OPENTALKING_KNOWLEDGE_INDEX_MAX_ATTEMPTS", "2")
+    redis = InMemoryRedis()
+    file_id = "file_prepare_retry"
+    key = task_consumer.knowledge_prepare_job_key(file_id)
+    await redis.set(key, "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_prepare_file", "file_id": file_id},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await _drain_knowledge_tasks()
+
+    queued = await redis.brpop(TASK_QUEUE, timeout=1)
+    assert queued is not None
+    retry = json.loads(queued[1])
+    assert retry["attempt"] == 1
+    assert await redis.exists(key) == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_worker_task_knowledge_index_requeues_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub(fail=True)
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    monkeypatch.setattr(task_consumer, "_knowledge_index_tasks", set())
+    monkeypatch.setenv("OPENTALKING_KNOWLEDGE_INDEX_MAX_ATTEMPTS", "2")
+    redis = InMemoryRedis()
+    kb_id, doc_id = "kb_retry", "doc_retry"
+    key = task_consumer.knowledge_index_job_key(kb_id, doc_id)
+    await redis.set(key, "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_index", "kb_id": kb_id, "doc_id": doc_id},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await _drain_knowledge_tasks()
+
+    queued = await redis.brpop(TASK_QUEUE, timeout=1)
+    assert queued is not None
+    retry = json.loads(queued[1])
+    assert retry["attempt"] == 1
+    assert store.errors and store.errors[0][3] == 1
+    assert await redis.exists(key) == 1
+
+
+@pytest.mark.asyncio
+async def test_handle_worker_task_knowledge_index_batch_requeues_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub(fail=True)
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    monkeypatch.setattr(task_consumer, "_knowledge_index_tasks", set())
+    monkeypatch.setenv("OPENTALKING_KNOWLEDGE_INDEX_MAX_ATTEMPTS", "2")
+    redis = InMemoryRedis()
+    kb_id = "kb_batch_retry"
+    doc_ids = ["doc_a", "doc_b"]
+    keys = [task_consumer.knowledge_index_job_key(kb_id, doc_id) for doc_id in doc_ids]
+    for key in keys:
+        await redis.set(key, "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_index_batch", "kb_id": kb_id, "doc_ids": doc_ids},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await _drain_knowledge_tasks()
+
+    queued = await redis.brpop(TASK_QUEUE, timeout=1)
+    assert queued is not None
+    retry = json.loads(queued[1])
+    assert retry["cmd"] == "knowledge_index_batch"
+    assert retry["attempt"] == 1
+    for key in keys:
+        assert await redis.exists(key) == 1
+
+
+@pytest.mark.asyncio
+async def test_knowledge_index_enrichment_failure_keeps_ready_fast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub()
+
+    async def fail_index(*, kb_id: str, doc_id: str):
+        raise KnowledgeEnrichmentFailure("graph backend unavailable")
+
+    store.index_document = fail_index  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    monkeypatch.setattr(task_consumer, "_knowledge_index_tasks", set())
+    monkeypatch.setenv("OPENTALKING_KNOWLEDGE_INDEX_MAX_ATTEMPTS", "1")
+    redis = InMemoryRedis()
+    kb_id, doc_id = "kb_fast", "doc_fast"
+    key = task_consumer.knowledge_index_job_key(kb_id, doc_id)
+    await redis.set(key, "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_index", "kb_id": kb_id, "doc_id": doc_id},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await _drain_knowledge_tasks()
+
+    assert not store.errors
+    assert store.enrichment_errors == [(kb_id, doc_id, "worker failed: graph backend unavailable", 1)]
+    assert await redis.exists(key) == 0
+
+
+@pytest.mark.asyncio
+async def test_knowledge_index_batch_enrichment_failure_keeps_all_fast_indexes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = KnowledgeWorkerStoreStub()
+
+    async def fail_batch(*, kb_id: str, doc_ids: list[str]):
+        raise KnowledgeEnrichmentFailure("graph backend unavailable")
+
+    store.index_documents = fail_batch  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "opentalking.agent.context_builder.default_knowledge_store",
+        lambda: store,
+    )
+    monkeypatch.setattr(task_consumer, "_knowledge_index_tasks", set())
+    monkeypatch.setenv("OPENTALKING_KNOWLEDGE_INDEX_MAX_ATTEMPTS", "1")
+    redis = InMemoryRedis()
+    kb_id = "kb_fast_batch"
+    doc_ids = ["doc_a", "doc_b"]
+    for doc_id in doc_ids:
+        await redis.set(task_consumer.knowledge_index_job_key(kb_id, doc_id), "queued")
+
+    await handle_worker_task(
+        {"cmd": "knowledge_index_batch", "kb_id": kb_id, "doc_ids": doc_ids},
+        redis,
+        Path("."),
+        "cpu",
+        {},
+    )
+    await _drain_knowledge_tasks()
+
+    assert not store.errors
+    assert {(item[0], item[1]) for item in store.enrichment_errors} == {
+        (kb_id, "doc_a"),
+        (kb_id, "doc_b"),
+    }

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import asyncio
 from pathlib import Path
 
 import httpx
+import numpy as np
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -78,6 +80,27 @@ class FakeKnowledgeIndex:
         )
 
 
+class DeferredFakeKnowledgeIndex(FakeKnowledgeIndex):
+    """Opt into the production deferred route without importing LightRAG."""
+
+
+DeferredFakeKnowledgeIndex.__module__ = "opentalking.agent.knowledge_index"
+
+
+class BatchFakeKnowledgeIndex(FakeKnowledgeIndex):
+    def __init__(self) -> None:
+        super().__init__()
+        self.batch_calls: list[list[str]] = []
+
+    def index_documents(self, *, kb_id: str, documents: list[dict[str, str]]) -> None:
+        self.batch_calls.append([item["doc_id"] for item in documents])
+        for item in documents:
+            self.index_document(kb_id=kb_id, **item)
+
+
+BatchFakeKnowledgeIndex.__module__ = "opentalking.agent.knowledge_index"
+
+
 class FailedKnowledgeIndex(FakeKnowledgeIndex):
     def index_document(
         self,
@@ -96,6 +119,21 @@ class FailedKnowledgeIndex(FakeKnowledgeIndex):
             }
         )
         raise RuntimeError("LightRAG index failed")
+
+
+class SelectiveFailedKnowledgeIndex(FakeKnowledgeIndex):
+    def __init__(self, fail_doc_id: str) -> None:
+        super().__init__()
+        self.fail_doc_id = fail_doc_id
+
+    def delete_document(self, *, kb_id: str, doc_id: str) -> None:
+        super().delete_document(kb_id=kb_id, doc_id=doc_id)
+
+    def index_documents(self, *, kb_id: str, documents: list[dict[str, str]]) -> None:
+        for item in documents:
+            self.index_document(kb_id=kb_id, **item)
+            if item["doc_id"] == self.fail_doc_id:
+                raise RuntimeError("one document failed")
 
 
 class QueryFailedKnowledgeIndex(FakeKnowledgeIndex):
@@ -119,6 +157,22 @@ def make_knowledge_store(tmp_path: Path, *, db_path: Path | None = None) -> Know
     )
 
 
+class CaptureRedis:
+    def __init__(self) -> None:
+        self.values: list[tuple[str, str]] = []
+        self.keys: set[str] = set()
+
+    async def set(self, key: str, value: str, *, nx: bool = False, ex: int | None = None):
+        if nx and key in self.keys:
+            return None
+        self.keys.add(key)
+        return True
+
+    async def rpush(self, key: str, value: str) -> int:
+        self.values.append((key, value))
+        return len(self.values)
+
+
 def stored_document_path(db_path: Path, *, kb_id: str, doc_id: str) -> Path:
     with sqlite3.connect(str(db_path)) as conn:
         row = conn.execute(
@@ -137,6 +191,284 @@ def stored_file_path(db_path: Path, *, file_id: str) -> Path:
         ).fetchone()
     assert row is not None
     return Path(str(row[0]))
+
+
+@pytest.mark.asyncio
+async def test_deferred_upload_persists_without_waiting_for_index(tmp_path: Path) -> None:
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    path = tmp_path / "large.md"
+    path.write_text("知识库内容。" * 3000, encoding="utf-8")
+
+    doc = await store.add_document_deferred(
+        kb_id="kb_deferred",
+        filename="large.md",
+        mime_type="text/markdown",
+        source_path=path,
+    )
+
+    assert doc.status == "uploaded"
+    assert doc.chunk_count == 0
+    assert index.indexed == []
+
+    indexed = await store.index_document(kb_id=doc.kb_id, doc_id=doc.id)
+    assert indexed.status == "ready"
+    assert indexed.chunk_count > 1
+    assert index.indexed
+
+
+@pytest.mark.asyncio
+async def test_stale_index_generation_is_rejected_after_reindex_request(tmp_path: Path) -> None:
+    index = FakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    source = tmp_path / "generation.md"
+    source.write_text("generation content", encoding="utf-8")
+    document = await store.add_document_deferred(
+        kb_id="kb_generation",
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    current = await store.request_reindex(kb_id=document.kb_id, doc_id=document.id)
+    assert current.generation == document.generation + 1
+
+    with pytest.raises(knowledge_store_module.KnowledgeStaleJobError):
+        await store.index_document_for_generation(
+            kb_id=document.kb_id,
+            doc_id=document.id,
+            generation=document.generation,
+        )
+
+
+@pytest.mark.asyncio
+async def test_deferred_index_failure_preserves_fast_index_for_worker_retry(tmp_path: Path) -> None:
+    index = FailedKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    source = tmp_path / "failed.md"
+    source.write_text("可重试的索引内容", encoding="utf-8")
+    document = await store.add_document_deferred(
+        kb_id="kb_retry",
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    with pytest.raises(RuntimeError, match="LightRAG index failed"):
+        await store.index_document(kb_id=document.kb_id, doc_id=document.id)
+
+    failed = await store.list_documents(kb_id=document.kb_id)
+    assert failed[0].status == "ready_fast"
+    assert failed[0].index_phase == "enrichment"
+    assert failed[0].index_error and "LightRAG index failed" in failed[0].index_error
+
+    # The local chunk index remains available even when the legacy fallback
+    # flag is disabled; ``ready_fast`` is an intentionally queryable state.
+    chunks = await store.query(
+        kb_id=document.kb_id,
+        query="可重试 索引 内容",
+        limit=3,
+    )
+    assert chunks
+
+
+@pytest.mark.asyncio
+async def test_batch_index_failure_cleans_document_indexes_individually(tmp_path: Path) -> None:
+    index = SelectiveFailedKnowledgeIndex("doc_fail")
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    kb = await store.create_knowledge_base("批量失败知识库")
+    docs = []
+    for doc_id, name in (("doc_ok", "ok.md"), ("doc_fail", "fail.md")):
+        source = tmp_path / name
+        source.write_text(name, encoding="utf-8")
+        document = await store.add_document_deferred(
+            kb_id=kb.id,
+            filename=name,
+            mime_type="text/markdown",
+            source_path=source,
+        )
+        # Make IDs deterministic only for the fake's failure selector.
+        with sqlite3.connect(str(tmp_path / "agent.sqlite")) as conn:
+            conn.execute("UPDATE knowledge_documents SET id = ? WHERE id = ?", (doc_id, document.id))
+        docs.append(doc_id)
+
+    with pytest.raises(RuntimeError, match="one document failed"):
+        await store.index_documents(kb_id=kb.id, doc_ids=docs)
+
+    assert index.cleared == []
+    assert set(index.deleted) == {(kb.id, "doc_ok"), (kb.id, "doc_fail")}
+
+
+@pytest.mark.asyncio
+async def test_index_job_enqueue_is_idempotent(tmp_path: Path) -> None:
+    store = make_knowledge_store(tmp_path)
+    broker = CaptureRedis()
+
+    await agent_routes._enqueue_index_job(
+        store,
+        kb_id="kb1",
+        doc_id="doc1",
+        redis=broker,
+        background_tasks=None,
+    )
+    await agent_routes._enqueue_index_job(
+        store,
+        kb_id="kb1",
+        doc_id="doc1",
+        redis=broker,
+        background_tasks=None,
+    )
+
+    assert len(broker.values) == 1
+    assert json.loads(broker.values[0][1])["cmd"] == "knowledge_index"
+
+
+@pytest.mark.asyncio
+async def test_batch_index_documents_uses_one_index_batch(tmp_path: Path) -> None:
+    index = BatchFakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    kb = await store.create_knowledge_base("批量知识库")
+    docs = []
+    for name, text in (("one.md", "第一份批量内容"), ("two.md", "第二份批量内容")):
+        source = tmp_path / name
+        source.write_text(text, encoding="utf-8")
+        docs.append(
+            await store.add_document_deferred(
+                kb_id=kb.id,
+                filename=name,
+                mime_type="text/markdown",
+                source_path=source,
+            )
+        )
+
+    indexed = await store.index_documents(kb_id=kb.id, doc_ids=[doc.id for doc in docs])
+
+    assert index.batch_calls == [[doc.id for doc in docs]]
+    assert all(doc.status == "ready" for doc in indexed)
+
+
+def test_embedding_cache_survives_index_instance_restart(tmp_path: Path) -> None:
+    first = LightRAGKnowledgeIndex(
+        root=tmp_path / "lightrag",
+        embedding_dim=8,
+    )
+    text = "相同 chunk 内容"
+    key = first._embedding_cache_key(text)  # noqa: SLF001
+    vector = np.asarray([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8], dtype="float32")
+    first._save_embedding_cache(key, vector)  # noqa: SLF001
+
+    second = LightRAGKnowledgeIndex(
+        root=tmp_path / "lightrag",
+        embedding_dim=8,
+    )
+    rows, missing = second._cached_embedding_rows([text])  # noqa: SLF001
+
+    assert missing == []
+    assert rows[0] is not None
+    assert rows[0].tolist() == pytest.approx(vector.tolist())
+
+
+def test_lightrag_batch_uses_one_ainsert_call(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag")
+    calls: list[tuple[object, object, object]] = []
+
+    class FakeRag:
+        async def adelete_by_doc_id(self, _doc_id: str) -> None:
+            return None
+
+        async def ainsert(self, inputs, *, ids, file_paths):
+            calls.append((inputs, ids, file_paths))
+
+        async def finalize_storages(self) -> None:
+            return None
+
+    async def fake_new_rag(_kb_id: str) -> FakeRag:
+        return FakeRag()
+
+    monkeypatch.setattr(index, "_new_rag", fake_new_rag)
+    asyncio.run(
+        index._index_documents_async(  # noqa: SLF001
+            kb_id="kb_batch",
+            documents=[
+                {"doc_id": "doc_a", "filename": "a.md", "text": "A"},
+                {"doc_id": "doc_b", "filename": "b.md", "text": "B"},
+            ],
+        )
+    )
+
+    assert calls == [(["A", "B"], ["doc_a", "doc_b"], ["a.md", "b.md"])]
+
+
+def test_lightrag_new_rag_passes_bounded_embedding_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag", embedding_dim=8)
+    index.embedding_batch_size = 7
+    index.embedding_concurrency = 3
+    index.insert_concurrency = 2
+    captured: dict[str, object] = {}
+
+    class FakeRag:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        async def initialize_storages(self) -> None:
+            return None
+
+    class FakeLightRAGModule:
+        LightRAG = FakeRag
+
+    class FakeTokenizer:
+        def __init__(self, *_args: object) -> None:
+            return None
+
+    monkeypatch.setitem(__import__("sys").modules, "lightrag", FakeLightRAGModule())
+    utils = __import__("types").ModuleType("lightrag.utils")
+    utils.Tokenizer = FakeTokenizer
+    utils.wrap_embedding_func_with_attrs = lambda **_kwargs: (lambda func: func)
+    monkeypatch.setitem(__import__("sys").modules, "lightrag.utils", utils)
+    rag = asyncio.run(index._new_rag("kb_options"))  # noqa: SLF001
+
+    assert isinstance(rag, FakeRag)
+    assert captured["embedding_batch_num"] == 7
+    assert captured["embedding_func_max_async"] == 3
+    assert captured["max_parallel_insert"] == 2
+
+
+def test_embedding_batches_respect_item_and_token_limits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    index = LightRAGKnowledgeIndex(root=tmp_path / "lightrag", embedding_dim=8)
+    index.embedding_batch_size = 2
+    index.embedding_batch_token_limit = 5
+    calls: list[list[str]] = []
+
+    async def provider(values: list[str]) -> np.ndarray:
+        calls.append(values)
+        return np.ones((len(values), 8), dtype="float32")
+
+    monkeypatch.setattr(index, "_embedding_cache_limit", 0)
+    result = asyncio.run(index._embed_with_cache(["aa", "bbb", "cccc", "dd"], provider))  # noqa: SLF001
+
+    assert result.shape == (4, 8)
+    assert calls == [["aa", "bbb"], ["cccc"], ["dd"]]
 
 
 @pytest.mark.asyncio
@@ -1416,3 +1748,78 @@ async def test_agent_knowledge_document_route_reindexes_failed_document(
         payload = reindexed.json()
         assert payload["status"] == "ready"
         assert payload["chunk_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_knowledge_document_reindex_returns_before_background_index(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    index = DeferredFakeKnowledgeIndex()
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=index,
+    )
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    knowledge_base = await store.create_knowledge_base("异步重建知识库")
+    source = tmp_path / "reindex.md"
+    source.write_text("原始文档内容", encoding="utf-8")
+    document = await store.add_document_deferred(
+        kb_id=knowledge_base.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+
+    broker = CaptureRedis()
+    app = FastAPI()
+    app.state.redis = broker
+    app.include_router(agent_routes.router)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            f"/agent/knowledge-bases/{knowledge_base.id}/documents/{document.id}/reindex"
+        )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "uploaded"
+    assert index.indexed == []
+    assert len(broker.values) == 1
+    task = json.loads(broker.values[0][1])
+    assert task["cmd"] == "knowledge_index"
+    assert task["kb_id"] == knowledge_base.id
+    assert task["doc_id"] == document.id
+    assert task["generation"] == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_knowledge_document_status_endpoint_exposes_index_phase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store = KnowledgeStore(
+        db_path=tmp_path / "agent.sqlite",
+        knowledge_root=tmp_path / "knowledge",
+        knowledge_index=DeferredFakeKnowledgeIndex(),
+    )
+    monkeypatch.setattr(agent_routes, "default_knowledge_store", lambda: store)
+    kb = await store.create_knowledge_base("状态知识库")
+    source = tmp_path / "status.md"
+    source.write_text("状态查询内容", encoding="utf-8")
+    document = await store.add_document_deferred(
+        kb_id=kb.id,
+        filename=source.name,
+        mime_type="text/markdown",
+        source_path=source,
+    )
+    app = FastAPI()
+    app.include_router(agent_routes.router)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(
+            f"/agent/knowledge-bases/{kb.id}/documents/{document.id}/status"
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "uploaded"
+    assert response.json()["index_phase"] == "queued"

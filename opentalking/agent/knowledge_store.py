@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -9,6 +10,7 @@ import shutil
 import sqlite3
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,6 +20,30 @@ from opentalking.agent.knowledge_index import KnowledgeIndex, default_knowledge_
 
 
 logger = logging.getLogger(__name__)
+
+
+def _store_worker_count() -> int:
+    try:
+        return max(1, int(os.environ.get("OPENTALKING_KNOWLEDGE_STORE_WORKERS", "4")))
+    except ValueError:
+        return 4
+
+
+_STORE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=_store_worker_count(),
+    thread_name_prefix="opentalking-knowledge-store",
+)
+
+
+async def _run_store_blocking(func, *args, **kwargs):
+    """Run file/SQLite/parser work away from the FastAPI event loop."""
+    loop = asyncio.get_running_loop()
+    if kwargs:
+        from functools import partial
+
+        func = partial(func, *args, **kwargs)
+        return await loop.run_in_executor(_STORE_EXECUTOR, func)
+    return await loop.run_in_executor(_STORE_EXECUTOR, func, *args)
 
 SUPPORTED_TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 SUPPORTED_PDF_EXTENSIONS = {".pdf"}
@@ -44,6 +70,10 @@ class KnowledgeDocument:
     chunk_count: int
     created_at: str
     updated_at: str
+    index_phase: str = ""
+    retry_count: int = 0
+    index_error: str | None = None
+    generation: int = 0
 
 
 @dataclass(frozen=True)
@@ -78,6 +108,18 @@ class DuplicateKnowledgeDocumentError(ValueError):
     """Raised when the same filename/content is uploaded twice."""
 
 
+class KnowledgeIndexEnrichmentError(RuntimeError):
+    """LightRAG enrichment failed after the local fast index was committed."""
+
+    preserve_fast_index = True
+
+
+class KnowledgeStaleJobError(RuntimeError):
+    """A queued indexing job belongs to an older document generation."""
+
+    discard_job = True
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -108,6 +150,53 @@ def _tokenize(text: str) -> set[str]:
         if re.fullmatch(r"[\u4e00-\u9fff]{2}", pair):
             tokens.add(pair)
     return tokens
+
+
+def _hash_file(path: Path) -> tuple[int, str]:
+    """Hash a file in bounded chunks so uploads never need ``read_bytes``."""
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            digest.update(chunk)
+    return size, digest.hexdigest()
+
+
+def _install_upload_file(source_path: Path, destination: Path) -> tuple[int, str]:
+    """Move a disposable staging file, with a cross-filesystem copy fallback.
+
+    The API staging file is disposable, so an atomic move avoids the second
+    full read/write on the common same-filesystem path.  When ``/tmp`` and the
+    data directory are on different filesystems we copy in one pass while
+    hashing, then remove the staging file.
+    """
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(source_path, destination)
+    except OSError:
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with source_path.open("rb") as source, destination.open("wb") as target:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    target.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        source_path.unlink(missing_ok=True)
+        return size, digest.hexdigest()
+    # ``os.replace`` is atomic but the digest is still calculated from the
+    # final durable path so duplicate detection remains content-addressed.
+    return _hash_file(destination)
 
 
 def _read_text_file(path: Path) -> str:
@@ -458,7 +547,7 @@ class KnowledgeStore:
         return self._knowledge_index
 
     async def initialize(self) -> None:
-        self._initialize_sync()
+        await _run_store_blocking(self._initialize_sync)
 
     async def add_document(
         self,
@@ -468,10 +557,54 @@ class KnowledgeStore:
         mime_type: str,
         source_path: str | Path,
     ) -> KnowledgeDocument:
-        return self._add_document_sync(kb_id, filename, mime_type, Path(source_path))
+        return await _run_store_blocking(
+            self._add_document_sync, kb_id, filename, mime_type, Path(source_path)
+        )
+
+    @property
+    def supports_deferred_indexing(self) -> bool:
+        """Whether the configured index should run outside the upload request.
+
+        Test/fallback indexes intentionally retain the historical synchronous
+        contract.  The production LightRAG adapter opts into deferred indexing
+        by default; it can be disabled for compatibility with the legacy path.
+        """
+        raw = os.environ.get("OPENTALKING_AGENT_ASYNC_INDEX_ENABLED")
+        if raw is not None and raw.strip().lower() in {"0", "false", "no", "off"}:
+            return False
+        return self.knowledge_index.__class__.__module__.endswith("knowledge_index")
+
+    async def add_document_deferred(
+        self,
+        *,
+        kb_id: str,
+        filename: str,
+        mime_type: str,
+        source_path: str | Path,
+        consume_source: bool = False,
+    ) -> KnowledgeDocument:
+        """Persist a document and chunks, leaving LightRAG indexing pending."""
+        return await _run_store_blocking(
+            self._add_document_upload_sync,
+            kb_id,
+            filename,
+            mime_type,
+            Path(source_path),
+            consume_source,
+        )
+
+    async def add_existing_document_deferred(
+        self, *, kb_id: str, source_doc_id: str
+    ) -> KnowledgeDocument:
+        return await _run_store_blocking(
+            self._add_existing_document_sync,
+            kb_id=kb_id,
+            source_doc_id=source_doc_id,
+            index_document=False,
+        )
 
     async def list_documents(self, *, kb_id: str) -> list[KnowledgeDocument]:
-        return self._list_documents_sync(kb_id)
+        return await _run_store_blocking(self._list_documents_sync, kb_id)
 
     async def add_file(
         self,
@@ -480,28 +613,48 @@ class KnowledgeStore:
         mime_type: str,
         source_path: str | Path,
     ) -> KnowledgeDocument:
-        return self._add_file_sync(filename, mime_type, Path(source_path))
+        return await _run_store_blocking(self._add_file_sync, filename, mime_type, Path(source_path))
+
+    async def add_file_deferred(
+        self,
+        *,
+        filename: str,
+        mime_type: str,
+        source_path: str | Path,
+        consume_source: bool = False,
+    ) -> KnowledgeDocument:
+        return await _run_store_blocking(
+            self._add_file_upload_sync,
+            filename,
+            mime_type,
+            Path(source_path),
+            consume_source,
+        )
 
     async def delete_file(self, file_id: str) -> bool:
-        return self._delete_file_sync(file_id)
+        return await _run_store_blocking(self._delete_file_sync, file_id)
 
     async def list_all_documents(self) -> list[KnowledgeDocument]:
-        return self._list_files_sync()
+        return await _run_store_blocking(self._list_files_sync)
 
     async def get_file_content(self, file_id: str) -> KnowledgeStoredFile:
-        return self._get_file_content_sync(file_id)
+        return await _run_store_blocking(self._get_file_content_sync, file_id)
 
     async def add_existing_document(self, *, kb_id: str, source_doc_id: str) -> KnowledgeDocument:
-        return self._add_existing_document_sync(kb_id=kb_id, source_doc_id=source_doc_id)
+        return await _run_store_blocking(
+            self._add_existing_document_sync, kb_id=kb_id, source_doc_id=source_doc_id
+        )
 
     async def delete_document(self, *, kb_id: str, doc_id: str) -> bool:
-        return self._delete_document_sync(kb_id, doc_id)
+        return await _run_store_blocking(self._delete_document_sync, kb_id, doc_id)
 
     async def get_document_content(self, *, kb_id: str, doc_id: str) -> KnowledgeStoredFile:
-        return self._get_document_content_sync(kb_id=kb_id, doc_id=doc_id)
+        return await _run_store_blocking(
+            self._get_document_content_sync, kb_id=kb_id, doc_id=doc_id
+        )
 
     async def query(self, *, kb_id: str, query: str, limit: int = 3) -> list[KnowledgeChunk]:
-        return self._query_sync(kb_id, query, limit)
+        return await _run_store_blocking(self._query_sync, kb_id, query, limit)
 
     async def query_many(
         self,
@@ -510,28 +663,118 @@ class KnowledgeStore:
         query: str,
         limit: int = 3,
     ) -> list[KnowledgeChunk]:
-        return self._query_many_sync(kb_ids, query, limit)
+        return await _run_store_blocking(self._query_many_sync, kb_ids, query, limit)
+
+    async def index_status(self, *, kb_id: str):
+        """Read index status without blocking the FastAPI event loop."""
+        return await _run_store_blocking(self.knowledge_index.status, kb_id=kb_id)
+
+    async def query_index(self, *, kb_id: str, query: str, limit: int = 3):
+        """Query the configured index off the event loop.
+
+        This preserves the diagnostic endpoint's LightRAG-only semantics while
+        preventing its synchronous adapter from blocking other API requests.
+        """
+        return await _run_store_blocking(
+            self.knowledge_index.query,
+            kb_id=kb_id,
+            query=query,
+            limit=limit,
+        )
 
     async def reindex_document(self, *, kb_id: str, doc_id: str) -> KnowledgeDocument:
-        return self._reindex_document_sync(kb_id, doc_id)
+        return await _run_store_blocking(self._reindex_document_sync, kb_id, doc_id)
+
+    async def request_reindex(self, *, kb_id: str, doc_id: str) -> KnowledgeDocument:
+        """Mark a document for background re-indexing without doing heavy work."""
+        return await _run_store_blocking(self._request_reindex_sync, kb_id, doc_id)
+
+    async def index_document(self, *, kb_id: str, doc_id: str) -> KnowledgeDocument:
+        return await _run_store_blocking(self._index_document_sync, kb_id, doc_id)
+
+    async def index_document_for_generation(
+        self, *, kb_id: str, doc_id: str, generation: int | None = None
+    ) -> KnowledgeDocument:
+        return await _run_store_blocking(
+            self._index_document_sync,
+            kb_id,
+            doc_id,
+            expected_generation=generation,
+        )
+
+    async def index_documents(
+        self,
+        *,
+        kb_id: str,
+        doc_ids: list[str],
+        expected_generations: dict[str, int] | None = None,
+    ) -> list[KnowledgeDocument]:
+        """Extract and index several documents in one bounded worker operation."""
+        return await _run_store_blocking(
+            self._index_documents_sync,
+            kb_id,
+            doc_ids,
+            expected_generations=expected_generations,
+        )
+
+    async def get_document_status(self, *, kb_id: str, doc_id: str) -> KnowledgeDocument:
+        return await _run_store_blocking(self._get_document_sync, kb_id, doc_id)
+
+    async def has_fast_index(self, *, kb_id: str) -> bool:
+        return await _run_store_blocking(self._has_fast_index_sync, kb_id)
+
+    async def mark_index_error(
+        self, *, kb_id: str, doc_id: str, error: str, retry_count: int | None = None
+    ) -> KnowledgeDocument | None:
+        """Record a worker-level failure without masking a deleted document."""
+        return await _run_store_blocking(
+            self._mark_index_error_sync,
+            kb_id=kb_id,
+            doc_id=doc_id,
+            error=error,
+            retry_count=retry_count,
+        )
+
+    async def mark_index_enrichment_error(
+        self, *, kb_id: str, doc_id: str, error: str, retry_count: int | None = None
+    ) -> KnowledgeDocument | None:
+        return await _run_store_blocking(
+            self._mark_index_enrichment_error_sync,
+            kb_id=kb_id,
+            doc_id=doc_id,
+            error=error,
+            retry_count=retry_count,
+        )
+
+    async def mark_file_error(self, *, file_id: str, error: str) -> KnowledgeDocument | None:
+        return await _run_store_blocking(self._mark_file_error_sync, file_id, error)
+
+    async def prepare_file(self, file_id: str) -> KnowledgeDocument:
+        return await _run_store_blocking(self._prepare_file_sync, file_id)
+
+    async def list_indexing_documents(self) -> list[KnowledgeDocument]:
+        return await _run_store_blocking(self._list_pending_documents_sync)
+
+    async def list_pending_files(self) -> list[KnowledgeDocument]:
+        return await _run_store_blocking(self._list_pending_files_sync)
 
     async def create_knowledge_base(self, name: str) -> KnowledgeBaseSummary:
-        return self._create_knowledge_base_sync(name)
+        return await _run_store_blocking(self._create_knowledge_base_sync, name)
 
     async def rename_knowledge_base(self, kb_id: str, name: str) -> KnowledgeBaseSummary:
-        return self._rename_knowledge_base_sync(kb_id, name)
+        return await _run_store_blocking(self._rename_knowledge_base_sync, kb_id, name)
 
     async def delete_knowledge_base(self, kb_id: str) -> bool:
-        return self._delete_knowledge_base_sync(kb_id)
+        return await _run_store_blocking(self._delete_knowledge_base_sync, kb_id)
 
     async def list_knowledge_bases(self) -> list[KnowledgeBaseSummary]:
-        return self._list_knowledge_bases_sync()
+        return await _run_store_blocking(self._list_knowledge_bases_sync)
 
     async def get_avatar_knowledge_bases(self, avatar_id: str) -> list[str]:
-        return self._get_avatar_knowledge_bases_sync(avatar_id)
+        return await _run_store_blocking(self._get_avatar_knowledge_bases_sync, avatar_id)
 
     async def set_avatar_knowledge_bases(self, avatar_id: str, kb_ids: list[str]) -> list[str]:
-        return self._set_avatar_knowledge_bases_sync(avatar_id, kb_ids)
+        return await _run_store_blocking(self._set_avatar_knowledge_bases_sync, avatar_id, kb_ids)
 
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -580,7 +823,11 @@ class KnowledgeStore:
                   chunk_count INTEGER NOT NULL DEFAULT 0,
                   stored_path TEXT NOT NULL,
                   created_at TEXT NOT NULL,
-                  updated_at TEXT NOT NULL
+                  updated_at TEXT NOT NULL,
+                  index_phase TEXT NOT NULL DEFAULT '',
+                  retry_count INTEGER NOT NULL DEFAULT 0,
+                  index_error TEXT,
+                  generation INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -601,6 +848,24 @@ class KnowledgeStore:
                 )
                 """
             )
+            document_columns = {
+                str(row["name"])
+                for row in conn.execute("PRAGMA table_info(knowledge_documents)").fetchall()
+            }
+            if "index_phase" not in document_columns:
+                conn.execute(
+                    "ALTER TABLE knowledge_documents ADD COLUMN index_phase TEXT NOT NULL DEFAULT ''"
+                )
+            if "retry_count" not in document_columns:
+                conn.execute(
+                    "ALTER TABLE knowledge_documents ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"
+                )
+            if "index_error" not in document_columns:
+                conn.execute("ALTER TABLE knowledge_documents ADD COLUMN index_error TEXT")
+            if "generation" not in document_columns:
+                conn.execute(
+                    "ALTER TABLE knowledge_documents ADD COLUMN generation INTEGER NOT NULL DEFAULT 0"
+                )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS knowledge_chunks (
@@ -779,7 +1044,7 @@ class KnowledgeStore:
                   kb.id,
                   kb.name,
                   COUNT(d.id) AS document_count,
-                  COALESCE(SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END), 0) AS ready_document_count,
+                  COALESCE(SUM(CASE WHEN d.status IN ('ready', 'ready_fast') THEN 1 ELSE 0 END), 0) AS ready_document_count,
                   COALESCE(SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END), 0) AS error_document_count,
                   kb.created_at,
                   kb.updated_at
@@ -800,7 +1065,7 @@ class KnowledgeStore:
                   kb.id,
                   kb.name,
                   COUNT(d.id) AS document_count,
-                  COALESCE(SUM(CASE WHEN d.status = 'ready' THEN 1 ELSE 0 END), 0) AS ready_document_count,
+                  COALESCE(SUM(CASE WHEN d.status IN ('ready', 'ready_fast') THEN 1 ELSE 0 END), 0) AS ready_document_count,
                   COALESCE(SUM(CASE WHEN d.status = 'error' THEN 1 ELSE 0 END), 0) AS error_document_count,
                   kb.created_at,
                   kb.updated_at
@@ -874,6 +1139,7 @@ class KnowledgeStore:
         filename: str,
         mime_type: str,
         source_path: Path,
+        index_document: bool = True,
     ) -> KnowledgeDocument:
         self._initialize_sync()
         kb_id = _safe_kb_id(kb_id)
@@ -911,7 +1177,7 @@ class KnowledgeStore:
         shutil.copyfile(source_path, stored_path)
         text, error = _extract_text(stored_path)
         chunks = _split_chunks(text)
-        status = "ready" if chunks else "error"
+        status = "ready" if chunks and index_document else ("indexing" if chunks else "error")
         if not chunks and not error:
             error = "document has no extractable text"
         now = _utc_now()
@@ -949,12 +1215,12 @@ class KnowledgeStore:
                     now,
                 ),
             )
-            for index, chunk in enumerate(chunks):
-                conn.execute(
-                    """
-                    INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+            conn.executemany(
+                """
+                INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
                     (
                         _new_id("chunk"),
                         doc_id,
@@ -962,14 +1228,571 @@ class KnowledgeStore:
                         index,
                         chunk,
                         " ".join(sorted(_tokenize(chunk))),
-                    ),
-                )
-        if status == "ready":
+                    )
+                    for index, chunk in enumerate(chunks)
+                ],
+            )
+        if status == "ready" and index_document:
             self._index_document_best_effort_sync(
                 kb_id=kb_id,
                 doc_id=doc_id,
                 filename=filename,
                 text=text,
+            )
+        return self._get_document_sync(kb_id, doc_id)
+
+    def _add_document_upload_sync(
+        self,
+        kb_id: str,
+        filename: str,
+        mime_type: str,
+        source_path: Path,
+        consume_source: bool = False,
+    ) -> KnowledgeDocument:
+        """Persist upload metadata/file only; extraction and indexing are deferred."""
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        filename = _safe_filename(filename)
+        if not source_path.is_file():
+            raise ValueError("uploaded file is missing")
+        size = source_path.stat().st_size
+        if size <= 0:
+            raise ValueError("uploaded file is empty")
+        if size > MAX_DOCUMENT_BYTES:
+            raise ValueError("document is larger than 20MB")
+        suffix = Path(filename).suffix.lower() or source_path.suffix.lower()
+        if suffix not in SUPPORTED_EXTENSIONS:
+            raise ValueError(f"only {SUPPORTED_EXTENSIONS_LABEL} documents are supported")
+        doc_id = _new_id("doc")
+        kb_dir = self.knowledge_root / kb_id / "documents"
+        kb_dir.mkdir(parents=True, exist_ok=True)
+        stored_path = kb_dir / f"{doc_id}{suffix}"
+        if consume_source:
+            installed_size, sha256 = _install_upload_file(source_path, stored_path)
+        else:
+            installed_size, sha256 = _hash_file(source_path)
+            shutil.copyfile(source_path, stored_path)
+        if installed_size != size:
+            stored_path.unlink(missing_ok=True)
+            raise ValueError("uploaded file changed while it was being stored")
+        with self._connect() as conn:
+            existing_row = conn.execute(
+                """
+                SELECT id FROM knowledge_documents
+                WHERE kb_id = ? AND filename = ? AND sha256 = ?
+                ORDER BY updated_at DESC, created_at DESC LIMIT 1
+                """,
+                (kb_id, filename, sha256),
+            ).fetchone()
+        if existing_row is not None:
+            stored_path.unlink(missing_ok=True)
+            raise DuplicateKnowledgeDocumentError(f"knowledge document already exists: {filename}")
+        now = _utc_now()
+        try:
+            with self._connect() as conn:
+                conn.execute("PRAGMA foreign_keys=ON")
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_bases(id, name, created_at, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(id) DO NOTHING
+                    """,
+                    (kb_id, kb_id, now, now),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_documents(
+                      id, kb_id, filename, mime_type, bytes, sha256, status, error,
+                      chunk_count, stored_path, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, 'uploaded', NULL, 0, ?, ?, ?)
+                    """,
+                    (
+                        doc_id,
+                        kb_id,
+                        filename,
+                        mime_type or "application/octet-stream",
+                        size,
+                        sha256,
+                        str(stored_path),
+                        now,
+                        now,
+                    ),
+                )
+        except Exception:
+            stored_path.unlink(missing_ok=True)
+            raise
+        self._set_document_status_sync(kb_id=kb_id, doc_id=doc_id, status="uploaded", error=None)
+        return self._get_document_sync(kb_id, doc_id)
+
+    def _set_document_status_sync(
+        self,
+        *,
+        kb_id: str,
+        doc_id: str,
+        status: str,
+        error: str | None = None,
+        phase_override: str | None = None,
+    ) -> None:
+        now = _utc_now()
+        phase = phase_override or {
+            "uploaded": "queued",
+            "extracting": "extraction",
+            "indexing": "fast_index",
+            "ready_fast": "enrichment",
+            "ready": "complete",
+            "error": "failed",
+        }.get(status, status)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = ?, error = ?, index_phase = ?, index_error = ?, updated_at = ?
+                WHERE kb_id = ? AND id = ?
+                """,
+                (status, error, phase, error, now, kb_id, doc_id),
+            )
+
+    def _mark_index_error_sync(
+        self, *, kb_id: str, doc_id: str, error: str, retry_count: int | None = None
+    ) -> KnowledgeDocument | None:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        now = _utc_now()
+        with self._connect() as conn:
+            result = conn.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = 'error', error = ?, index_phase = 'failed', index_error = ?,
+                    retry_count = CASE WHEN ? IS NULL THEN retry_count ELSE MAX(retry_count, ?) END,
+                    updated_at = ?
+                WHERE kb_id = ? AND id = ?
+                """,
+                (error[:2000], error[:2000], retry_count, retry_count or 0, now, kb_id, doc_id),
+            )
+        if result.rowcount == 0:
+            return None
+        return self._get_document_sync(kb_id, doc_id)
+
+    def _mark_index_enrichment_error_sync(
+        self, *, kb_id: str, doc_id: str, error: str, retry_count: int | None = None
+    ) -> KnowledgeDocument | None:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        now = _utc_now()
+        with self._connect() as conn:
+            result = conn.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = 'ready_fast', error = ?, index_phase = 'enrichment', index_error = ?,
+                    retry_count = CASE WHEN ? IS NULL THEN retry_count ELSE MAX(retry_count, ?) END,
+                    updated_at = ?
+                WHERE kb_id = ? AND id = ?
+                """,
+                (error[:2000], error[:2000], retry_count, retry_count or 0, now, kb_id, doc_id),
+            )
+        if result.rowcount == 0:
+            return None
+        return self._get_document_sync(kb_id, doc_id)
+
+    def _mark_file_error_sync(self, file_id: str, error: str) -> KnowledgeDocument | None:
+        self._initialize_sync()
+        now = _utc_now()
+        with self._connect() as conn:
+            result = conn.execute(
+                """
+                UPDATE knowledge_files
+                SET status = 'error', error = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (error[:2000], now, file_id),
+            )
+        if result.rowcount == 0:
+            return None
+        return self._get_file_sync(file_id)
+
+    def _get_document_row_sync(self, kb_id: str, doc_id: str):
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, filename, stored_path, status, error, generation, chunk_count
+                FROM knowledge_documents
+                WHERE kb_id = ? AND id = ?
+                """,
+                (kb_id, doc_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError("knowledge document not found")
+        return row
+
+    def _document_exists_sync(
+        self, kb_id: str, doc_id: str, expected_generation: int | None = None
+    ) -> bool:
+        with self._connect() as conn:
+            params: tuple[str, str] | tuple[str, str, int]
+            if expected_generation is None:
+                query = "SELECT 1 FROM knowledge_documents WHERE kb_id = ? AND id = ?"
+                params = (kb_id, doc_id)
+            else:
+                query = "SELECT 1 FROM knowledge_documents WHERE kb_id = ? AND id = ? AND generation = ?"
+                params = (kb_id, doc_id, int(expected_generation))
+            return conn.execute(query, params).fetchone() is not None
+
+    def _has_fast_index_sync(self, kb_id: str) -> bool:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1 FROM knowledge_documents
+                WHERE kb_id = ? AND status IN ('ready', 'ready_fast') AND chunk_count > 0
+                LIMIT 1
+                """,
+                (kb_id,),
+            ).fetchone()
+        return row is not None
+
+    def _index_document_sync(
+        self,
+        kb_id: str,
+        doc_id: str,
+        expected_generation: int | None = None,
+    ) -> KnowledgeDocument:
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        row = self._get_document_row_sync(kb_id, doc_id)
+        if expected_generation is not None and int(row["generation"] or 0) != int(expected_generation):
+            raise KnowledgeStaleJobError("knowledge document generation is stale")
+        stored_path = Path(str(row["stored_path"]))
+        if not stored_path.is_file():
+            self._set_document_status_sync(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                status="error",
+                error="stored knowledge document file is missing",
+            )
+            return self._get_document_sync(kb_id, doc_id)
+        with self._connect() as conn:
+            chunk_rows = conn.execute(
+                "SELECT text FROM knowledge_chunks WHERE kb_id = ? AND doc_id = ? ORDER BY chunk_index ASC",
+                (kb_id, doc_id),
+            ).fetchall()
+        if (
+            chunk_rows
+            and str(row["status"]) == "ready_fast"
+            and int(row["chunk_count"] or 0) == len(chunk_rows)
+        ):
+            # An enrichment retry after chunks were committed can reuse the durable local
+            # extraction artifact instead of parsing/OCR-ing the source again.
+            chunks = [str(chunk_row["text"]) for chunk_row in chunk_rows]
+            text, error = "\n\n".join(chunks), None
+        else:
+            self._set_document_status_sync(kb_id=kb_id, doc_id=doc_id, status="extracting", error=None)
+            try:
+                text, error = _extract_text(stored_path)
+                chunks = _split_chunks(text)
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("knowledge document extraction failed for %s/%s", kb_id, doc_id)
+                self._set_document_status_sync(
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    status="error",
+                    error=f"extraction failed: {exc}"[:2000],
+                )
+                raise
+        if not chunks:
+            self._set_document_status_sync(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                status="error",
+                error=error or "document has no extractable text",
+            )
+            return self._get_document_sync(kb_id, doc_id)
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            if expected_generation is not None:
+                current = conn.execute(
+                    "SELECT generation FROM knowledge_documents WHERE kb_id = ? AND id = ?",
+                    (kb_id, doc_id),
+                ).fetchone()
+                if current is None or int(current["generation"] or 0) != int(expected_generation):
+                    raise KnowledgeStaleJobError("knowledge document generation is stale")
+            conn.execute(
+                "DELETE FROM knowledge_chunks WHERE kb_id = ? AND doc_id = ?",
+                (kb_id, doc_id),
+            )
+            conn.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = 'indexing', error = NULL, chunk_count = ?, updated_at = ?
+                WHERE kb_id = ? AND id = ?
+                  AND (? IS NULL OR generation = ?)
+                """,
+                (len(chunks), now, kb_id, doc_id, expected_generation, expected_generation),
+            )
+            conn.executemany(
+                """
+                INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        _new_id("chunk"),
+                        doc_id,
+                        kb_id,
+                        index,
+                        chunk,
+                        " ".join(sorted(_tokenize(chunk))),
+                    )
+                    for index, chunk in enumerate(chunks)
+                ],
+            )
+        # Publish the local chunk index before the optional LightRAG
+        # enrichment.  Slow graph/LLM work must not hide a usable document.
+        self._set_document_status_sync(
+            kb_id=kb_id,
+            doc_id=doc_id,
+            status="ready_fast",
+            error=None,
+            phase_override="enrichment",
+        )
+        try:
+            self.knowledge_index.index_document(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                filename=str(row["filename"]),
+                text=text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("deferred LightRAG indexing failed for %s/%s", kb_id, doc_id, exc_info=exc)
+            try:
+                # Remove only the document being retried. Clearing the whole
+                # KB here would erase unrelated documents that are already
+                # ready while this one is temporarily failing.
+                self.knowledge_index.delete_document(kb_id=kb_id, doc_id=doc_id)
+            except Exception:  # noqa: BLE001
+                logger.warning("failed to clean failed deferred document index", exc_info=True)
+            self._set_document_status_sync(
+                kb_id=kb_id,
+                doc_id=doc_id,
+                status="ready_fast",
+                error=f"enrichment failed: {exc}"[:2000],
+                phase_override="enrichment",
+            )
+            # This path is called by the durable worker (the legacy upload
+            # path uses _index_document_best_effort_sync instead). Re-raise so
+            # the task consumer can apply its bounded retry policy.
+            raise KnowledgeIndexEnrichmentError(str(exc)) from exc
+        else:
+            if self._document_exists_sync(kb_id, doc_id, expected_generation=expected_generation):
+                self._set_document_status_sync(kb_id=kb_id, doc_id=doc_id, status="ready")
+            else:
+                # A delete can race a task queued before deletion. Remove any
+                # late index side effect and let the worker discard the job.
+                try:
+                    self.knowledge_index.delete_document(kb_id=kb_id, doc_id=doc_id)
+                except Exception:  # noqa: BLE001
+                    logger.warning("failed to clean stale index for deleted document %s/%s", kb_id, doc_id)
+                raise KeyError("knowledge document not found")
+        return self._get_document_sync(kb_id, doc_id)
+
+    def _index_documents_sync(
+        self,
+        kb_id: str,
+        doc_ids: list[str],
+        expected_generations: dict[str, int] | None = None,
+    ) -> list[KnowledgeDocument]:
+        """Batch variant used by multi-file imports.
+
+        Extraction remains per file (different formats may require different
+        parsers), while chunk persistence and the LightRAG lifecycle are
+        grouped. An index implementation that does not support batching is
+        handled through the legacy per-document fallback.
+        """
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        unique_ids = list(dict.fromkeys(str(doc_id).strip() for doc_id in doc_ids if str(doc_id).strip()))
+        prepared: list[tuple[str, str, str, list[str]]] = []
+        for doc_id in unique_ids:
+            row = self._get_document_row_sync(kb_id, doc_id)
+            if expected_generations and doc_id in expected_generations and int(row["generation"] or 0) != int(expected_generations[doc_id]):
+                raise KnowledgeStaleJobError("knowledge document generation is stale")
+            stored_path = Path(str(row["stored_path"]))
+            if not stored_path.is_file():
+                self._set_document_status_sync(
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    status="error",
+                    error="stored knowledge document file is missing",
+                )
+                continue
+            with self._connect() as conn:
+                chunk_rows = conn.execute(
+                    "SELECT text FROM knowledge_chunks WHERE kb_id = ? AND doc_id = ? ORDER BY chunk_index ASC",
+                    (kb_id, doc_id),
+                ).fetchall()
+            # ``uploaded`` documents do not have chunks yet.  ``indexing``
+            # and ``ready_fast`` are the only states where a prior extraction
+            # is safe to reuse; an explicit reindex clears chunks first.
+            if (
+                chunk_rows
+                and str(row["status"]) in {"indexing", "ready_fast"}
+                and int(row["chunk_count"] or 0) == len(chunk_rows)
+            ):
+                chunks = [str(chunk_row["text"]) for chunk_row in chunk_rows]
+                text, error = "\n\n".join(chunks), None
+            else:
+                self._set_document_status_sync(kb_id=kb_id, doc_id=doc_id, status="extracting")
+                try:
+                    text, error = _extract_text(stored_path)
+                    chunks = _split_chunks(text)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("knowledge document extraction failed for %s/%s", kb_id, doc_id)
+                    self._set_document_status_sync(
+                        kb_id=kb_id,
+                        doc_id=doc_id,
+                        status="error",
+                        error=f"extraction failed: {exc}"[:2000],
+                    )
+                    raise
+            if not chunks:
+                self._set_document_status_sync(
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    status="error",
+                    error=error or "document has no extractable text",
+                )
+                continue
+            prepared.append((doc_id, str(row["filename"]), text, chunks))
+
+        if prepared:
+            now = _utc_now()
+            with self._connect() as conn:
+                conn.execute("PRAGMA foreign_keys=ON")
+                for doc_id, _filename, _text, _chunks in prepared:
+                    if expected_generations and doc_id in expected_generations:
+                        current = conn.execute(
+                            "SELECT generation FROM knowledge_documents WHERE kb_id = ? AND id = ?",
+                            (kb_id, doc_id),
+                        ).fetchone()
+                        if current is None or int(current["generation"] or 0) != int(expected_generations[doc_id]):
+                            raise KnowledgeStaleJobError("knowledge document generation is stale")
+                    conn.execute(
+                        "DELETE FROM knowledge_chunks WHERE kb_id = ? AND doc_id = ?",
+                        (kb_id, doc_id),
+                    )
+                rows: list[tuple[str, str, str, int, str, str]] = []
+                for doc_id, _filename, _text, chunks in prepared:
+                    rows.extend(
+                        (
+                            _new_id("chunk"),
+                            doc_id,
+                            kb_id,
+                            index,
+                            chunk,
+                            " ".join(sorted(_tokenize(chunk))),
+                        )
+                        for index, chunk in enumerate(chunks)
+                    )
+                conn.executemany(
+                    """
+                    INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+                for doc_id, _filename, _text, chunks in prepared:
+                    conn.execute(
+                        """
+                        UPDATE knowledge_documents
+                        SET status = 'indexing', error = NULL, index_phase = 'fast_index',
+                            index_error = NULL, chunk_count = ?, updated_at = ?
+                        WHERE kb_id = ? AND id = ?
+                          AND (? IS NULL OR generation = ?)
+                        """,
+                        (
+                            len(chunks),
+                            now,
+                            kb_id,
+                            doc_id,
+                            expected_generations.get(doc_id) if expected_generations else None,
+                            expected_generations.get(doc_id) if expected_generations else None,
+                        ),
+                    )
+
+            for doc_id, _filename, _text, _chunks in prepared:
+                self._set_document_status_sync(
+                    kb_id=kb_id,
+                    doc_id=doc_id,
+                    status="ready_fast",
+                    error=None,
+                    phase_override="enrichment",
+                )
+
+            try:
+                batch_payload = [
+                    {"doc_id": doc_id, "filename": filename, "text": text}
+                    for doc_id, filename, text, _chunks in prepared
+                ]
+                batch_index = getattr(self.knowledge_index, "index_documents", None)
+                if callable(batch_index):
+                    batch_index(kb_id=kb_id, documents=batch_payload)
+                else:
+                    for item in batch_payload:
+                        self.knowledge_index.index_document(kb_id=kb_id, **item)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("batch LightRAG indexing failed for %s (%s documents)", kb_id, len(prepared), exc_info=exc)
+                for doc_id, _filename, _text, _chunks in prepared:
+                    try:
+                        self.knowledge_index.delete_document(kb_id=kb_id, doc_id=doc_id)
+                    except Exception:  # noqa: BLE001
+                        logger.warning(
+                            "failed to clean failed batch document index: %s/%s",
+                            kb_id,
+                            doc_id,
+                            exc_info=True,
+                        )
+                for doc_id, _filename, _text, _chunks in prepared:
+                    self._set_document_status_sync(
+                        kb_id=kb_id,
+                        doc_id=doc_id,
+                        status="ready_fast",
+                        error=f"enrichment failed: {exc}"[:2000],
+                        phase_override="enrichment",
+                    )
+                # Chunks are durable and queryable; let the worker retry the
+                # optional enrichment without masking the fast index.
+                raise KnowledgeIndexEnrichmentError(str(exc)) from exc
+            else:
+                for doc_id, _filename, _text, _chunks in prepared:
+                    self._set_document_status_sync(kb_id=kb_id, doc_id=doc_id, status="ready")
+
+        return [self._get_document_sync(kb_id, doc_id) for doc_id in unique_ids]
+
+    def _request_reindex_sync(self, kb_id: str, doc_id: str) -> KnowledgeDocument:
+        """Persist a re-index request; extraction/indexing is performed by a worker."""
+        self._initialize_sync()
+        kb_id = _safe_kb_id(kb_id)
+        stored_path = self._document_path_sync(kb_id, doc_id)
+        if stored_path is None:
+            raise KeyError("knowledge document not found")
+        if not stored_path.is_file():
+            raise ValueError("stored knowledge document file is missing")
+        with self._connect() as conn:
+            result = conn.execute(
+                """
+                UPDATE knowledge_documents
+                SET status = 'uploaded', error = NULL, index_phase = 'queued', index_error = NULL,
+                    retry_count = 0, generation = generation + 1, updated_at = ?
+                WHERE kb_id = ? AND id = ?
+                """,
+                (_utc_now(), kb_id, doc_id),
+            )
+            if result.rowcount == 0:
+                raise KeyError("knowledge document not found")
+            conn.execute(
+                "DELETE FROM knowledge_chunks WHERE kb_id = ? AND id = ?",
+                (kb_id, doc_id),
             )
         return self._get_document_sync(kb_id, doc_id)
 
@@ -1043,20 +1866,142 @@ class KnowledgeStore:
                     now,
                 ),
             )
-            for index, chunk in enumerate(chunks):
-                conn.execute(
-                    """
-                    INSERT INTO knowledge_file_chunks(id, file_id, chunk_index, text, tokens)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
+            conn.executemany(
+                """
+                INSERT INTO knowledge_file_chunks(id, file_id, chunk_index, text, tokens)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
                     (
                         _new_id("chunk"),
                         file_id,
                         index,
                         chunk,
                         " ".join(sorted(_tokenize(chunk))),
+                    )
+                    for index, chunk in enumerate(chunks)
+                ],
+            )
+        return self._get_file_sync(file_id)
+
+    def _add_file_upload_sync(
+        self,
+        filename: str,
+        mime_type: str,
+        source_path: Path,
+        consume_source: bool = False,
+    ) -> KnowledgeDocument:
+        """Persist a file-pool upload without parsing it in the HTTP request."""
+        self._initialize_sync()
+        filename = _safe_filename(filename)
+        if not source_path.is_file():
+            raise ValueError("uploaded file is missing")
+        size = source_path.stat().st_size
+        if size <= 0:
+            raise ValueError("uploaded file is empty")
+        if size > MAX_DOCUMENT_BYTES:
+            raise ValueError("document is larger than 20MB")
+        suffix = Path(filename).suffix.lower() or source_path.suffix.lower()
+        if suffix not in SUPPORTED_EXTENSIONS:
+            raise ValueError(f"only {SUPPORTED_EXTENSIONS_LABEL} documents are supported")
+        file_id = _new_id("file")
+        pool_dir = self.knowledge_root / "_file_pool"
+        pool_dir.mkdir(parents=True, exist_ok=True)
+        stored_path = pool_dir / f"{file_id}{suffix}"
+        if consume_source:
+            installed_size, sha256 = _install_upload_file(source_path, stored_path)
+        else:
+            installed_size, sha256 = _hash_file(source_path)
+            shutil.copyfile(source_path, stored_path)
+        if installed_size != size:
+            stored_path.unlink(missing_ok=True)
+            raise ValueError("uploaded file changed while it was being stored")
+        with self._connect() as conn:
+            existing_row = conn.execute(
+                """
+                SELECT id FROM knowledge_files
+                WHERE filename = ? AND sha256 = ?
+                ORDER BY updated_at DESC, created_at DESC LIMIT 1
+                """,
+                (filename, sha256),
+            ).fetchone()
+        if existing_row is not None:
+            stored_path.unlink(missing_ok=True)
+            raise DuplicateKnowledgeDocumentError(f"knowledge file already exists: {filename}")
+        now = _utc_now()
+        try:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO knowledge_files(
+                      id, filename, mime_type, bytes, sha256, status, error,
+                      chunk_count, stored_path, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 'uploaded', NULL, 0, ?, ?, ?)
+                    """,
+                    (
+                        file_id,
+                        filename,
+                        mime_type or "application/octet-stream",
+                        size,
+                        sha256,
+                        str(stored_path),
+                        now,
+                        now,
                     ),
                 )
+        except Exception:
+            stored_path.unlink(missing_ok=True)
+            raise
+        return self._get_file_sync(file_id)
+
+    def _prepare_file_sync(self, file_id: str) -> KnowledgeDocument:
+        self._initialize_sync()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT stored_path FROM knowledge_files WHERE id = ?",
+                (file_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError("knowledge file not found")
+        stored_path = Path(str(row["stored_path"]))
+        if not stored_path.is_file():
+            raise ValueError("stored knowledge document file is missing")
+        try:
+            text, error = _extract_text(stored_path)
+            chunks = _split_chunks(text)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("knowledge file extraction failed: %s", file_id)
+            self._mark_file_error_sync(file_id, f"extraction failed: {exc}")
+            return self._get_file_sync(file_id)
+        status = "ready" if chunks else "error"
+        if not chunks and not error:
+            error = "document has no extractable text"
+        with self._connect() as conn:
+            conn.execute("DELETE FROM knowledge_file_chunks WHERE file_id = ?", (file_id,))
+            conn.execute(
+                """
+                UPDATE knowledge_files
+                SET status = ?, error = ?, chunk_count = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, error, len(chunks), _utc_now(), file_id),
+            )
+            conn.executemany(
+                """
+                INSERT INTO knowledge_file_chunks(id, file_id, chunk_index, text, tokens)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        _new_id("chunk"),
+                        file_id,
+                        index,
+                        chunk,
+                        " ".join(sorted(_tokenize(chunk))),
+                    )
+                    for index, chunk in enumerate(chunks)
+                ],
+            )
         return self._get_file_sync(file_id)
 
     def _list_documents_sync(self, kb_id: str) -> list[KnowledgeDocument]:
@@ -1066,12 +2011,40 @@ class KnowledgeStore:
             rows = conn.execute(
                 """
                 SELECT id, kb_id, filename, mime_type, bytes, sha256, status, error,
-                       chunk_count, created_at, updated_at
+                       chunk_count, created_at, updated_at, index_phase, retry_count, index_error, generation
                 FROM knowledge_documents
                 WHERE kb_id = ?
                 ORDER BY updated_at DESC, created_at DESC
                 """,
                 (kb_id,),
+            ).fetchall()
+        return [_document_from_row(row) for row in rows]
+
+    def _list_pending_documents_sync(self) -> list[KnowledgeDocument]:
+        self._initialize_sync()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, kb_id, filename, mime_type, bytes, sha256, status, error,
+                       chunk_count, created_at, updated_at, index_phase, retry_count, index_error, generation
+                FROM knowledge_documents
+                WHERE status IN ('uploaded', 'indexing')
+                ORDER BY updated_at ASC, created_at ASC
+                """
+            ).fetchall()
+        return [_document_from_row(row) for row in rows]
+
+    def _list_pending_files_sync(self) -> list[KnowledgeDocument]:
+        self._initialize_sync()
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, 'file_pool' AS kb_id, filename, mime_type, bytes, sha256,
+                       status, error, chunk_count, created_at, updated_at
+                FROM knowledge_files
+                WHERE status = 'uploaded'
+                ORDER BY updated_at ASC, created_at ASC
+                """
             ).fetchall()
         return [_document_from_row(row) for row in rows]
 
@@ -1173,7 +2146,7 @@ class KnowledgeStore:
             row = conn.execute(
                 """
                 SELECT id, kb_id, filename, mime_type, bytes, sha256, status, error,
-                       chunk_count, created_at, updated_at
+                       chunk_count, created_at, updated_at, index_phase, retry_count, index_error, generation
                 FROM knowledge_documents
                 WHERE kb_id = ? AND id = ?
                 """,
@@ -1262,7 +2235,7 @@ class KnowledgeStore:
                 """
                 SELECT id, filename, stored_path
                 FROM knowledge_documents
-                WHERE kb_id = ? AND status = 'ready'
+                WHERE kb_id = ? AND status IN ('ready', 'ready_fast')
                 ORDER BY created_at ASC, id ASC
                 """,
                 (kb_id,),
@@ -1282,7 +2255,9 @@ class KnowledgeStore:
                 text=text,
             )
 
-    def _add_existing_document_sync(self, *, kb_id: str, source_doc_id: str) -> KnowledgeDocument:
+    def _add_existing_document_sync(
+        self, *, kb_id: str, source_doc_id: str, index_document: bool = True
+    ) -> KnowledgeDocument:
         self._initialize_sync()
         kb_id = _safe_kb_id(kb_id)
         file_id = source_doc_id.strip()
@@ -1348,7 +2323,11 @@ class KnowledgeStore:
                     str(source_row["mime_type"]),
                     int(source_row["bytes"]),
                     str(source_row["sha256"]),
-                    str(source_row["status"]),
+                    (
+                        "indexing"
+                        if index_document is False and str(source_row["status"]) == "ready"
+                        else str(source_row["status"])
+                    ),
                     str(source_row["error"]) if source_row["error"] is not None else None,
                     int(source_row["chunk_count"]),
                     str(stored_path),
@@ -1365,12 +2344,12 @@ class KnowledgeStore:
                 """,
                 (file_id,),
             ).fetchall()
-            for chunk_row in chunk_rows:
-                conn.execute(
-                    """
-                    INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+            conn.executemany(
+                """
+                INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
                     (
                         _new_id("chunk"),
                         doc_id,
@@ -1378,9 +2357,13 @@ class KnowledgeStore:
                         int(chunk_row["chunk_index"]),
                         str(chunk_row["text"]),
                         str(chunk_row["tokens"]),
-                    ),
-                )
-        if str(source_row["status"]) == "ready" and chunk_rows:
+                    )
+                    for chunk_row in chunk_rows
+                ],
+            )
+        if index_document is False:
+            self._set_document_status_sync(kb_id=kb_id, doc_id=doc_id, status="uploaded", error=None)
+        if str(source_row["status"]) == "ready" and chunk_rows and index_document:
             text = "\n\n".join(str(chunk_row["text"]) for chunk_row in chunk_rows).strip()
             self._index_document_best_effort_sync(
                 kb_id=kb_id,
@@ -1416,12 +2399,12 @@ class KnowledgeStore:
                 """,
                 (status, error, len(chunks), now, kb_id, doc_id),
             )
-            for index, chunk in enumerate(chunks):
-                conn.execute(
-                    """
-                    INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
+            conn.executemany(
+                """
+                INSERT INTO knowledge_chunks(id, doc_id, kb_id, chunk_index, text, tokens)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
                     (
                         _new_id("chunk"),
                         doc_id,
@@ -1429,8 +2412,10 @@ class KnowledgeStore:
                         index,
                         chunk,
                         " ".join(sorted(_tokenize(chunk))),
-                    ),
-                )
+                    )
+                    for index, chunk in enumerate(chunks)
+                ],
+            )
         self.knowledge_index.delete_document(kb_id=kb_id, doc_id=doc_id)
         if status == "ready":
             self._index_document_best_effort_sync(
@@ -1473,10 +2458,27 @@ class KnowledgeStore:
         if chunks:
             return chunks
 
-        if not self.use_chunk_fallback:
-            return []
+        # Documents in ``ready_fast`` are deliberately queryable even when
+        # the deployment has disabled the legacy chunk fallback.  This state
+        # means local chunks are committed while optional LightRAG enrichment
+        # is still pending/failed, so hiding them would turn a recoverable
+        # enrichment error into an apparent data loss for users.
+        if self.use_chunk_fallback or self._has_ready_fast_documents_sync(kb_id):
+            return self._query_chunk_fallback_sync(kb_id, query, safe_limit)
+        return []
 
-        return self._query_chunk_fallback_sync(kb_id, query, safe_limit)
+    def _has_ready_fast_documents_sync(self, kb_id: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT 1
+                FROM knowledge_documents
+                WHERE kb_id = ? AND status = 'ready_fast' AND chunk_count > 0
+                LIMIT 1
+                """,
+                (kb_id,),
+            ).fetchone()
+        return row is not None
 
     def _query_lightrag_sync(
         self,
@@ -1489,7 +2491,7 @@ class KnowledgeStore:
                 """
                 SELECT id, filename
                 FROM knowledge_documents
-                WHERE kb_id = ? AND status = 'ready'
+                WHERE kb_id = ? AND status IN ('ready', 'ready_fast')
                 ORDER BY updated_at DESC, created_at DESC
                 """,
                 (kb_id,),
@@ -1534,7 +2536,7 @@ class KnowledgeStore:
                 SELECT c.id, c.doc_id, c.kb_id, d.filename, c.text, c.tokens
                 FROM knowledge_chunks c
                 JOIN knowledge_documents d ON d.id = c.doc_id
-                WHERE c.kb_id = ? AND d.status = 'ready'
+                WHERE c.kb_id = ? AND d.status IN ('ready', 'ready_fast')
                 ORDER BY d.updated_at DESC, c.chunk_index ASC
                 """,
                 (kb_id,),
@@ -1579,7 +2581,9 @@ class KnowledgeStore:
         if chunks:
             return chunks[:safe_limit]
 
-        if not self.use_chunk_fallback:
+        if not self.use_chunk_fallback and not any(
+            self._has_ready_fast_documents_sync(kb_id) for kb_id in selected
+        ):
             return []
 
         for kb_id in selected:
@@ -1601,6 +2605,14 @@ def _document_from_row(row: sqlite3.Row) -> KnowledgeDocument:
         chunk_count=int(row["chunk_count"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        index_phase=str(row["index_phase"] or "") if "index_phase" in row.keys() else "",
+        retry_count=int(row["retry_count"] or 0) if "retry_count" in row.keys() else 0,
+        index_error=(
+            str(row["index_error"])
+            if "index_error" in row.keys() and row["index_error"] is not None
+            else None
+        ),
+        generation=int(row["generation"] or 0) if "generation" in row.keys() else 0,
     )
 
 
