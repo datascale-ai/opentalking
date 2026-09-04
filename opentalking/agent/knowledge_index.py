@@ -517,9 +517,9 @@ class LightRAGKnowledgeIndex:
                     ).fetchall():
                         if int(dimension) != self.embedding_dim:
                             continue
-                        vector = np.frombuffer(bytes(raw_vector), dtype=np.float32).copy()
-                        if vector.size == self.embedding_dim:
-                            persistent_rows[str(cache_key)] = vector
+                        cached_vector = np.frombuffer(bytes(raw_vector), dtype=np.float32).copy()
+                        if cached_vector.size == self.embedding_dim:
+                            persistent_rows[str(cache_key)] = cached_vector
             except Exception:  # noqa: BLE001
                 logger.debug("failed to read embedding cache", exc_info=True)
             finally:

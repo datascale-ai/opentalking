@@ -1428,6 +1428,7 @@ class KnowledgeStore:
         self, kb_id: str, doc_id: str, expected_generation: int | None = None
     ) -> bool:
         with self._connect() as conn:
+            params: tuple[str, str] | tuple[str, str, int]
             if expected_generation is None:
                 query = "SELECT 1 FROM knowledge_documents WHERE kb_id = ? AND id = ?"
                 params = (kb_id, doc_id)

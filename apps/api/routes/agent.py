@@ -235,7 +235,7 @@ async def _enqueue_index_job(
     content_hash: str | None = None,
 ) -> None:
     """Submit an idempotent index job without coupling it to the HTTP request."""
-    task = {
+    task: dict[str, object] = {
         "cmd": "knowledge_index",
         "kb_id": kb_id,
         "doc_id": doc_id,
@@ -286,7 +286,11 @@ async def _enqueue_index_batch_job(
     unique_ids = list(dict.fromkeys(doc_id.strip() for doc_id in doc_ids if doc_id.strip()))
     if not unique_ids:
         return
-    task = {"cmd": "knowledge_index_batch", "kb_id": kb_id, "doc_ids": unique_ids}
+    task: dict[str, object] = {
+        "cmd": "knowledge_index_batch",
+        "kb_id": kb_id,
+        "doc_ids": unique_ids,
+    }
     # Capture the document generations/content hashes at enqueue time.  A
     # later reindex/delete must not allow an old batch result to overwrite the
     # newer generation.
