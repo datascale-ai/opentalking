@@ -5963,7 +5963,7 @@ NPU 或 talking-head 权重，适合首次验收安装结果。</p>
 <p>打开 <a href="http://localhost:5173">http://localhost:5173</a>，选择内置 avatar 与 <code>mock</code> 模型，点击麦克风开始对话。</p>
 <h2 id="_4">验证<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:8000/health
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.statuses[] | select(.id==&quot;mock&quot;)&#39;</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.statuses[] | select(.id=="mock")'</span>
 </span></code></pre></div>
 <p>期望 <code>mock</code> 返回 <code>connected: true</code>，浏览器能够收到文本事件和占位视频帧。</p>
 <h2 id="_5">故障排查<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>

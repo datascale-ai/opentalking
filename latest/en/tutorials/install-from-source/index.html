@@ -6207,7 +6207,7 @@ deployments that use real talking-head models. The recommended layout:</p>
 </span></code></pre></div>
 <p>Set the environment variable:</p>
 <div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">DIGITAL_HUMAN_HOME</span><span class="o">=</span>/opt/digital_human<span class="w">   </span><span class="c1"># or your preferred path</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNIRT_MODEL_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/models&quot;</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNIRT_MODEL_ROOT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/models"</span>
 </span></code></pre></div>
 <h3 id="2-install-python-dependencies">2. Install Python dependencies<a class="headerlink" href="#2-install-python-dependencies" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>dev<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
@@ -6218,7 +6218,7 @@ deployments that use real talking-head models. The recommended layout:</p>
 <p>If you need the compatibility fallback instead:</p>
 <div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.tuna.tsinghua.edu.cn/simple<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.tuna.tsinghua.edu.cn/simple<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
 </span></code></pre></div>
 <p>Notes:</p>
 <ul>
@@ -6273,18 +6273,18 @@ placeholder frames; no inference service is required.</p>
 <code>wav2lip</code> model.</p>
 <h3 id="install-omnirt">Install OmniRT<a class="headerlink" href="#install-omnirt" title="Permanent link">&para;</a></h3>
 <p>OmniRT is the inference runtime. Clone it next to OpenTalking:</p>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/datascale-ai/omnirt.git
 </span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nb">cd</span><span class="w"> </span>omnirt
 </span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>server<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
 </span></code></pre></div>
 <h3 id="download-model-weights">Download model weights<a class="headerlink" href="#download-model-weights" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OMNIRT_MODEL_ROOT</span><span class="s2">/wav2lip&quot;</span>
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$OMNIRT_MODEL_ROOT</span><span class="s2">/wav2lip"</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># Place wav2lip384.pth and s3fd.pth at $OMNIRT_MODEL_ROOT/wav2lip/</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="c1"># Refer to the OmniRT documentation for current download locations.</span>
 </span></code></pre></div>
 <h3 id="start-omnirt">Start OmniRT<a class="headerlink" href="#start-omnirt" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>bash<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_wav2lip.sh&quot;</span><span class="w"> </span>--device<span class="w"> </span>cuda
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>bash<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_wav2lip.sh"</span><span class="w"> </span>--device<span class="w"> </span>cuda
 </span></code></pre></div>
 <p>The script handles dependency installation, environment variable setup, and starts
 OmniRT on <code>http://127.0.0.1:9000</code>. The script writes the process ID to
@@ -6295,7 +6295,7 @@ OmniRT on <code>http://127.0.0.1:9000</code>. The script writes the process ID t
 <div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>OMNIRT_ENDPOINT=http://127.0.0.1:9000
 </span></code></pre></div>
 <h3 id="run-opentalking">Run OpenTalking<a class="headerlink" href="#run-opentalking" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>bash<span class="w"> </span>scripts/quickstart/start_all.sh<span class="w"> </span>--omnirt<span class="w"> </span>http://127.0.0.1:9000
 </span></code></pre></div>
 <p>In the frontend, select the <code>wav2lip</code> model when creating a session.</p>
@@ -6308,7 +6308,7 @@ OmniRT on <code>http://127.0.0.1:9000</code>. The script writes the process ID t
 <h2 id="scenario-single-gpu-with-flashtalk">Scenario: single GPU with FlashTalk<a class="headerlink" href="#scenario-single-gpu-with-flashtalk" title="Permanent link">&para;</a></h2>
 <p>For evaluation on a single NVIDIA 4090 or A100 using the SoulX FlashTalk-14B model.</p>
 <p>The steps are identical to the wav2lip scenario, with the following changes:</p>
-<div class="language-bash highlight"><span class="filename">terminal: start OmniRT</span><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>bash<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_flashtalk.sh&quot;</span><span class="w"> </span>--device<span class="w"> </span>cuda
+<div class="language-bash highlight"><span class="filename">terminal: start OmniRT</span><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>bash<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_flashtalk.sh"</span><span class="w"> </span>--device<span class="w"> </span>cuda
 </span></code></pre></div>
 <p>Model weights:</p>
 <ul>
@@ -6326,7 +6326,7 @@ OmniRT on <code>http://127.0.0.1:9000</code>. The script writes the process ID t
 <h2 id="ascend-910b">Scenario: Ascend 910B<a class="headerlink" href="#ascend-910b" title="Permanent link">&para;</a></h2>
 <p>For NPU production deployment. Requires CANN 8.0 or later.</p>
 <h3 id="verify-cann-installation">Verify CANN installation<a class="headerlink" href="#verify-cann-installation" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;CANN present&quot;</span>
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"CANN present"</span>
 </span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nb">source</span><span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh
 </span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>npu-smi<span class="w"> </span>info
 </span></code></pre></div>
@@ -6340,7 +6340,7 @@ Python 3.11. In China-friendly environments, set these mirrors before installing
 script handles that part.</p>
 <h3 id="deploy">Deploy<a class="headerlink" href="#deploy" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nb">source</span><span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>bash<span class="w"> </span>scripts/deploy_ascend_910b.sh
 </span></code></pre></div>
 <p>The script:</p>
@@ -6439,7 +6439,7 @@ same Redis bus.</p>
 </ol>
 <h2 id="updates">Updates<a class="headerlink" href="#updates" title="Permanent link">&para;</a></h2>
 <p>To update an existing source installation:</p>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>git<span class="w"> </span>pull
 </span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>dev<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
 </span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
@@ -6483,10 +6483,10 @@ same Redis bus.</p>
 </table>
 <h2 id="uninstallation">Uninstallation<a class="headerlink" href="#uninstallation" title="Permanent link">&para;</a></h2>
 <p>To remove a source installation:</p>
-<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+<div class="language-bash highlight"><span class="filename">terminal</span><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>rm<span class="w"> </span>-rf<span class="w"> </span>opentalking<span class="w"> </span>omnirt<span class="w"> </span>models
 </span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="c1"># Optional: remove the log and PID directories</span>
-</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/logs&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/run&quot;</span>
+</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/logs"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/run"</span>
 </span></code></pre></div>
 <p>The local SQLite database referenced by <code>OPENTALKING_SQLITE_PATH</code> is also removed if
 it resides under the repository.</p>

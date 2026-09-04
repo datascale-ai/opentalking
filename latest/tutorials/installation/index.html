@@ -6059,7 +6059,7 @@
 <h2 id="_5">验证<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <p>无论何种安装方式，编排服务启动后均可通过以下请求验证：</p>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8000/health
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># {&quot;status&quot;:&quot;ok&quot;}</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># {"status":"ok"}</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># 列出可用的合成后端。</span>

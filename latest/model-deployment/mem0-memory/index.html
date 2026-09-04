@@ -6014,7 +6014,7 @@
 <li>对记忆执行语义召回、去重和歧义处理能力；OpenTalking 侧不会额外暴露一个独立的“手动消歧”接口。</li>
 </ul>
 <h2 id="_1">安装依赖<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;mem0ai==0.1.60&quot;</span><span class="w"> </span><span class="s2">&quot;qdrant-client==1.12.0&quot;</span><span class="w"> </span><span class="s2">&quot;protobuf==4.25.9&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"mem0ai==0.1.60"</span><span class="w"> </span><span class="s2">"qdrant-client==1.12.0"</span><span class="w"> </span><span class="s2">"protobuf==4.25.9"</span>
 </span></code></pre></div>
 <p>这里固定 <code>protobuf</code> 4.x 是为了避免新版 <code>mem0ai</code> 依赖链和项目中的 <code>mediapipe</code> 冲突。后续如果升级 Mem0 SDK，需要先重新跑 <code>python -m pip check</code> 和记忆相关测试。</p>
 <h2 id="env">.env 配置<a class="headerlink" href="#env" title="Permanent link">&para;</a></h2>
@@ -6089,9 +6089,9 @@
 <p>只有切换到 Mem0 Platform / <code>MemoryClient</code> 时，才需要 <code>MEM0_API_KEY</code>。平台版是否收费取决于 Mem0 官方当前套餐；本项目不把平台版 API key 作为当前必需项。</p>
 <h2 id="_3">对现有记忆库功能的影响<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>切换 <code>OPENTALKING_MEMORY_PROVIDER=mem0</code> 后，OpenTalking 的记忆库接口仍保持不变：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8000/memory/libraries?profile_id=default&amp;character_id=&lt;avatar-id&gt;&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>curl<span class="w"> </span><span class="s2">"http://127.0.0.1:8000/memory/libraries?profile_id=default&amp;character_id=&lt;avatar-id&gt;"</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>curl<span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8000/memory/libraries/default/items?profile_id=default&amp;character_id=&lt;avatar-id&gt;&quot;</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>curl<span class="w"> </span><span class="s2">"http://127.0.0.1:8000/memory/libraries/default/items?profile_id=default&amp;character_id=&lt;avatar-id&gt;"</span>
 </span></code></pre></div>
 <p>需要注意：</p>
 <ul>
@@ -6102,7 +6102,7 @@
 </ul>
 <h2 id="_4">验证<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>检查配置是否能初始化：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="s">from opentalking.core.config import get_settings</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s">from opentalking.providers.memory.factory import build_memory_provider</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
@@ -6113,14 +6113,14 @@
 </span></code></pre></div>
 <p>导入一条记忆并列出：</p>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8000/memory/libraries<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;content-type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;id&quot;:&quot;default&quot;,&quot;name&quot;:&quot;Default&quot;,&quot;character_id&quot;:&quot;demo-avatar&quot;}&#39;</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>-H<span class="w"> </span><span class="s1">'content-type: application/json'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"id":"default","name":"Default","character_id":"demo-avatar"}'</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>curl<span class="w"> </span>-s<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8000/memory/libraries/default/import<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;content-type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
-</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;profile_id&quot;:&quot;default&quot;,&quot;character_id&quot;:&quot;demo-avatar&quot;,&quot;turns&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;记住，我喜欢简洁回答。&quot;}]}&#39;</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span>-H<span class="w"> </span><span class="s1">'content-type: application/json'</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"profile_id":"default","character_id":"demo-avatar","turns":[{"role":"user","content":"记住，我喜欢简洁回答。"}]}'</span>
 </span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
-</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;http://127.0.0.1:8000/memory/libraries/default/items?profile_id=default&amp;character_id=demo-avatar&quot;</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">"http://127.0.0.1:8000/memory/libraries/default/items?profile_id=default&amp;character_id=demo-avatar"</span>
 </span></code></pre></div>
 <p>建议每次调整 SDK 或依赖后运行：</p>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>check

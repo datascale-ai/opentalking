@@ -6213,15 +6213,15 @@
 <p>主 <code>.venv</code> 只负责 OpenTalking、SenseVoice 和 QuickTalk。CosyVoice runtime
 准备好后，创建独立 sidecar venv：</p>
 <p>QuickTalk 权重按 <a href="../../avatar_models/deployment/quicktalk-local/">QuickTalk Local 部署</a> 页面准备。CosyVoice runtime 放在部署根目录的 <code>model-repos/</code> 下：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>model-repos
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>!<span class="w"> </span>-d<span class="w"> </span>model-repos/CosyVoice/.git<span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/FunAudioLLM/CosyVoice.git<span class="w"> </span>model-repos/CosyVoice
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="k">fi</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nb">cd</span><span class="w"> </span>model-repos/CosyVoice
 </span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>git<span class="w"> </span>submodule<span class="w"> </span>update<span class="w"> </span>--init<span class="w"> </span>--recursive
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="nv">OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/model-repos/CosyVoice&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="nv">OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/model-repos/CosyVoice"</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="nv">OPENTALKING_COSYVOICE_VENV_DIR</span><span class="o">=</span>.venv-cosyvoice<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span>bash<span class="w"> </span>scripts/prepare_cosyvoice_venv.sh
 </span></code></pre></div>
@@ -6235,7 +6235,7 @@
 <h2 id="_4">验证<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:19090/health
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:8000/api/runtime/status
-</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.statuses[] | select(.id==&quot;quicktalk&quot;)&#39;</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.statuses[] | select(.id=="quicktalk")'</span>
 </span></code></pre></div>
 <p>期望：</p>
 <ul>

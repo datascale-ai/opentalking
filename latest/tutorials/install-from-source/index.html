@@ -6205,7 +6205,7 @@
 </span></code></pre></div>
 <p>设置环境变量：</p>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">DIGITAL_HUMAN_HOME</span><span class="o">=</span>/opt/digital_human<span class="w">   </span><span class="c1"># 或自定义路径</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNIRT_MODEL_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/models&quot;</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OMNIRT_MODEL_ROOT</span><span class="o">=</span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/models"</span>
 </span></code></pre></div>
 <h3 id="2-python">2. 安装 Python 依赖<a class="headerlink" href="#2-python" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>dev<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
@@ -6216,7 +6216,7 @@
 <p>如需兼容 fallback，可使用：</p>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.tuna.tsinghua.edu.cn/simple<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.tuna.tsinghua.edu.cn/simple<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
 </span></code></pre></div>
 <p>说明：</p>
 <ul>
@@ -6267,18 +6267,18 @@
 <p>适用于单张 NVIDIA 3090 或同级 24 GB GPU 上使用轻量级 <code>wav2lip</code> 模型评估。</p>
 <h3 id="omnirt">安装 OmniRT<a class="headerlink" href="#omnirt" title="Permanent link">&para;</a></h3>
 <p>OmniRT 为推理运行时，在 OpenTalking 同级目录 clone：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/datascale-ai/omnirt.git
 </span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nb">cd</span><span class="w"> </span>omnirt
 </span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>server<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
 </span></code></pre></div>
 <h3 id="_4">下载模型权重<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OMNIRT_MODEL_ROOT</span><span class="s2">/wav2lip&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$OMNIRT_MODEL_ROOT</span><span class="s2">/wav2lip"</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># 将 wav2lip384.pth 与 s3fd.pth 放入 $OMNIRT_MODEL_ROOT/wav2lip/</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="c1"># 当前下载位置请参阅 OmniRT 文档。</span>
 </span></code></pre></div>
 <h3 id="omnirt_1">启动 OmniRT<a class="headerlink" href="#omnirt_1" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>bash<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_wav2lip.sh&quot;</span><span class="w"> </span>--device<span class="w"> </span>cuda
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>bash<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_wav2lip.sh"</span><span class="w"> </span>--device<span class="w"> </span>cuda
 </span></code></pre></div>
 <p>脚本完成依赖安装、环境变量配置，并在 <code>http://127.0.0.1:9000</code> 启动 OmniRT。进程 PID
 写入 <code>$DIGITAL_HUMAN_HOME/run/omnirt-wav2lip.pid</code>，日志位于
@@ -6288,7 +6288,7 @@
 <div class="language-text highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>OMNIRT_ENDPOINT=http://127.0.0.1:9000
 </span></code></pre></div>
 <h3 id="opentalking_1">启动 OpenTalking<a class="headerlink" href="#opentalking_1" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>bash<span class="w"> </span>scripts/quickstart/start_all.sh<span class="w"> </span>--omnirt<span class="w"> </span>http://127.0.0.1:9000
 </span></code></pre></div>
 <p>前端创建会话时选择 <code>wav2lip</code> 模型。</p>
@@ -6301,7 +6301,7 @@
 <h2 id="gpu-flashtalk">场景：单 GPU + FlashTalk<a class="headerlink" href="#gpu-flashtalk" title="Permanent link">&para;</a></h2>
 <p>适用于单张 NVIDIA 4090 或 A100 上使用 SoulX FlashTalk-14B 模型评估。</p>
 <p>步骤与 wav2lip 场景一致，差异如下：</p>
-<div class="language-bash highlight"><span class="filename">终端：启动 OmniRT</span><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>bash<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_flashtalk.sh&quot;</span><span class="w"> </span>--device<span class="w"> </span>cuda
+<div class="language-bash highlight"><span class="filename">终端：启动 OmniRT</span><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>bash<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking/scripts/quickstart/start_omnirt_flashtalk.sh"</span><span class="w"> </span>--device<span class="w"> </span>cuda
 </span></code></pre></div>
 <p>模型权重：</p>
 <ul>
@@ -6319,7 +6319,7 @@
 <h2 id="ascend-910b">场景：昇腾 910B<a class="headerlink" href="#ascend-910b" title="Permanent link">&para;</a></h2>
 <p>NPU 生产部署，须 CANN 8.0 或更新版本。</p>
 <h3 id="cann">验证 CANN 安装<a class="headerlink" href="#cann" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;CANN 已就绪&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"CANN 已就绪"</span>
 </span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nb">source</span><span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh
 </span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>npu-smi<span class="w"> </span>info
 </span></code></pre></div>
@@ -6331,7 +6331,7 @@
 <p>OmniRT 需要 NPU 专用的 PyTorch wheel，由部署脚本完成。</p>
 <h3 id="_5">部署<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nb">source</span><span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>bash<span class="w"> </span>scripts/deploy_ascend_910b.sh
 </span></code></pre></div>
 <p>脚本执行：</p>
@@ -6428,7 +6428,7 @@
 </ol>
 <h2 id="_10">更新<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
 <p>更新已有源码安装：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>git<span class="w"> </span>pull
 </span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>dev<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
 </span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
@@ -6472,10 +6472,10 @@
 </table>
 <h2 id="_12">卸载<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h2>
 <p>移除源码安装：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-26-2"><a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>rm<span class="w"> </span>-rf<span class="w"> </span>opentalking<span class="w"> </span>omnirt<span class="w"> </span>models
 </span><span id="__span-26-3"><a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="c1"># 可选：移除日志与 PID 目录</span>
-</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/logs&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/run&quot;</span>
+</span><span id="__span-26-4"><a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/logs"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/run"</span>
 </span></code></pre></div>
 <p><code>OPENTALKING_SQLITE_PATH</code> 指向的本地 SQLite 数据库若位于仓库内，也将一并移除。</p>
 

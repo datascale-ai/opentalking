@@ -6278,7 +6278,7 @@
 </tbody>
 </table>
 <h2 id="_2">安装依赖<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>dev<span class="w"> </span>--extra<span class="w"> </span>models<span class="w"> </span>--extra<span class="w"> </span>local-audio<span class="w"> </span>--extra<span class="w"> </span>quicktalk-cuda<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
 </span></code></pre></div>
@@ -6303,7 +6303,7 @@
 <p>关键配置是 <code>OPENTALKING_QUICKTALK_ASSET_ROOT</code> 指向包含 <code>checkpoints/</code> 的目录。</p>
 <h2 id="cosyvoice-runtime">准备 CosyVoice runtime<a class="headerlink" href="#cosyvoice-runtime" title="Permanent link">&para;</a></h2>
 <p><code>local_cosyvoice</code> 推荐通过独立 Python service 接入。运行时代码不提交到 git，建议放在部署根目录的 <code>model-repos/</code> 下：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span>model-repos
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>!<span class="w"> </span>-d<span class="w"> </span>model-repos/CosyVoice/.git<span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
 </span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/FunAudioLLM/CosyVoice.git<span class="w"> </span>model-repos/CosyVoice
@@ -6312,8 +6312,8 @@
 </span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>git<span class="w"> </span>submodule<span class="w"> </span>update<span class="w"> </span>--init<span class="w"> </span>--recursive
 </span></code></pre></div>
 <p>runtime 准备好后，创建 CosyVoice 专用 sidecar venv：</p>
-<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/model-repos/CosyVoice&quot;</span><span class="w"> </span><span class="se">\</span>
+<div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">OPENTALKING_TTS_LOCAL_COSYVOICE_RUNTIME_DIR</span><span class="o">=</span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/model-repos/CosyVoice"</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nv">OPENTALKING_COSYVOICE_VENV_DIR</span><span class="o">=</span>.venv-cosyvoice<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>bash<span class="w"> </span>scripts/prepare_cosyvoice_venv.sh
 </span></code></pre></div>
@@ -6368,7 +6368,7 @@ runtime，内部固定 <code>transformers==4.51.3</code>，与 OpenTalking 主 <
 <div class="language-bash highlight"><span class="filename">终端</span><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:19090/health
 </span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:8000/health
 </span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>curl<span class="w"> </span>-fsS<span class="w"> </span>http://127.0.0.1:8000/api/runtime/status
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;.statuses[] | select(.id==&quot;quicktalk&quot;)&#39;</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8000/models<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">'.statuses[] | select(.id=="quicktalk")'</span>
 </span></code></pre></div>
 <p>期望状态：</p>
 <ul>

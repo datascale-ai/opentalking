@@ -6287,9 +6287,9 @@
 </table>
 <h3 id="1">1. 克隆项目<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">DIGITAL_HUMAN_HOME</span><span class="o">=</span>/opt/digital_human
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">&quot;</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">"</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/datascale-ai/opentalking.git
 </span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nb">cd</span><span class="w"> </span>opentalking
 </span></code></pre></div>
@@ -6305,7 +6305,7 @@
 <p>如果环境暂时不方便使用 <code>uv</code>，可以使用兼容安装方式：</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.tuna.tsinghua.edu.cn/simple<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.tuna.tsinghua.edu.cn/simple<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
 </span></code></pre></div>
 <h3 id="3">3. 配置最小环境变量<a class="headerlink" href="#3" title="Permanent link">&para;</a></h3>
@@ -6321,7 +6321,7 @@ TTS 的最小示例：</p>
 <p><code>edge</code> TTS 不需要 API key。如果使用 DashScope STT 或 DashScope TTS，按模块配置
 <code>OPENTALKING_STT_DASHSCOPE_API_KEY</code> 或 <code>OPENTALKING_TTS_DASHSCOPE_API_KEY</code>。</p>
 <h3 id="4-mock">4. 启动 mock 模式<a class="headerlink" href="#4-mock" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>bash<span class="w"> </span>scripts/start_unified.sh<span class="w"> </span>--mock
 </span></code></pre></div>
 <p>默认端口：</p>
@@ -6394,24 +6394,24 @@ QuickTalk 权重，适合消费级 CUDA GPU 单机验证。</p>
 </span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>node<span class="w"> </span>--version
 </span></code></pre></div>
 <h3 id="2_1">2. 安装模型依赖<a class="headerlink" href="#2_1" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>uv<span class="w"> </span>sync<span class="w"> </span>--extra<span class="w"> </span>dev<span class="w"> </span>--extra<span class="w"> </span>models<span class="w"> </span>--python<span class="w"> </span><span class="m">3</span>.11
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">source</span><span class="w"> </span>.venv/bin/activate
 </span></code></pre></div>
 <h3 id="3-quicktalk">3. 准备 QuickTalk 权重<a class="headerlink" href="#3-quicktalk" title="Permanent link">&para;</a></h3>
 <p>QuickTalk 本地权重和依赖建议统一放在部署根目录的 <code>models/quicktalk/</code>。</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="k">:-</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="p">/models</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="k">:-</span><span class="nv">$OPENTALKING_MODEL_ROOT</span><span class="p">/quicktalk</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="k">:-</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="p">/models</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="k">:-</span><span class="nv">$OPENTALKING_MODEL_ROOT</span><span class="p">/quicktalk</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>mkdir<span class="w"> </span>-p<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints"</span>
 </span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>
-</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;huggingface_hub[cli]&quot;</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">"huggingface_hub[cli]"</span>
 </span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
 </span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="c1"># 可选：网络慢时使用 Hugging Face 镜像</span>
 </span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="nb">export</span><span class="w"> </span><span class="nv">HF_ENDPOINT</span><span class="o">=</span>https://hf-mirror.com
 </span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
 </span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>hf<span class="w"> </span>download<span class="w"> </span>datascale-ai/quicktalk<span class="w"> </span><span class="se">\</span>
-</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">  </span>--local-dir<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints&quot;</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">  </span>--local-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints"</span>
 </span></code></pre></div>
 <p>QuickTalk 权重、HuBERT 文件和 InsightFace <code>buffalo_l</code> 已经包含在 <code>datascale-ai/quicktalk</code> 中。下载后应能看到 <code>$DIGITAL_HUMAN_HOME/models/quicktalk/checkpoints/auxiliary/models/buffalo_l/</code>。</p>
 <p>建议校验关键文件 SHA256：</p>
@@ -6422,10 +6422,10 @@ QuickTalk 权重，适合消费级 CUDA GPU 单机验证。</p>
 </span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>chinese-hubert-large/pytorch_model.bin: 9cf43abec3f0410ad6854afa4d376c69ccb364b48ddddfd25c4c5aa16398eab0
 </span></code></pre></div>
 <p>检查关键文件：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>stat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/quicktalk.pth&quot;</span>
-</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>stat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/repair.npy&quot;</span>
-</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>stat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/chinese-hubert-large/pytorch_model.bin&quot;</span>
-</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>stat<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>stat<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/quicktalk.pth"</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>stat<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/repair.npy"</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>stat<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/chinese-hubert-large/pytorch_model.bin"</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>stat<span class="w"> </span><span class="s2">"</span><span class="nv">$OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="s2">/checkpoints/auxiliary/models/buffalo_l/det_10g.onnx"</span>
 </span></code></pre></div>
 <p>目录结构应类似：</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>$DIGITAL_HUMAN_HOME/models/
@@ -6451,11 +6451,11 @@ QuickTalk 权重，适合消费级 CUDA GPU 单机验证。</p>
 
 <h3 id="5-quicktalk">5. 启动 QuickTalk 模式<a class="headerlink" href="#5-quicktalk" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_TORCH_DEVICE</span><span class="o">=</span>cuda:0
-</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="k">:-</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="p">/models</span><span class="si">}</span><span class="s2">&quot;</span>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="k">:-</span><span class="nv">$OPENTALKING_MODEL_ROOT</span><span class="p">/quicktalk</span><span class="si">}</span><span class="s2">&quot;</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">OPENTALKING_MODEL_ROOT</span><span class="k">:-</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="p">/models</span><span class="si">}</span><span class="s2">"</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">OPENTALKING_QUICKTALK_ASSET_ROOT</span><span class="k">:-</span><span class="nv">$OPENTALKING_MODEL_ROOT</span><span class="p">/quicktalk</span><span class="si">}</span><span class="s2">"</span>
 </span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="nb">export</span><span class="w"> </span><span class="nv">OPENTALKING_QUICKTALK_WORKER_CACHE</span><span class="o">=</span><span class="m">1</span>
 </span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>bash<span class="w"> </span>scripts/start_unified.sh<span class="w"> </span>--backend<span class="w"> </span><span class="nb">local</span><span class="w"> </span>--model<span class="w"> </span>quicktalk
 </span></code></pre></div>
 <p>如果需要指定端口：</p>
@@ -6490,7 +6490,7 @@ QuickTalk 权重，适合消费级 CUDA GPU 单机验证。</p>
 <p>如果 WebUI 能看到动态视频结果，说明 QuickTalk 本地链路已经跑通。</p>
 <h2 id="_4">关闭服务<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>停止由 <code>scripts/start_unified.sh</code> 或 quickstart 辅助脚本启动的 OpenTalking API、WebUI 和模型进程：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$DIGITAL_HUMAN_HOME</span><span class="s2">/opentalking"</span>
 </span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>bash<span class="w"> </span>scripts/quickstart/stop_all.sh
 </span></code></pre></div>
 <h2 id="_5">常见问题<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>

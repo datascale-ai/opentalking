@@ -6706,10 +6706,10 @@ Wav2Lip、本地模型 adapter 或 OmniRT 远端推理。</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>nvidia-smi
 </span></code></pre></div>
 <p>再确认 Python 环境中的 PyTorch 是否可用：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="s">import torch</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s">print(&quot;cuda available:&quot;, torch.cuda.is_available())</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s">print(&quot;device count:&quot;, torch.cuda.device_count())</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s">print("cuda available:", torch.cuda.is_available())</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s">print("device count:", torch.cuda.device_count())</span>
 </span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="s">PY</span>
 </span></code></pre></div>
 <p>如果 <code>torch.cuda.is_available()</code> 返回 <code>False</code>，通常需要检查 NVIDIA driver、CUDA runtime、
@@ -6744,17 +6744,17 @@ PyTorch wheel 和当前虚拟环境是否匹配。</p>
 <h2 id="linux-ascend-npu">Linux + Ascend NPU 注意事项<a class="headerlink" href="#linux-ascend-npu" title="Permanent link">&para;</a></h2>
 <h3 id="cann">CANN 环境<a class="headerlink" href="#cann" title="Permanent link">&para;</a></h3>
 <p>Ascend NPU 路径依赖宿主机驱动和 CANN。通常需要先 source 环境：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;CANN 已就绪&quot;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">test</span><span class="w"> </span>-f<span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"CANN 已就绪"</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">source</span><span class="w"> </span>/usr/local/Ascend/ascend-toolkit/set_env.sh
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>npu-smi<span class="w"> </span>info
 </span></code></pre></div>
 <h3 id="torch_npu">torch_npu<a class="headerlink" href="#torch_npu" title="Permanent link">&para;</a></h3>
 <p><code>torch_npu</code> 需要与 PyTorch、驱动和 CANN 版本匹配。若导入失败，先确认 CANN 环境变量已生效：</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s">import torch</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s">import torch_npu</span>
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s">print(&quot;torch:&quot;, torch.__version__)</span>
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s">print(&quot;torch_npu imported&quot;)</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s">print("torch:", torch.__version__)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s">print("torch_npu imported")</span>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="s">PY</span>
 </span></code></pre></div>
 <h3 id="_5">适合的模型路线<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
@@ -6775,7 +6775,7 @@ FFmpeg、GPU runtime 和部分 Python 包在 Windows 上更容易遇到兼容性
 </span></code></pre></div>
 <p>使用 <code>pip</code> 时可以配置：</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PIP_INDEX_URL</span><span class="o">=</span>https://pypi.tuna.tsinghua.edu.cn/simple
-</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[dev]&quot;</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[dev]"</span>
 </span></code></pre></div>
 <h3 id="npm">npm 镜像源<a class="headerlink" href="#npm" title="Permanent link">&para;</a></h3>
 <p>如果前端依赖安装较慢：</p>
