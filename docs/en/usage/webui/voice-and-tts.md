@@ -61,7 +61,7 @@ If preview fails, check provider credentials, network access, voice identifier, 
 
 ## Voice Cloning
 
-Voice cloning creates a new voice from sample audio. The current WebUI clone flow focuses on DashScope / Qwen and CosyVoice.
+Voice cloning creates a new voice from sample audio. The WebUI clone flow supports DashScope / Qwen, MiniMax, and CosyVoice.
 
 ### Prepare Sample Audio
 
@@ -89,6 +89,17 @@ Apply the new voice to the current session, then preview or test it with a short
 CosyVoice cloning usually requires the provider to access the sample audio URL. For local deployments, configure `OPENTALKING_PUBLIC_BASE_URL` if the external service cannot reach local temporary URLs.
 
 If cloning fails, check public access, upload status, provider health, and backend logs.
+
+### MiniMax
+
+Set `OPENTALKING_TTS_MINIMAX_API_KEY` before cloning. Choose the Global region for
+`api.minimax.io` or the China region for `api.minimaxi.com`. You can also set
+`OPENTALKING_TTS_MINIMAX_REGION` to `global` or `cn`, or override the API root with
+`OPENTALKING_TTS_MINIMAX_BASE_URL`.
+
+MiniMax accepts MP3, M4A, or WAV samples between 10 seconds and 5 minutes. The WebUI
+converts the sample to WAV before upload. A custom voice ID must be 8-256 characters,
+start with a letter, and contain only letters, numbers, hyphens, or underscores.
 
 ## Use Voice in WebUI
 

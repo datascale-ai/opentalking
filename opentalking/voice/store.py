@@ -109,7 +109,6 @@ def init_voice_store() -> None:
                 """,
                 (sid, prov, vid, label, tm),
             )
-        cur.execute("DELETE FROM tts_voice_entries WHERE provider = 'minimax'")
         cur.execute(
             """
             DELETE FROM tts_voice_entries

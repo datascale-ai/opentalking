@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import logging
+import os
 import re
 import shutil
 import uuid
@@ -20,6 +21,7 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Reque
 from fastapi.responses import FileResponse, JSONResponse
 
 from opentalking.providers.tts.dashscope_qwen import clone as bailian_clone
+from opentalking.providers.tts import minimax_voice_clone
 from opentalking.providers.tts.voice_assets import (
     INDEXTTS_PROVIDER,
     INDEXTTS_PROVIDERS,
@@ -475,13 +477,14 @@ async def serve_voice_upload(token: str) -> FileResponse:
 async def post_voice_clone(
     request: Request,
     background_tasks: BackgroundTasks,
-    provider: str = Form(..., description="local_cosyvoice、indextts、cosyvoice、dashscope 或 xiaomi_mimo"),
+    provider: str = Form(..., description="Voice-cloning provider"),
     target_model: str = Form(...),
     display_label: str = Form(...),
     audio: UploadFile = File(...),
     prefix: str = Form(""),
     preferred_name: str = Form(""),
     prompt_text: str = Form(LOCAL_COSYVOICE_SAMPLE_TEXT),
+    region: str = Form(""),
 ) -> JSONResponse:
     """
     上传一段朗读音频完成复刻。
@@ -495,10 +498,10 @@ async def post_voice_clone(
     prov = provider.strip().lower()
     if prov in {"xiaomi", "mimo"}:
         prov = "xiaomi_mimo"
-    if prov not in {"local_cosyvoice", "local_f5_tts", "cosyvoice", "dashscope", "xiaomi_mimo", *INDEXTTS_PROVIDERS}:
+    if prov not in {"local_cosyvoice", "local_f5_tts", "cosyvoice", "dashscope", "minimax", "xiaomi_mimo", *INDEXTTS_PROVIDERS}:
         raise HTTPException(
             status_code=400,
-            detail="provider 须为 local_cosyvoice、local_f5_tts、indextts、cosyvoice、dashscope 或 xiaomi_mimo",
+            detail="Unsupported voice-cloning provider",
         )
 
     raw = await audio.read()
@@ -653,6 +656,47 @@ async def post_voice_clone(
                     "profile": "xiaomi_mimo",
                     "target_model": effective_model,
                     "message": "小米 MiMo 复刻音色已保存，请使用 mimo-v2.5-tts-voiceclone 合成。",
+                }
+            )
+
+        if prov == "minimax":
+            stats = _wav_audio_stats(wav)
+            if stats["duration_sec"] < 10.0:
+                raise ValueError("MiniMax voice-cloning audio must be at least 10 seconds long")
+            effective_model = tm or minimax_voice_clone.MINIMAX_VOICE_CLONE_MODELS[0]
+            requested_voice_id = (preferred_name or "").strip() or f"v{uuid.uuid4().hex}"
+            api_key = (
+                os.environ.get("OPENTALKING_TTS_MINIMAX_API_KEY", "").strip()
+                or os.environ.get("MINIMAX_API_KEY", "").strip()
+            )
+            effective_region = (
+                (region or "").strip()
+                or os.environ.get("OPENTALKING_TTS_MINIMAX_REGION", "").strip()
+                or "global"
+            )
+            vid = await minimax_voice_clone.clone_minimax_voice(
+                wav_bytes=wav,
+                voice_id=requested_voice_id,
+                model=effective_model,
+                api_key=api_key,
+                region=effective_region,
+                base_url=os.environ.get("OPENTALKING_TTS_MINIMAX_BASE_URL", "").strip(),
+            )
+            eid = insert_clone(
+                provider="minimax",
+                voice_id=vid,
+                display_label=label,
+                target_model=effective_model,
+            )
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "entry_id": eid,
+                    "voice_id": vid,
+                    "display_label": label,
+                    "provider": "minimax",
+                    "target_model": effective_model,
+                    "message": "MiniMax voice clone created successfully.",
                 }
             )
 

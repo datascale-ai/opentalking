@@ -4,6 +4,7 @@ export type VoiceCloneProvider =
   | "local_cosyvoice"
   | "indextts"
   | "local_f5_tts"
+  | "minimax"
   | "xiaomi_mimo";
 
 export type VoiceCloneApplicationInput<

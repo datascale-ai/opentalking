@@ -1705,6 +1705,13 @@ export default function App() {
         },
       ];
     });
+    if (application.provider === "minimax") {
+      const message = "MiniMax voice clone saved. Select it after MiniMax speech synthesis is enabled.";
+      setVoiceApplyNotice(message);
+      setVoiceCloneOpen(false);
+      notify(message, "success");
+      return;
+    }
     setTtsProvider(application.provider);
     setQwenModel(application.model);
     setQwenVoice(application.voice);

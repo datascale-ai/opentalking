@@ -14,6 +14,19 @@ qwenApplication satisfies {
   message: "已使用复刻音色：我的音色";
 };
 
+const minimaxApplication = resolveVoiceCloneApplication({
+  provider: "minimax",
+  targetModel: "speech-2.8-hd",
+  displayLabel: "MiniMax clone",
+  voiceId: "ExampleVoice_01",
+});
+
+minimaxApplication satisfies {
+  provider: "minimax";
+  model: "speech-2.8-hd";
+  voice: "ExampleVoice_01";
+};
+
 const cosyApplication = resolveVoiceCloneApplication({
   provider: "cosyvoice",
   targetModel: "cosyvoice-v3-flash",

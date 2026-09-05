@@ -22,3 +22,21 @@ def test_init_voice_store_removes_legacy_local_default_voice(tmp_path, monkeypat
     store.init_voice_store()
 
     assert [v.voice_id for v in store.list_voices(provider="local_cosyvoice")] == []
+
+
+def test_init_voice_store_preserves_minimax_clones(tmp_path, monkeypatch):
+    db_path = tmp_path / "voices.sqlite3"
+    monkeypatch.setattr(store, "get_sqlite_path", lambda: db_path)
+
+    store.init_voice_store()
+    entry_id = store.insert_clone(
+        provider="minimax",
+        voice_id="ExampleVoice_01",
+        display_label="Support voice",
+        target_model="speech-2.8-hd",
+    )
+
+    store.init_voice_store()
+
+    entries = store.list_voices(provider="minimax")
+    assert [(entry.id, entry.voice_id) for entry in entries] == [(entry_id, "ExampleVoice_01")]
