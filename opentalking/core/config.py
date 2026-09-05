@@ -232,6 +232,12 @@ def _flatten_config(raw: dict[str, Any] | None) -> dict[str, Any]:
             "xiaomi_response_format": "tts_xiaomi_response_format",
             "xiaomi_protocol": "tts_xiaomi_protocol",
             "xiaomi_prompt": "tts_xiaomi_prompt",
+            "minimax_base_url": "tts_minimax_base_url",
+            "minimax_region": "tts_minimax_region",
+            "minimax_api_key": "tts_minimax_api_key",
+            "minimax_model": "tts_minimax_model",
+            "minimax_voice": "tts_minimax_voice",
+            "minimax_audio_format": "tts_minimax_audio_format",
         },
         "stt": {
             "default_provider": "stt_default_provider",
@@ -651,6 +657,12 @@ class Settings(BaseSettings):
     tts_xiaomi_response_format: str = "wav"
     tts_xiaomi_protocol: str = "chat_completions"
     tts_xiaomi_prompt: str = "自然、清晰、口语化的普通话。"
+    tts_minimax_base_url: str = ""
+    tts_minimax_region: str = ""
+    tts_minimax_api_key: str = ""
+    tts_minimax_model: str = "speech-2.8-hd"
+    tts_minimax_voice: str = "male-qn-qingse"
+    tts_minimax_audio_format: str = "mp3"
     ffmpeg_bin: str = "ffmpeg"
 
     #: dashscope | openai_compatible | xiaomi_mimo | funasr | sensevoice | sherpa_onnx（OPENTALKING_STT_DEFAULT_PROVIDER）

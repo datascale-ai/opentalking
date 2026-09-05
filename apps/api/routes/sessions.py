@@ -55,6 +55,7 @@ from opentalking.providers.tts.providers import (
     BAILIAN_TTS_PROVIDERS,
     INDEXTTS_TTS_PROVIDERS,
     LOCAL_TTS_PROVIDERS,
+    MINIMAX_TTS_PROVIDERS,
     OMNIRT_TTS_PROVIDERS,
     XIAOMI_MIMO_TTS_PROVIDERS,
     normalize_tts_provider,
@@ -85,6 +86,7 @@ _LOCAL_TTS = LOCAL_TTS_PROVIDERS
 _OMNIRT_TTS = OMNIRT_TTS_PROVIDERS
 _INDEXTTS_TTS = INDEXTTS_TTS_PROVIDERS
 _XIAOMI_MIMO_TTS = XIAOMI_MIMO_TTS_PROVIDERS
+_MINIMAX_TTS = MINIMAX_TTS_PROVIDERS
 _AUDIO_RENDERER_MODELS = frozenset(
     {"flashtalk", "flashhead", "fasterliveportrait", "quicktalk", "musetalk", "wav2lip"}
 )
@@ -156,12 +158,19 @@ def _require_audio_provider_config(
         or _settings_value(settings, "normalized_tts_provider")
         or "edge"
     )
-    if effective_tts in _BAILIAN_TTS or effective_tts == "openai_compatible" or effective_tts in _XIAOMI_MIMO_TTS:
+    if (
+        effective_tts in _BAILIAN_TTS
+        or effective_tts == "openai_compatible"
+        or effective_tts in _XIAOMI_MIMO_TTS
+        or effective_tts in _MINIMAX_TTS
+    ):
         tts_status = tts_provider_config(effective_tts)
         if not tts_status.get("key_set"):
             key_name = (
                 "OPENTALKING_TTS_OPENAI_API_KEY"
                 if effective_tts == "openai_compatible"
+                else "OPENTALKING_TTS_MINIMAX_API_KEY"
+                if effective_tts in _MINIMAX_TTS
                 else "OPENTALKING_TTS_XIAOMI_API_KEY"
                 if effective_tts in _XIAOMI_MIMO_TTS
                 else "OPENTALKING_TTS_DASHSCOPE_API_KEY"
@@ -194,10 +203,10 @@ def _normalize_voice_for_speak(
     tts_provider: str | None,
     tts_model: str | None,
 ) -> tuple[str | None, str, str | None]:
-    """返回 (voice, 生效的 tts_provider, tts_model)。tts_model 仅百炼分支有值。"""
+    """Return the normalized voice, effective provider, and optional provider model."""
     eff = _effective_tts_provider(tts_provider)
     try:
-        if eff in _XIAOMI_MIMO_TTS:
+        if eff in _XIAOMI_MIMO_TTS or eff in _MINIMAX_TTS:
             vn = str(voice).strip() if voice else None
             tm = str(tts_model).strip() if tts_model and str(tts_model).strip() else None
             return vn, eff, tm

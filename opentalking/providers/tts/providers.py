@@ -3,6 +3,7 @@ from __future__ import annotations
 CORE_TTS_PROVIDERS = frozenset({"auto", "edge", "elevenlabs", "mock"})
 OPENAI_COMPATIBLE_TTS_PROVIDERS = frozenset({"openai_compatible"})
 XIAOMI_MIMO_TTS_PROVIDERS = frozenset({"xiaomi_mimo", "xiaomi", "mimo"})
+MINIMAX_TTS_PROVIDERS = frozenset({"minimax", "minimax_tts"})
 QWEN_TTS_PROVIDERS = frozenset({"dashscope", "bailian", "qwen", "qwen_tts"})
 COSYVOICE_TTS_PROVIDERS = frozenset({"cosyvoice", "cosyvoice_http"})
 SAMBERT_TTS_PROVIDERS = frozenset({"sambert", "dashscope_sambert"})
@@ -18,6 +19,7 @@ SUPPORTED_TTS_PROVIDERS = (
     CORE_TTS_PROVIDERS
     | OPENAI_COMPATIBLE_TTS_PROVIDERS
     | XIAOMI_MIMO_TTS_PROVIDERS
+    | MINIMAX_TTS_PROVIDERS
     | BAILIAN_TTS_PROVIDERS
     | LOCAL_TTS_PROVIDERS
     | OMNIRT_TTS_PROVIDERS
@@ -31,6 +33,8 @@ def normalize_tts_provider(value: str | None, *, default: str | None = None) -> 
         return default
     if provider in XIAOMI_MIMO_TTS_PROVIDERS:
         return "xiaomi_mimo"
+    if provider in MINIMAX_TTS_PROVIDERS:
+        return "minimax"
     if provider in {"index_tts", "index-tts"}:
         return "indextts"
     if provider not in SUPPORTED_TTS_PROVIDERS:

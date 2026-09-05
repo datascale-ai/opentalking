@@ -90,6 +90,12 @@ _RUNTIME_ENV_KEYS = {
     "OPENTALKING_TTS_XIAOMI_MODEL",
     "OPENTALKING_TTS_XIAOMI_VOICE",
     "OPENTALKING_TTS_XIAOMI_API_KEY",
+    "OPENTALKING_TTS_MINIMAX_BASE_URL",
+    "OPENTALKING_TTS_MINIMAX_REGION",
+    "OPENTALKING_TTS_MINIMAX_MODEL",
+    "OPENTALKING_TTS_MINIMAX_VOICE",
+    "OPENTALKING_TTS_MINIMAX_API_KEY",
+    "OPENTALKING_TTS_MINIMAX_AUDIO_FORMAT",
     "OPENTALKING_MEMORY_MEM0_LLM_PROVIDER",
     "OPENTALKING_MEMORY_MEM0_LLM_BASE_URL",
     "OPENTALKING_MEMORY_MEM0_LLM_API_KEY",
@@ -379,6 +385,25 @@ def _current_tts_payload(provider: str, settings: Any, values: dict[str, str]) -
         model = _env_value(values, "OPENTALKING_TTS_XIAOMI_MODEL", _settings_value(settings, "tts_xiaomi_model", "mimo-v2.5-tts"))
         voice = _env_value(values, "OPENTALKING_TTS_XIAOMI_VOICE", _settings_value(settings, "tts_xiaomi_voice", "mimo_default"))
         key = _env_value(values, "OPENTALKING_TTS_XIAOMI_API_KEY", _settings_value(settings, "tts_xiaomi_api_key"))
+    elif provider == "minimax":
+        region = _env_value(
+            values,
+            "OPENTALKING_TTS_MINIMAX_REGION",
+            _settings_value(settings, "tts_minimax_region"),
+        ).lower()
+        regional_base_url = (
+            "https://api.minimaxi.com/v1"
+            if region in {"cn", "cn_zh", "china", "zh"}
+            else "https://api.minimax.io/v1"
+        )
+        base_url = _env_value(
+            values,
+            "OPENTALKING_TTS_MINIMAX_BASE_URL",
+            _settings_value(settings, "tts_minimax_base_url"),
+        ) or regional_base_url
+        model = _env_value(values, "OPENTALKING_TTS_MINIMAX_MODEL", _settings_value(settings, "tts_minimax_model", "speech-2.8-hd"))
+        voice = _env_value(values, "OPENTALKING_TTS_MINIMAX_VOICE", _settings_value(settings, "tts_minimax_voice", "male-qn-qingse"))
+        key = _env_value(values, "OPENTALKING_TTS_MINIMAX_API_KEY", _settings_value(settings, "tts_minimax_api_key"))
     elif provider == "cosyvoice":
         base_url = _env_value(values, "OPENTALKING_TTS_COSYVOICE_SERVICE_URL", _settings_value(settings, "tts_cosyvoice_service_url"))
         model = _env_value(values, "OPENTALKING_TTS_COSYVOICE_MODEL", _settings_value(settings, "tts_cosyvoice_model", "cosyvoice-v3-flash"))
@@ -578,6 +603,7 @@ def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
             "indextts": "OPENTALKING_TTS_LOCAL_INDEXTTS_SERVICE_URL",
             "openai_compatible": "OPENTALKING_TTS_OPENAI_BASE_URL",
             "xiaomi_mimo": "OPENTALKING_TTS_XIAOMI_BASE_URL",
+            "minimax": "OPENTALKING_TTS_MINIMAX_BASE_URL",
         }.get(tts_provider)
         if key:
             updates[key] = value.rstrip("/")
@@ -590,6 +616,7 @@ def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
             "indextts": "OPENTALKING_TTS_LOCAL_INDEXTTS_MODEL",
             "openai_compatible": "OPENTALKING_TTS_OPENAI_MODEL",
             "xiaomi_mimo": "OPENTALKING_TTS_XIAOMI_MODEL",
+            "minimax": "OPENTALKING_TTS_MINIMAX_MODEL",
         }.get(tts_provider)
         if key:
             updates[key] = value
@@ -605,11 +632,15 @@ def _build_updates(payload: RuntimeConfigPayload) -> dict[str, str]:
             updates["OPENTALKING_TTS_OPENAI_VOICE"] = value
         elif tts_provider == "xiaomi_mimo":
             updates["OPENTALKING_TTS_XIAOMI_VOICE"] = value
+        elif tts_provider == "minimax":
+            updates["OPENTALKING_TTS_MINIMAX_VOICE"] = value
     if value := _strip(payload.tts_api_key):
         if tts_provider == "openai_compatible":
             updates["OPENTALKING_TTS_OPENAI_API_KEY"] = value
         elif tts_provider == "xiaomi_mimo":
             updates["OPENTALKING_TTS_XIAOMI_API_KEY"] = value
+        elif tts_provider == "minimax":
+            updates["OPENTALKING_TTS_MINIMAX_API_KEY"] = value
         else:
             updates["OPENTALKING_TTS_DASHSCOPE_API_KEY"] = value
         sync_key = sync_key or value
