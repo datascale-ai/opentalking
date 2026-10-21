@@ -16,10 +16,14 @@
 services:
   redis:
     image: redis:7-alpine
+    command: redis-server /usr/local/etc/redis/redis.conf
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 5
+    volumes:
+      - ./docker/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    restart: unless-stopped
 
   omnirt:
     profiles: ["gpu"]
@@ -43,7 +47,7 @@ services:
       dockerfile: docker/Dockerfile.api
     env_file: .env
     environment:
-      OPENTALKING_REDIS_URL: redis://redis:6379/0
+      OPENTALKING_REDIS_URL: redis://redis:6379/0?socket_keepalive=true&socket_timeout=60
       OPENTALKING_WORKER_URL: http://worker:9001
       # OPENTALKING_INFERENCE_MOCK is set per-profile below via override files.
       # Default profile: mock=1; GPU profile: mock=0 + OMNIRT_ENDPOINT.
@@ -52,6 +56,7 @@ services:
     depends_on:
       redis: { condition: service_healthy }
     ports: ["8000:8000"]
+    restart: unless-stopped
 
   worker:
     build:
@@ -59,11 +64,12 @@ services:
       dockerfile: docker/Dockerfile.worker
     env_file: .env
     environment:
-      OPENTALKING_REDIS_URL: redis://redis:6379/0
+      OPENTALKING_REDIS_URL: redis://redis:6379/0?socket_keepalive=true&socket_timeout=60
       OPENTALKING_INFERENCE_MOCK: ${OPENTALKING_INFERENCE_MOCK:-1}
       OMNIRT_ENDPOINT: ${OMNIRT_ENDPOINT:-}
     depends_on:
       redis: { condition: service_healthy }
+    restart: unless-stopped
 
   web:
     build:
@@ -71,3 +77,4 @@ services:
       dockerfile: docker/Dockerfile.web
     ports: ["5173:80"]
     depends_on: [api]
+    restart: unless-stopped
