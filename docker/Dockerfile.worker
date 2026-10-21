@@ -13,6 +13,7 @@ COPY configs ./configs
 COPY examples ./examples
 
 RUN pip install --no-cache-dir -U pip setuptools wheel \
+    && pip install --no-cache-dir librosa \
     && pip install --no-cache-dir -e .
 
 ENV OPENTALKING_REDIS_URL=redis://redis:6379/0
